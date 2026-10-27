@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.79 — 2026-10-27
+
+- Remove the redundant Incoming trades dock button; warehouse alerts continue through Notifications.
+- Match the Notifications button to the dock’s compact size, typography, shaded colors, hover and active states, with a visible keyboard focus outline.
+
 ## 1.2.78 — 2026-10-27
 
 - Add a shared Notifications inbox for action results, incoming attacks, farming reminders, and incoming-trade warehouse alarms.
