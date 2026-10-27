@@ -30,10 +30,10 @@ const context = vm.createContext({
   },
 });
 vm.runInContext(source.slice(
-  source.indexOf('  function makeUnitQueueDraggable('),
+  source.indexOf('  function makePanelDraggable('),
   source.indexOf('  function closeUnitQueueWindow('),
 ), context);
-vm.runInContext('makeUnitQueueDraggable(panel)', context);
+vm.runInContext('makePanelDraggable(panel)', context);
 const pointer = (clientX, clientY) => ({
   button: 0, pointerId: 1, clientX, clientY,
   target: { closest: () => null }, preventDefault() {},

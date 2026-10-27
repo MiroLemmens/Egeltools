@@ -51,7 +51,7 @@ Chrome and Firefox are supported. A low-frequency mount check restores the botto
 
 ## Current behavior
 
-- **Notifications** in the dock centralizes action results, incoming attacks, farming reminders, and warehouse alerts. The unread badge counts entries, repeat messages group with a repeat count, and the inbox keeps the latest 50 entries for this page session. A single six-second preview opens the inbox when clicked. Full messages remain available there; **Dismiss** or **Clear all** acknowledges alerts (and stops the corresponding collection/attack sound). Warehouse alerts include **Go to town** and clear when resolved. The Notifications button matches the dock styling and replaces the separate Incoming trades button.
+- **Notifications** in the dock centralizes action results, incoming attacks, farming reminders, and warehouse alerts. The unread badge counts entries, repeat messages group with a repeat count, and the inbox keeps the latest 50 entries for this page session. A single six-second preview opens the inbox when clicked. Full messages remain available there; **Dismiss** or **Clear all** acknowledges alerts (and stops the corresponding collection/attack sound). Warehouse alerts include **Go to town** and clear when resolved. The Notifications button matches the dock styling and replaces the separate Incoming trades button. Drag the window by its header to move it; its position is retained while the page stays open and kept within the screen.
 
 - Adds an always-visible Grepolis-style horizontal quick-tools dock fixed 10px from the bottom-left corner.
 - The dock's blue EgelTools button opens and closes an accessible settings window built from Grepolis's native window-frame classes; the former left-menu settings launcher has been removed.
