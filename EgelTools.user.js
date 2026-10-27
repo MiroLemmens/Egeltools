@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.80
+// @version      1.2.81
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.80',
+    version: '1.2.81',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -1319,7 +1319,7 @@
         color: #332719; box-shadow: 0 4px 18px #0005; font: 13px/1.45 Arial, sans-serif;
       }
       #egeltools-notifications[hidden], #egeltools-notification-preview[hidden] { display: none; }
-      #egeltools-notifications header { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #bba17b; }
+      #egeltools-notifications header { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #bba17b; cursor: move; touch-action: none; user-select: none; }
       #egeltools-notifications header strong { flex: 1; }
       #egeltools-notifications button { cursor: pointer; font: inherit; }
       #egeltools-notifications [data-notification-list] { max-height: min(460px, calc(100vh - 170px)); overflow-y: auto; padding: 8px; }
@@ -3488,7 +3488,7 @@
       panel.id = 'egeltools-notifications';
       panel.setAttribute('aria-labelledby', 'egeltools-notifications-title');
       panel.innerHTML = `
-        <header><strong id="egeltools-notifications-title">Notifications</strong>
+        <header title="Drag to move"><strong id="egeltools-notifications-title">Notifications</strong>
           <button type="button" data-clear>Clear all</button>
           <button type="button" data-close aria-label="Close notifications">×</button></header>
         <div data-notification-list></div>`;
@@ -3500,6 +3500,7 @@
       panel.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') { event.stopPropagation(); setNotificationCenterOpen(false); }
       });
+      makePanelDraggable(panel, panel.querySelector('header'));
       document.body.append(panel);
     }
     if (!document.getElementById('egeltools-notification-preview')) {
@@ -3514,6 +3515,15 @@
       document.body.append(preview);
     }
     return panel;
+  }
+
+  function clampNotificationCenter() {
+    const panel = document.getElementById('egeltools-notifications');
+    // Preserve the bottom-docked default until the user moves the window.
+    if (!panel || panel.hidden || !panel.style.top) return;
+    const bounds = panel.getBoundingClientRect();
+    panel.style.left = `${Math.max(0, Math.min(bounds.left, window.innerWidth - bounds.width))}px`;
+    panel.style.top = `${Math.max(0, Math.min(bounds.top, window.innerHeight - bounds.height))}px`;
   }
 
   function renderNotificationCenter() {
@@ -3564,6 +3574,7 @@
       row.append(dismiss);
       list.append(row);
     });
+    clampNotificationCenter();
   }
 
   function getTradeCapacityBoundary(currentResources, capacity, incomingTrades) {
@@ -8703,8 +8714,7 @@
       </div>`;
   }
 
-  function makeUnitQueueDraggable(panel) {
-    const handle = panel.querySelector('.egeltools-unit-queue__header');
+  function makePanelDraggable(panel, handle = panel.querySelector('.egeltools-unit-queue__header')) {
     let dragState = null;
 
     const stopDragging = (event) => {
@@ -8791,7 +8801,7 @@
       <div id="${UNIT_QUEUE.bodyId}" aria-live="polite"></div>`;
     panel.querySelector(`#${UNIT_QUEUE.refreshButtonId}`).addEventListener('click', renderUnitQueueWindow);
     panel.querySelector(`#${UNIT_QUEUE.closeButtonId}`).addEventListener('click', closeUnitQueueWindow);
-    makeUnitQueueDraggable(panel);
+    makePanelDraggable(panel);
     document.body.append(panel);
     return panel;
   }
@@ -9387,6 +9397,7 @@
       attributeFilter: ['class'],
     });
     window.addEventListener('resize', positionToolDock);
+    window.addEventListener('resize', clampNotificationCenter);
     window.setInterval(() => {
       const tradeLockIdsAfter = Object.keys(reconcileTownTradeLocks()).sort().join(',');
       if (monitoredTownTradeLockIds !== null && monitoredTownTradeLockIds !== tradeLockIdsAfter) {
