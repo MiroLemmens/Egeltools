@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.79
+// @version      1.2.80
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.79',
+    version: '1.2.80',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -378,55 +378,6 @@
         font: 12px Arial, Helvetica, sans-serif !important;
       }
 
-
-      #egeltools-trade-overview[hidden] { display: none !important; }
-      #egeltools-trade-overview {
-        position: fixed; left: min(180px, 4vw); top: 100px; width: 480px;
-        box-sizing: border-box; max-width: calc(100vw - 24px); max-height: min(480px, calc(100vh - 24px));
-        z-index: 10001; color: #302517; background: #f5e8c8;
-        border: 1px solid #61492e; border-radius: 7px; overflow: hidden;
-        box-shadow: 0 6px 22px #0006; font: 12px/1.45 Arial, sans-serif;
-        display: flex; flex-direction: column;
-      }
-      #egeltools-trade-overview .egeltools-trade-overview__header {
-        display: flex; align-items: center; gap: 10px; padding: 7px 10px; flex-shrink: 0;
-        background: linear-gradient(#61492e, #382718); color: #f3d58d;
-        cursor: move; touch-action: none; user-select: none;
-      }
-      #egeltools-trade-overview [data-trade-summary] { flex: 1; font-size: 11px; text-align: right; }
-      #egeltools-trade-overview [data-trade-close] { border: 0; border-radius: 3px; background: #ffffff18; color: #f3d58d; width: 24px; height: 24px; font-size: 19px; cursor: pointer; }
-      #egeltools-trade-overview .egeltools-trade-overview__legend { margin: 0; padding: 5px 10px; font-size: 11px; color: #705a39; flex-shrink: 0; }
-      #egeltools-trade-overview .egeltools-trade-overview__body { overflow: auto; min-height: 0; padding: 0 7px 7px; }
-      #egeltools-trade-overview .egeltools-trade-overview__town {
-        display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 90px;
-        gap: 5px 10px; padding: 8px 10px; margin-top: 5px;
-        border: 1px solid #d8c49c; border-left: 3px solid transparent; border-radius: 4px; background: #fff9eb;
-        font-variant-numeric: tabular-nums;
-      }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div { min-width: 0; white-space: pre-line; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(1) { grid-column: 1 / 3; grid-row: 1; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(2) { grid-column: 1; grid-row: 3; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(3) { grid-column: 3; grid-row: 1; text-align: right; font-weight: bold; color: #315773; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(4) { grid-column: 1 / -1; grid-row: 2; padding-bottom: 5px; border-bottom: 1px solid #e7d9bb; color: #705a39; font-size: 11px; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(5) { grid-column: 2; grid-row: 3; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(6) { grid-column: 3; grid-row: 3; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(2)::before { content: 'Warehouse'; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(5)::before { content: 'On the way'; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(6)::before { content: 'Unit ratio'; }
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(2)::before,
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(5)::before,
-      #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(6)::before { display: block; font-size: 10px; font-weight: bold; color: #705a39; margin-bottom: 3px; }
-      #egeltools-trade-overview .egeltools-trade-overview__town.is-selected { background: #f1e7ca; }
-      #egeltools-trade-overview .egeltools-trade-overview__town.is-at-line { border-left-color: #b5392e; }
-      #egeltools-trade-overview .egeltools-trade-overview__town button { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; background: none; border: 0; color: #70451e; font: inherit; font-weight: bold; cursor: pointer; text-align: left; }
-      #egeltools-trade-overview.has-alarms .egeltools-trade-overview__header { background: linear-gradient(#973c31, #602720); color: #fff1d6; }
-      #egeltools-trade-overview .egeltools-trade-overview__town.has-alarm { background: #ffebe2; border-color: #d07969; border-left: 4px solid #b52923; }
-      #egeltools-trade-overview .egeltools-trade-overview__alarm { display: inline-block; color: #a0221e; font-size: 11px; font-weight: bold; margin-top: 3px; }
-      #egeltools-trade-overview .egeltools-trade-overview__town button.egeltools-trade-overview__acknowledge { display: inline-block; margin-left: 7px; color: #81483d; font-size: 10px; text-decoration: underline; font-weight: normal; }
-      #egeltools-trade-overview [hidden] { display: none !important; }
-      #egeltools-trade-overview button:focus-visible { outline: 2px solid #467ba4; }
-      #egeltools-trade-overview .egeltools-trade-overview__ratios { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
-      #egeltools-trade-overview .egeltools-trade-overview__unit { display: inline-block; width: 40px; height: 40px; flex: 0 0 40px; }
 
       #${APP.windowId}:focus {
         outline: none !important;
@@ -3681,8 +3632,8 @@
     oscillator.stop(now + 0.5);
   }
 
-  function renderTradeCapacityNotices() {
-    // Keep compact warehouse notices in the shared inbox; the tracker holds detail.
+  function syncTradeCapacityNotifications() {
+    // Keep warehouse alerts synchronized with the shared inbox.
     for (const [townId, notice] of tradeCapacityNotices) {
       const key = `warehouse:${townId}`;
       if (notice.published) continue;
@@ -3696,14 +3647,11 @@
     for (const key of notifications.keys()) {
       if (key.startsWith('warehouse:') && !tradeCapacityNotices.has(key.slice(10))) removeNotification(key);
     }
-    document.getElementById('egeltools-trade-capacity-notices')?.remove();
-
   }
 
   function acknowledgeTradeCapacityNotice(townId) {
     tradeCapacityNotices.delete(String(townId));
-    renderTradeCapacityNotices();
-    renderTradeOverview(getTradeCapacityArrivals(), getResourceCheckerServerTime());
+    syncTradeCapacityNotifications();
   }
 
   // Town stock can lag the arrival tick, so only clear an alarm once the
@@ -3764,69 +3712,25 @@
     clearResolvedTradeCapacityNotices(now);
     if (notify || selectionAlert) playTradeCapacitySound();
 
-    renderTradeCapacityNotices(arrivals, now);
-    renderTradeOverview(arrivals, now);
+    syncTradeCapacityNotifications();
   }
 
-  let tradeOverviewOpen = false;
   let tradeCapacitySelectedTownId = null;
 
-  function formatTradeArrivalTime(arrivalAt, now) {
-    if (arrivalAt == null) return 'No incoming trades';
-    const seconds = Math.max(0, Math.ceil(arrivalAt - now));
-    return `${Math.floor(seconds / 3600)}:${String(Math.floor(seconds / 60) % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
-  }
-
-  function getTradeOverviewRows(arrivals, now) {
-    const rows = new Map();
-    for (const trade of arrivals.values()) {
-      if (trade.arrivalAt <= now) continue;
-      const town = findTown(trade.townId);
-      if (!town) continue;
-      if (!rows.has(trade.townId)) rows.set(trade.townId, {
-        townId: trade.townId,
-        name: String(getFirstMethodValue(town, ['getName'], ['name']) || `Town ${trade.townId}`),
-        stock: getTownResources(town), capacity: getTownStorageCapacity(town),
-        nextArrivalAt: trade.arrivalAt, count: 0, total: 0,
-        incoming: { wood: 0, stone: 0, iron: 0 }, trades: [],
-      });
-      const row = rows.get(trade.townId);
-      row.count += 1;
-      row.trades.push(trade);
-      row.nextArrivalAt = Math.min(row.nextArrivalAt, trade.arrivalAt);
-      for (const resource of TRADE_CAPACITY_MARKER.resources) {
-        row.incoming[resource] += trade.resources[resource];
-        row.total += trade.resources[resource];
-      }
-    }
-    // Keep an alarm visible even when its final shipment has arrived.
-    for (const townId of tradeCapacityNotices.keys()) {
-      if (rows.has(townId)) continue;
-      const town = findTown(townId);
-      if (!town) continue;
-      rows.set(townId, {
-        townId, name: String(getFirstMethodValue(town, ['getName'], ['name']) || `Town ${townId}`),
-        stock: getTownResources(town), capacity: getTownStorageCapacity(town),
-        nextArrivalAt: null, count: 0, total: 0,
-        incoming: { wood: 0, stone: 0, iron: 0 }, trades: [],
-      });
-    }
-    return [...rows.values()].sort((a, b) => (
-      Number(tradeCapacityNotices.has(b.townId)) - Number(tradeCapacityNotices.has(a.townId))
-      || (a.nextArrivalAt ?? Infinity) - (b.nextArrivalAt ?? Infinity)
-      || a.name.localeCompare(b.name)
-    ));
-  }
-
-  function isTradeCapacityTownAtLine(townId, arrivals, now, townRow) {
+  function isTradeCapacityTownAtLine(townId, arrivals, now) {
     if (tradeCapacityNotices.has(townId)) return true;
-    const row = townRow || getTradeOverviewRows(arrivals, now).find((entry) => entry.townId === townId);
-    if (!row?.stock || !(row.capacity > 0)) return false;
+    const town = findTown(townId);
+    const stock = town && getTownResources(town);
+    const capacity = town && getTownStorageCapacity(town);
+    if (!stock || !(capacity > 0)) return false;
+    const trades = [...arrivals.values()].filter((trade) => (
+      trade.townId === townId && trade.arrivalAt > now
+    ));
     if ([...TRADE_CAPACITY_MARKER.resources].some((resource) => (
-      row.incoming[resource] > 0 && row.stock[resource] >= row.capacity
+      stock[resource] >= capacity && trades.some((trade) => trade.resources[resource] > 0)
     ))) return true;
-    row.trades.sort((a, b) => a.arrivalAt - b.arrivalAt || a.id.localeCompare(b.id));
-    const boundary = getTradeCapacityBoundary(row.stock, row.capacity, row.trades);
+    trades.sort((a, b) => a.arrivalAt - b.arrivalAt || a.id.localeCompare(b.id));
+    const boundary = getTradeCapacityBoundary(stock, capacity, trades);
     return boundary?.position === 'before' && boundary.index === 0;
   }
 
@@ -3848,168 +3752,6 @@
     }
   }
 
-  function getTradeRatioUnits(resources, units = window.GameData?.units || {}) {
-    const keys = [...TRADE_CAPACITY_MARKER.resources];
-    const total = keys.reduce((sum, key) => sum + resources[key], 0);
-    if (!(total > 0)) return [];
-    return Object.entries(units).flatMap(([id, unit]) => {
-      const costs = unit.resources;
-      if (!costs || !/^[a-z_]+$/.test(id)) return [];
-      const costTotal = keys.reduce((sum, key) => sum + (Number(costs[key]) || 0), 0);
-      if (!(costTotal > 0)) return [];
-      // Allow integer rounding when a trader's load scales a recruitment ratio.
-      // A zero-cost resource must remain zero; do not guess the closest unit.
-      const matches = keys.every((key) => {
-        const cost = Number(costs[key]) || 0;
-        if (cost === 0) return resources[key] === 0;
-        return Math.abs(resources[key] - total * cost / costTotal) <= 2;
-      });
-      return matches ? [{ id, name: String(unit.name || id) }] : [];
-    });
-  }
-
-  function createTradeRatioIcons(trades) {
-    const container = document.createElement('span');
-    container.className = 'egeltools-trade-overview__ratios';
-    const matches = new Map();
-    let custom = 0;
-    for (const trade of trades) {
-      const units = getTradeRatioUnits(trade.resources);
-      if (!units.length) custom += 1;
-      for (const unit of units) {
-        const existing = matches.get(unit.id) || { ...unit, count: 0 };
-        existing.count += 1;
-        matches.set(unit.id, existing);
-      }
-    }
-    for (const unit of matches.values()) {
-      const icon = document.createElement('span');
-      icon.className = `unit_icon40x40 ${unit.id} egeltools-trade-overview__unit`;
-      icon.title = `${unit.name} ratio · ${unit.count} incoming trade${unit.count === 1 ? '' : 's'} (matching resource costs)`;
-      icon.setAttribute('role', 'img');
-      icon.setAttribute('aria-label', icon.title);
-      container.append(icon);
-    }
-    if (custom) {
-      const label = document.createElement('span');
-      label.textContent = `Custom (${custom})`;
-      label.title = 'These shipments do not match a known unit resource ratio.';
-      container.append(label);
-    }
-    return container;
-  }
-
-  function setTradeOverviewOpen(open) {
-    tradeOverviewOpen = open;
-    const panel = createTradeOverviewPanel();
-    panel.hidden = !open;
-    if (open) {
-      renderTradeOverview(getTradeCapacityArrivals(), getResourceCheckerServerTime());
-      clampTradeOverviewViewport();
-    }
-  }
-
-  function clampTradeOverviewViewport() {
-    const panel = document.getElementById('egeltools-trade-overview');
-    if (!panel || panel.hidden) return;
-    const bounds = panel.getBoundingClientRect();
-    panel.style.left = `${Math.max(0, Math.min(bounds.left, window.innerWidth - bounds.width))}px`;
-    panel.style.top = `${Math.max(0, Math.min(bounds.top, window.innerHeight - bounds.height))}px`;
-  }
-
-  function createTradeOverviewPanel() {
-    let panel = document.getElementById('egeltools-trade-overview');
-    if (panel) return panel;
-    panel = document.createElement('section');
-    panel.id = 'egeltools-trade-overview';
-    panel.hidden = !tradeOverviewOpen;
-    panel.setAttribute('aria-labelledby', 'egeltools-trade-overview-title');
-    panel.innerHTML = `
-      <div class="egeltools-unit-queue__header egeltools-trade-overview__header">
-        <strong id="egeltools-trade-overview-title">Incoming trades</strong>
-        <span data-trade-summary></span>
-        <button type="button" data-trade-close aria-label="Close incoming trades">×</button>
-      </div>
-      <p class="egeltools-trade-overview__legend">Live arrivals · red cards need attention · drag header to move</p>
-      <div class="egeltools-trade-overview__body">
-        <div data-trade-rows aria-label="Receiving towns"></div>
-        <p data-trade-empty hidden>No incoming trades.</p>
-      </div>`;
-    panel.querySelector('[data-trade-close]').addEventListener('click', () => setTradeOverviewOpen(false));
-    makeUnitQueueDraggable(panel);
-    document.body.append(panel);
-    return panel;
-  }
-
-  function renderTradeOverview(arrivals, now) {
-    if (!tradeOverviewOpen) return;
-    const panel = createTradeOverviewPanel();
-    const rows = getTradeOverviewRows(arrivals, now);
-    const body = panel.querySelector('[data-trade-rows]');
-    const existing = new Map([...body.children].map((row) => [row.dataset.townId, row]));
-    for (const data of rows) {
-      let row = existing.get(data.townId);
-      if (!row) {
-        row = document.createElement('article');
-        row.className = 'egeltools-trade-overview__town';
-        row.dataset.townId = data.townId;
-        for (let index = 0; index < 6; index += 1) row.append(document.createElement('div'));
-        const link = document.createElement('button');
-        link.type = 'button';
-        link.addEventListener('click', () => selectTradeCapacityTown(data.townId));
-        row.children[0].append(link);
-        const alarm = document.createElement('span');
-        alarm.className = 'egeltools-trade-overview__alarm';
-        alarm.textContent = '⚠ Warehouse alarm';
-        alarm.setAttribute('role', 'status');
-        const acknowledge = document.createElement('button');
-        acknowledge.type = 'button';
-        acknowledge.className = 'egeltools-trade-overview__acknowledge';
-        acknowledge.textContent = 'Dismiss alarm';
-        acknowledge.addEventListener('click', () => acknowledgeTradeCapacityNotice(data.townId));
-        row.children[0].append(alarm, acknowledge);
-      }
-      existing.delete(data.townId);
-      const cells = row.children;
-      const setText = (element, text) => { if (element.textContent !== text) element.textContent = text; };
-      setText(cells[0].children[0], data.name);
-      cells[0].children[0].title = `Go to ${data.name}`;
-      row.classList.toggle('is-selected', String(getCurrentTownId()) === data.townId);
-      const hasAlarm = tradeCapacityNotices.has(data.townId);
-      const atLine = isTradeCapacityTownAtLine(data.townId, arrivals, now, data);
-      row.classList.toggle('is-at-line', atLine);
-      row.classList.toggle('has-alarm', hasAlarm);
-      cells[0].children[1].hidden = !atLine;
-      cells[0].children[1].textContent = hasAlarm ? '⚠ Warehouse alarm' : '⚠ At red line';
-      cells[0].children[2].hidden = !hasAlarm;
-      const format = (amount) => Math.floor(amount).toLocaleString();
-      setText(cells[1], data.stock && data.capacity > 0
-        ? [...TRADE_CAPACITY_MARKER.resources].map((resource) => `${RESOURCE_NAMES[resource]}: ${format(data.stock[resource])}`).join('\n')
-        : 'Unavailable');
-      setText(cells[2], data.nextArrivalAt == null ? 'No next trade' : `Next ${formatTradeArrivalTime(data.nextArrivalAt, now)}`);
-      cells[2].title = 'Time until next incoming trade';
-      cells[2].setAttribute('aria-label', `Next trade in ${formatTradeArrivalTime(data.nextArrivalAt, now)}`);
-      setText(cells[3], `${data.count} trade${data.count === 1 ? '' : 's'} · ${format(data.total)} resources incoming · Capacity ${data.capacity > 0 ? format(data.capacity) : 'unknown'}`);
-      setText(cells[4], [...TRADE_CAPACITY_MARKER.resources].map((resource) => `${RESOURCE_NAMES[resource]}: ${format(data.incoming[resource])}`).join('\n'));
-      const signature = JSON.stringify([data.trades.map((trade) => trade.resources), window.GameData?.units || {}]);
-      if (cells[5].dataset.ratio !== signature) {
-        cells[5].dataset.ratio = signature;
-        cells[5].replaceChildren(createTradeRatioIcons(data.trades));
-      }
-      // Move only when order changes, preserving focus on town buttons during ticks.
-      const index = rows.indexOf(data);
-      if (body.children[index] !== row) body.insertBefore(row, body.children[index] || null);
-    }
-    existing.forEach((row) => row.remove());
-    panel.querySelector('[data-trade-empty]').hidden = rows.length > 0;
-    body.hidden = rows.length === 0;
-    const tradeCount = rows.reduce((sum, row) => sum + row.count, 0);
-    const summary = `${tradeCapacityNotices.size ? `${tradeCapacityNotices.size} alarm${tradeCapacityNotices.size === 1 ? '' : 's'} · ` : ''}${rows.length} town${rows.length === 1 ? '' : 's'} · ${tradeCount} trade${tradeCount === 1 ? '' : 's'}`;
-    const summaryElement = panel.querySelector('[data-trade-summary]');
-    if (summaryElement.textContent !== summary) summaryElement.textContent = summary;
-    panel.classList.toggle('has-alarms', tradeCapacityNotices.size > 0);
-  }
-
   function initTradeCapacityNotifications() {
     const unlock = () => {
       try {
@@ -4023,7 +3765,6 @@
     document.addEventListener('keydown', unlock, true);
     checkTradeCapacityArrivals();
     window.setInterval(checkTradeCapacityArrivals, 1000);
-    window.addEventListener('resize', clampTradeOverviewViewport);
   }
 
 
@@ -9127,7 +8868,6 @@
     document.getElementById(APP.launcherId)?.remove();
     createSettingsWindow();
     createToolDock();
-    document.getElementById('egeltools-trade-overview-button')?.remove();
     renderNotificationCenter();
     syncAdvisorGatedTools();
     renderTradeCapacityMarkers();
@@ -9672,7 +9412,6 @@
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       closeSettings();
-      if (tradeOverviewOpen) setTradeOverviewOpen(false);
       setCelebrationFinderOpen(false);
       setTownDistanceSorterOpen(false);
       setResourceCheckerOpen(false);
