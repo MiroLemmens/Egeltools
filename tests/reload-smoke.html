@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>EgelTools reload smoke test</title>
+  </head>
+  <body>
+    <div class="ui_advisors"><div class="advisor"></div></div>
+    <div class="toolbar_buttons"></div>
+    <div class="strategic_map circle_button"></div>
+    <div class="ui_quickbar" style="position:fixed;left:300px;bottom:10px;width:360px;height:42px"></div>
+    <div class="nui_main_menu"><div class="bottom"></div></div>
+    <script>
+      window.__assertFailures = [];
+      const nativeConsoleAssert = console.assert.bind(console);
+      console.assert = (condition, ...details) => {
+        if (!condition) window.__assertFailures.push(details.join(' '));
+        nativeConsoleAssert(condition, ...details);
+      };
+      localStorage.setItem('m23_alarm_target', String(Date.now() + 1500));
+      localStorage.setItem('m23_alarm_state', 'running');
+      localStorage.setItem('m23_alarm_repeat', 'on');
+      window.__audioInstances = [];
+      window.Audio = class FakeAudio {
+        constructor(src) {
+          this.src = src;
+          this.loop = false;
+          this.preload = '';
+          this.paused = true;
+          this.currentTime = 0;
+          this.volume = 1;
+          window.__audioInstances.push(this);
+        }
+        addEventListener() {}
+        play() { this.paused = false; return Promise.resolve(); }
+        pause() { this.paused = true; }
+      };
+      window.Game = { player_id: 999, world_id: 'zz1' };
+      window.MM = { getModels: () => ({}), getCollections: () => ({}) };
+      window.setTimeout(() => {
+        document.querySelector('.advisor').classList.add('captain_active');
+      }, 500);
+    </script>
+    <script src="../EgelTools.user.js?v=1.2.27"></script>
+    <script>
+      window.setTimeout(() => {
+        const bdAudio = window.__audioInstances.find(
+          (audio) => audio.src.startsWith('data:audio/mpeg;base64,'),
+        );
+        console.assert(
+          localStorage.getItem('m23_alarm_state') === 'ringing',
+          'A saved collection timer should survive the captain UI initializing after reload',
+        );
+        console.assert(bdAudio && !bdAudio.paused, 'The restored timer should play the FV sound');
+        console.assert(
+          !document.getElementById('wachtrijMainButton'),
+          'The troop-queue button should not mount while Administrator is inactive',
+        );
+        document.body.dataset.reloadSmokeFailed = window.__assertFailures.join('\n');
+        document.body.dataset.reloadSmokeComplete = 'true';
+      }, 2600);
+    </script>
+  </body>
+</html>
