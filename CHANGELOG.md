@@ -2,9 +2,14 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
-## 1.2.85 — 2026-10-27
+## 1.2.86 — 2026-10-27
 
 - Mirror Grepolis status bar messages, including the trade on the way confirmation after sending resources, into the Notifications inbox so they stay readable after the bar fades. The native bar is unchanged, mirrored entries skip the EgelTools preview, and repeats group like other inbox entries.
+
+## 1.2.85 — 2026-10-27
+
+- Show the Council of Heroes Assign here control as a compact native-styled icon button placed directly to the right of each hero's Assign/Unassign button and vertically centered with it. The tooltip names the action, and the icon dims while the action is unavailable.
+- A row whose hero shows a town link instead of a button uses the button position of the other rows, or sits beside that link.
 
 ## 1.2.84 — 2026-10-27
 
