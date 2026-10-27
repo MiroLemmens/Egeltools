@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.88
+// @version      1.2.89
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.88',
+    version: '1.2.89',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -139,7 +139,6 @@
     minimumTradeAmount: 500,
     loyaltyClaimInterval: 13 * 60,
     loyaltyClaimByFarmLevel: Object.freeze([0, 28, 34, 40, 45, 51, 57]),
-    silentSendMirrorMs: 5000,
   });
 
   const BD_LEVEL_CHECK = Object.freeze({
@@ -3454,7 +3453,7 @@
   let notificationToastTimer = null;
   let notificationPreviewKey = null;
 
-  function notify({ key, title, message = '', level = 'info', action, actionLabel = 'Open', onDismiss, warehouse, preview = true } = {}) {
+  function notify({ key, title, message = '', level = 'info', action, actionLabel = 'Open', onDismiss, warehouse } = {}) {
     title = String(title || APP.name).trim();
     message = String(message).replace(/\s+/g, ' ').trim();
     key = key || `${level}:${title}:${message}`;
@@ -3464,8 +3463,6 @@
       count: (previous?.count || 0) + 1, unread: !notificationCenterOpen, time: Date.now() });
     while (notifications.size > NOTIFICATION_LIMIT) notifications.delete(notifications.keys().next().value);
     renderNotificationCenter();
-    // Grepolis's own status bar already previewed mirrored game messages.
-    if (!preview) return key;
     // One preview replaces the previous one; history remains in the inbox.
     const toast = document.getElementById('egeltools-notification-preview');
     notificationPreviewKey = key;
@@ -3651,68 +3648,6 @@
       list.append(row);
     });
     clampNotificationCenter();
-  }
-
-  // Grepolis reports action results such as "trade on the way" through its
-  // status bar (HumanMessage), which fades after a few seconds. Mirror those
-  // messages into the inbox so they stay readable; the game bar still shows.
-  const GAME_STATUS_LEVELS = Object.freeze({ success: 'success', error: 'error', warning: 'warning' });
-
-  // Party trades send resources without the trade window, so the game's
-  // "trade on the way" confirmation would only add inbox noise. A send keeps
-  // success-level status messages out of the inbox for a few seconds; the
-  // native status bar and error messages are untouched.
-  let gameStatusMirrorQuietUntil = 0;
-
-  function quietGameStatusMirror(durationMs) {
-    gameStatusMirrorQuietUntil = Math.max(gameStatusMirrorQuietUntil, Date.now() + durationMs);
-  }
-
-  function getGameStatusText(message) {
-    if (typeof Element === 'function' && message instanceof Element) return message.textContent.trim();
-    if (typeof message !== 'string' && typeof message !== 'number') return '';
-    // Other userscripts prepend icon markup. DOMParser flattens it without
-    // loading resources or running scripts.
-    return new DOMParser().parseFromString(String(message), 'text/html').body.textContent.trim();
-  }
-
-  // Track wrapped hosts rather than methods so another script wrapping our
-  // wrapper later never causes a second mirror of the same message.
-  const mirroredGameStatusHosts = new WeakSet();
-
-  function mirrorGameStatusMessages() {
-    const humanMessage = window.HumanMessage;
-    if (!humanMessage || !['object', 'function'].includes(typeof humanMessage)) return false;
-    if (mirroredGameStatusHosts.has(humanMessage)) return true;
-    let mirrored = false;
-    for (const [method, level] of Object.entries(GAME_STATUS_LEVELS)) {
-      const original = humanMessage[method];
-      if (typeof original !== 'function') continue;
-      const wrapper = function egeltoolsMirroredStatus(message, ...rest) {
-        // The game's own behaviour comes first; a mirroring fault must never
-        // hide the native message or break the caller.
-        const result = original.call(this, message, ...rest);
-        try {
-          const text = getGameStatusText(message);
-          const quiet = level === 'success' && Date.now() < gameStatusMirrorQuietUntil;
-          if (text && !quiet) notify({ title: 'Grepolis', message: text, level, preview: false });
-        } catch (error) {
-          console.warn(`[${APP.name}] could not mirror a game status message`, error);
-        }
-        return result;
-      };
-      humanMessage[method] = wrapper;
-      mirrored = true;
-    }
-    if (mirrored) mirroredGameStatusHosts.add(humanMessage);
-    return mirrored;
-  }
-
-  function initGameStatusMirror() {
-    // HumanMessage may be defined after the userscript runs, and other scripts
-    // may replace it later; re-wrapping is idempotent.
-    mirrorGameStatusMessages();
-    window.setInterval(mirrorGameStatusMessages, 1000);
   }
 
   function getTradeCapacityBoundary(currentResources, capacity, incomingTrades) {
@@ -7159,8 +7094,7 @@
       if (success) {
         // A sent party trade stays silent: the button's Sent state and the
         // panel's in-transit line already confirm it, so no inbox entry or
-        // preview is raised and the game's own confirmation is not mirrored.
-        quietGameStatusMirror(RESOURCE_CHECKER.silentSendMirrorMs);
+        // preview is raised.
         console.info(
           `[${APP.name}] ${donor.name} sent ${donor.total.toLocaleString()} resources to ${targetTown.name}.`,
         );
@@ -7183,9 +7117,6 @@
         iron: Math.floor(donor.contributions.iron || 0),
       };
       knownTradeIdsBeforeSend = getResourceTradeModelIds();
-      // The game may confirm the trade through its status bar before the
-      // callback runs, so the mirror is quieted before the request goes out.
-      quietGameStatusMirror(RESOURCE_CHECKER.silentSendMirrorMs);
       resourceTradeConfirmations.set(tradeKey, {
         donor, targetTown, knownTradeIds: knownTradeIdsBeforeSend,
         confirm: (response) => finish(true, '', response),
@@ -9633,7 +9564,6 @@
     mountSilverStoreButton();
     initIslandUtilities();
     initTradeCapacityNotifications();
-    initGameStatusMirror();
     initCollectAlarm();
     initAttackAlarm();
     refreshUnitQueue();
