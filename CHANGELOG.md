@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.85 — 2026-10-27
+
+- Mirror Grepolis status bar messages, including the trade on the way confirmation after sending resources, into the Notifications inbox so they stay readable after the bar fades. The native bar is unchanged, mirrored entries skip the EgelTools preview, and repeats group like other inbox entries.
+
 ## 1.2.84 — 2026-10-27
 
 - Make warehouse alerts compact horizontal rows with a clickable city name, native resource icons, live stored and incoming amounts, and an inline dismiss control. Remove the redundant Go to town button.
