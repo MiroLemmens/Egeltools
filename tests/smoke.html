@@ -1,0 +1,2085 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>EgelTools smoke test</title>
+    <style>
+      .nui_main_menu { position: absolute; top: 20px; left: 0; width: 145px; height: 320px; background: #55452c; }
+      .nui_main_menu > .bottom { position: absolute; bottom: 0; width: 145px; height: 37px; background: #302719; }
+      .circle_button { position: relative; display: inline-block; width: 32px; height: 33px; border-radius: 50%; background: #b79b61; }
+      .button_new { float: left; min-width: 90px; height: 28px; border: 2px solid #503413; border-radius: 4px; color: #f6e4af; background: #76511f; }
+      #fto_claim_button { position: absolute; top: 7px; right: 70px; }
+      .bpv_villages.fto_farm_claim_res { position: absolute; top: 7px; right: 160px; width: 60px; height: 28px; }
+      .button_new .caption { padding: 4px 8px; font-weight: bold; }
+      .ui-dialog { background: #d9bd7d; }
+      .ui-dialog-titlebar { height: 35px; background: #3b2b1b; color: #f0d28e; }
+      .ui-dialog-titlebar-close { float: right; }
+      .gpwindow_frame { background: #d9bd7d; }
+      .gpwindow_content { padding: 16px; }
+      .game_border { position: relative; min-height: 200px; border: 2px solid #6b512e; }
+      .game_header { padding: 5px; background: #31577c; color: #fff; }
+      .toolbar_buttons { position: absolute; top: 8px; left: 200px; display: flex; }
+      .toolbar_button { width: 28px; height: 28px; background: #7b6238; }
+      .strategic_map { position: absolute; top: 20px; left: 360px; }
+      .ui_quickbar { position: fixed; left: 300px; bottom: 10px; width: 360px; height: 42px; background: #6b512e; }
+    </style>
+  </head>
+  <body>
+    <div class="ui_advisors"><div class="advisor captain_active curator_active"></div></div>
+    <div class="toolbar_buttons"></div>
+    <div class="strategic_map circle_button"></div>
+    <div class="ui_quickbar" aria-label="Building bar"></div>
+    <div class="nui_main_menu"><div class="bottom"></div></div>
+    <div id="farm-town-claim-window" class="ui-dialog" style="position: absolute; left: 170px; top: 80px; width: 520px;">
+      <div id="farm_town_wrapper"></div>
+    </div>
+    <div class="dropdown-list sandy-box js-dropdown-list ui-draggable displayImp" id="toolbar_activity_trades_list">
+      <div class="content js-dropdown-item-list">
+        <div class="item trade option even" data-id="550919">
+          <div class="icon trade_icon res incoming"><div class="arrow_left"></div><div class="arrow_right"></div></div>
+          <div class="time">00:00:39</div><div class="town_link"><a class="gp_town_link">C007</a></div>
+        </div>
+        <div class="item trade option odd" data-id="550921">
+          <div class="icon trade_icon res returning"><div class="arrow_left"></div><div class="arrow_right"></div></div>
+          <div class="time">00:01:14</div><div class="town_link"><a class="gp_town_link">E003</a></div>
+        </div>
+        <div class="item trade option even" data-id="550922">
+          <div class="icon trade_icon res returning"><div class="arrow_left"></div><div class="arrow_right"></div></div>
+          <div class="time">00:01:20</div><div class="town_link"><a class="gp_town_link">C006</a></div>
+        </div>
+        <div class="item trade option odd" data-id="550924">
+          <div class="icon trade_icon res incoming"><div class="arrow_left"></div><div class="arrow_right"></div></div>
+          <div class="time">00:01:30</div><div class="town_link"><a class="gp_town_link">E002</a></div>
+        </div>
+      </div>
+    </div>
+    <div id="ui_box"><span class="gold_amount">100</span></div>
+    <div id="unit_order" class="ui-dialog">
+      <div id="units">
+        <div id="sword" class="unit_tab">
+          <div class="unit unit_order_unit_image unit_icon50x50 sword">
+            <span class="unit_order_total">40</span>
+          </div>
+        </div>
+        <div id="archer" class="unit_tab unavailable">
+          <div class="unit unit_order_unit_image unit_icon50x50 archer">
+            <span class="unit_order_total">20</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="time_options_wrapper"><div class="fto_time_checkbox fto_600 active"></div></div>
+    <div class="bpv_villages fto_farm_claim_res"><span id="max_claim_resources">+2052</span></div>
+    <button id="fto_claim_button" class="button_new"><span class="left"></span><span class="caption">Collect</span><span class="right"></span></button>
+    <script>
+      window.__assertFailures = [];
+      const nativeConsoleAssert = console.assert.bind(console);
+      console.assert = (condition, ...details) => {
+        if (!condition) window.__assertFailures.push(details.join(' '));
+        nativeConsoleAssert(condition, ...details);
+      };
+      localStorage.removeItem('egeltools_celebration_olympics_enabled');
+      localStorage.removeItem('m23_alarm_target');
+      localStorage.removeItem('m23_alarm_state');
+      localStorage.removeItem('m23_alarm_repeat');
+      localStorage.removeItem('m23_alarm_sound_url');
+      localStorage.removeItem('egeltools_attack_alarm_enabled');
+      localStorage.removeItem('egeltools_attack_alarm_muted_players');
+      localStorage.removeItem('egeltools_attack_alarm_minimum_points');
+      localStorage.removeItem('egeltools_attack_alarm_delay_enabled');
+      localStorage.removeItem('egeltools_attack_alarm_delay_start');
+      localStorage.removeItem('egeltools_attack_alarm_delay_end');
+      localStorage.removeItem('egeltools_bd_level_check_collapsed');
+      localStorage.removeItem('egeltools_bd_level_check_collapsed_v2');
+      localStorage.removeItem('egeltools_resource_checker_min_wood');
+      localStorage.removeItem('egeltools_resource_checker_min_stone');
+      localStorage.removeItem('egeltools_resource_checker_min_iron');
+      const nativeSetTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (callback, delay, ...args) => nativeSetTimeout(
+        callback,
+        delay === 20 * 1000 ? 150 : delay,
+        ...args
+      );
+      window.__fetchRequests = [];
+      window.fetch = async (url) => {
+        window.__fetchRequests.push(String(url));
+        if (String(url).endsWith('/data/islands.txt')) {
+          return {
+            ok: true,
+            text: async () => (
+              '60232,436,445,40,0,iron,stone\n'
+              + '60233,437,446,41,0,stone,iron\n'
+            ),
+          };
+        }
+        if (String(url).endsWith('/data/towns.txt')) {
+          return {
+            ok: true,
+            text: async () => '501,210,Origin%20Town,440,440,1\n',
+          };
+        }
+        return {
+          ok: true,
+          text: async () => (
+            '206,DatasetGuy,0,9000,1,1\n'
+            + '208,Official%20Muted,0,50000,1,1\n'
+            + '210,Space%20User,0,50000,1,1\n'
+          ),
+        };
+      };
+      window.__audioInstances = [];
+      window.Audio = class FakeAudio {
+        constructor(src) {
+          this.src = src;
+          this.loop = false;
+          this.preload = '';
+          this.paused = true;
+          this.currentTime = 0;
+          this.volume = 1;
+          window.__audioInstances.push(this);
+        }
+        addEventListener() {}
+        play() { this.paused = false; return Promise.resolve(); }
+        pause() { this.paused = true; }
+      };
+
+      const makeTown = (
+        id,
+        name,
+        buildings,
+        resources,
+        storageCapacity,
+        islandX,
+        islandY,
+        production = { wood: 100, stone: 100, iron: 100 },
+        tradeCapacity = 20000,
+      ) => {
+        let availableTradeCapacity = tradeCapacity;
+        return {
+          attributes: {
+            id,
+            name,
+          },
+          getId: () => id,
+          getName: () => name,
+          getIslandX: () => islandX,
+          getIslandY: () => islandY,
+          getStorage: () => storageCapacity,
+          getProductionPerHour: () => production,
+          getAvailableTradeCapacity: () => availableTradeCapacity,
+          setAvailableTradeCapacity: (capacity) => { availableTradeCapacity = capacity; },
+          resources: () => resources,
+          buildings: () => ({ attributes: buildings }),
+        };
+      };
+      window.__towns = {
+        101: makeTown(
+          101,
+          'Athens',
+          { theater: 1, academy: 30, storage: 23, hide: 10 },
+          { wood: 17000, stone: 15900, iron: 15000 },
+          18000,
+          436,
+          445,
+        ),
+        // Level 22 is sufficient here because getStorage includes an artifact bonus.
+        102: makeTown(
+          102,
+          'Thèbes',
+          { theater: 0, academy: 31, storage: 22, hide: 10 },
+          { wood: 16000, stone: 19000, iron: 16000 },
+          18250,
+          437,
+          445,
+          { wood: 100, stone: 100, iron: 100 },
+          500,
+        ),
+        103: makeTown(
+          103,
+          'Sparta',
+          { theater: 0, academy: 30, storage: 23, hide: 10 },
+          { wood: 20000, stone: 19000, iron: 20000 },
+          17999,
+          436,
+          445,
+        ),
+      };
+      window.__townPositionModels = {
+        101: { attributes: { id: 101, island_x: 436, island_y: 445, abs_x: 55818, abs_y: 56980 } },
+        102: { attributes: { id: 102, island_x: 437, island_y: 445, abs_x: 55936, abs_y: 56980 } },
+        103: { attributes: { id: 103, island_x: 436, island_y: 445, abs_x: 55821, abs_y: 56984 } },
+      };
+      window.__unitOrders = {
+        firstSwords: {
+          attributes: { town_id: 101, unit_type: 'sword', units_left: 12 },
+          getUnitId: () => 'sword',
+          getCount: () => 12,
+        },
+        archers: {
+          attributes: { town_id: 101, unit_type: 'archer', units_left: 7 },
+          getUnitId: () => 'archer',
+          getCount: () => 7,
+        },
+        moreSwords: {
+          attributes: { town_id: 101, unit_type: 'sword', units_left: 3 },
+          getUnitId: () => 'sword',
+          getCount: () => 3,
+        },
+        biremes: {
+          attributes: { town_id: 101, unit_type: 'bireme', units_left: 4 },
+          getUnitId: () => 'bireme',
+          getCount: () => 4,
+        },
+      };
+      window.__towns[101].units = () => ({ sword: 40, archer: 20, bireme: 5 });
+      window.__towns[101].unitsOuter = () => ({ sword: 8, archer: 1, bireme: 2 });
+      window.__towns[101].getUnitOrdersCollection = () => ({
+        models: Object.values(window.__unitOrders),
+      });
+      window.GameData = {
+        units: {
+          sword: { is_naval: false, name: 'Swordsman', name_plural: 'Swordsmen', population: 1 },
+          archer: { is_naval: false, name: 'Archer', name_plural: 'Archers', population: 1 },
+          bireme: { is_naval: true, name: 'Bireme', name_plural: 'Biremes', population: 8 },
+        },
+      };
+      window.Timestamp = { now: () => Math.floor(Date.now() / 1000) };
+      window.Game = {
+        player_id: 999,
+        world_id: 'zz1',
+        townId: 101,
+        server_time: Date.now(),
+      };
+      window.__getTownsCalls = 0;
+      window.ITowns = {
+        getTown: (townId) => window.__towns[townId],
+        getTowns: () => {
+          window.__getTownsCalls += 1;
+          return window.__towns;
+        },
+        getCurrentTown: () => window.__towns[window.Game.townId],
+      };
+      window.__celebrations = {
+        activeParty: {
+          attributes: {
+            town_id: 101,
+            celebration_type: 'party',
+            end_at: Math.floor(Date.now() / 1000) + 3600,
+          },
+        },
+      };
+      window.__farmTowns = {
+        301: {
+          getId: () => 301,
+          getIslandX: () => 436,
+          getIslandY: () => 445,
+          attributes: { id: 301, resource_demand: 'wood' },
+        },
+        302: {
+          getId: () => 302,
+          getIslandX: () => 437,
+          getIslandY: () => 445,
+          attributes: { id: 302, resource_demand: 'stone' },
+        },
+        303: {
+          getId: () => 303,
+          getIslandX: () => 438,
+          getIslandY: () => 445,
+          attributes: { id: 303, resource_demand: 'iron' },
+        },
+        304: {
+          getId: () => 304,
+          getIslandX: () => 436,
+          getIslandY: () => 445,
+          attributes: { id: 304, resource_demand: 'wood' },
+        },
+      };
+      window.__farmTownRelations = {
+        301: {
+          getFarmTownId: () => 301,
+          attributes: {
+            id: 701,
+            farm_town_id: 301,
+            relation_status: 1,
+            expansion_stage: 4,
+            expansion_at: null,
+            upgrade_cost: 1200,
+          },
+        },
+        302: {
+          getFarmTownId: () => 302,
+          upgrade_cost: 1,
+          attributes: {
+            id: 702,
+            farm_town_id: 302,
+            relation_status: 0,
+            expansion_stage: 1,
+            expansion_at: null,
+          },
+        },
+        303: {
+          getFarmTownId: () => 303,
+          attributes: {
+            id: 703,
+            farm_town_id: 303,
+            relation_status: 1,
+            expansion_stage: 6,
+            expansion_at: null,
+            upgrade_cost: 0,
+          },
+        },
+        304: {
+          getFarmTownId: () => 304,
+          attributes: {
+            id: 704,
+            farm_town_id: 304,
+            relation_status: 1,
+            expansion_stage: 2,
+            expansion_at: 123456,
+            upgrade_cost: 200,
+          },
+        },
+      };
+      window.__attacks = {
+        pageOpen: {
+          id: 'pageOpen',
+          attributes: {
+            type: 'attack',
+            incoming: true,
+            origin_town: { player_id: 211, player_name: 'Already Incoming' },
+            destination_town: { id: 101, player_id: 999 },
+          },
+        },
+      };
+      window.__trades = {
+        550919: {
+          attributes: {
+            id: 550919,
+            origin_town_id: 2265,
+            destination_town_id: 101,
+            wood: 500,
+            stone: 700,
+            iron: 600,
+          },
+        },
+        // This shipment has already arrived and only its merchants are returning.
+        550921: {
+          attributes: {
+            id: 550921,
+            origin_town_id: 101,
+            destination_town_id: 1159,
+            wood: 9000,
+            stone: 9000,
+            iron: 9000,
+          },
+        },
+        550922: {
+          attributes: {
+            id: 550922,
+            origin_town_id: 2402,
+            destination_town_id: 101,
+            wood: 500,
+            stone: 700,
+            iron: 600,
+          },
+        },
+        550924: {
+          attributes: {
+            id: 550924,
+            origin_town_id: 835,
+            destination_town_id: 101,
+            wood: 500,
+            stone: 700,
+            iron: 600,
+          },
+        },
+        // This shipment is ongoing, but arrives too late for the next party.
+        550925: {
+          attributes: {
+            id: 550925,
+            origin_town_id: 911,
+            destination_town_id: 101,
+            wood: 9000,
+            stone: 9000,
+            iron: 9000,
+            arrival_at: Math.floor(Date.now() / 1000) + 2 * 60 * 60,
+          },
+        },
+      };
+      window.__tradeModelIdReads = 0;
+      window.__unrelatedModels = Object.fromEntries(Array.from({ length: 200 }, (_, index) => {
+        const attributes = {};
+        Object.defineProperty(attributes, 'id', {
+          enumerable: true,
+          get: () => {
+            window.__tradeModelIdReads += 1;
+            return `unrelated-${index}`;
+          },
+        });
+        return [index, { attributes }];
+      }));
+      window.__activeTownGroupId = 7;
+      window.__townGroupChanges = [];
+      window.__bulkActionSequence = [];
+      window.__humanMessages = [];
+      window.HumanMessage = {
+        success: (message) => window.__humanMessages.push({ type: 'success', message }),
+        error: (message) => window.__humanMessages.push({ type: 'error', message }),
+      };
+      window.__townGroupCollection = {
+        getActiveGroupId: () => window.__activeTownGroupId,
+        setActiveGroupId: (groupId) => {
+          window.__activeTownGroupId = groupId;
+          window.__townGroupChanges.push(groupId);
+          window.__bulkActionSequence.push(`group:${groupId}`);
+        },
+      };
+      window.MM = {
+        getModels: () => ({
+          Town: window.__townPositionModels,
+          UnitOrder: window.__unitOrders,
+          Celebration: window.__celebrations,
+          FarmTown: window.__farmTowns,
+          FarmTownPlayerRelation: window.__farmTownRelations,
+          Attack: window.__attackModels,
+          UnrelatedModels: window.__unrelatedModels,
+          Trade: window.__trades,
+        }),
+        getCollections: () => ({ TownGroup: [window.__townGroupCollection] }),
+        getOnlyCollectionByName: (name) => (
+          name === 'MovementsUnits' && window.__attacks !== undefined
+            ? {
+              getIncomingAttacks: (townId) => Object.values(window.__attacks).filter((attack) => (
+                String(attack.attributes.destination_town?.id || attack.attributes.target_town_id)
+                  === String(townId)
+              )),
+            }
+            : null
+        ),
+      };
+      window.__switchedTownIds = [];
+      window.HelperTown = {
+        townSwitch: (townId) => {
+          window.Game.townId = townId;
+          window.__switchedTownIds.push(townId);
+        },
+      };
+      window.__islandWindowCreates = [];
+      window.__townWindowCreates = [];
+      window.__closedIslandWindows = 0;
+      window.__unitQueueWindowOpen = false;
+      window.__unitQueueWindowCreates = 0;
+      window.__unitQueueWindowTitle = '';
+      window.__unitQueueDialog = {
+        position: null,
+        size: null,
+        content: '',
+        getID: () => 2001,
+        setPosition(position) { this.position = position; },
+        setSize(width, height) { this.size = [width, height]; },
+        setContent2(content) { this.content = content; },
+      };
+      window.GPWindowMgr = {
+        TYPE_ISLAND: 1,
+        TYPE_DIALOG: 2,
+        TYPE_TOWN: 3,
+        getOpen: (type) => (
+          type === 2 && window.__unitQueueWindowOpen
+            ? [window.__unitQueueDialog]
+            : type === 1
+              ? [{ close: () => { window.__closedIslandWindows += 1; } }]
+              : []
+        ),
+        getOpenFirst: (type) => (type === 2 ? window.__unitQueueDialog : null),
+        Create: (type, title, options, target) => {
+          if (type === 2) {
+            window.__unitQueueWindowOpen = true;
+            window.__unitQueueWindowCreates += 1;
+            window.__unitQueueWindowTitle = title;
+            return window.__unitQueueDialog;
+          }
+          if (type === 3) {
+            window.__townWindowCreates.push({ type, title, options, target });
+            return { getID: () => 3001 };
+          }
+          window.__islandWindowCreates.push({ type, title, options, target });
+          return { getID: () => 1001 };
+        },
+      };
+      window.__celebrationRequests = [];
+      window.__tradeRequests = [];
+      window.__islandUtilityRequests = [];
+      window.__silverStoreRequests = [];
+      window.gpAjax = {
+        ajaxPost: (controller, action, data, async, onSuccess) => {
+          if (controller === 'frontend_bridge' && action === 'execute') {
+            window.__islandUtilityRequests.push({ controller, action, data });
+            onSuccess?.({});
+            return;
+          }
+          if (controller === 'town_overviews' && action === 'store_iron_in_all_towns') {
+            window.__silverStoreRequests.push({
+              controller,
+              action,
+              data,
+              async,
+              activeGroupId: window.__activeTownGroupId,
+            });
+            if (window.__suppressNextSilverCallback) {
+              window.__suppressNextSilverCallback = false;
+              return;
+            }
+            onSuccess?.({ json: { success: 'The silver coins were stored successfully!' } });
+            return;
+          }
+          if (action === 'trade') {
+            window.__tradeRequests.push({ controller, action, data, async });
+            onSuccess({});
+            return;
+          }
+          window.__celebrationRequests.push({ controller, action, data, async });
+          if (action === 'start_all_celebrations') {
+            window.__bulkActionSequence.push(`request:${data.celebration_type}`);
+          } else if (action === 'start_celebration') {
+            window.__bulkActionSequence.push(`request:${data.celebration_type}:${data.town_id}`);
+          }
+          const townIds = action === 'start_all_celebrations'
+            ? data.celebration_type === 'games'
+              ? [101, 102, 103]
+              : data.celebration_type === 'party'
+                ? [101, 102]
+                : [101]
+            : [data.town_id];
+          townIds.forEach((townId) => {
+            window.__celebrations[`started-${townId}-${data.celebration_type}`] = {
+              attributes: {
+                town_id: townId,
+                celebration_type: data.celebration_type,
+              },
+            };
+          });
+          if (action === 'start_all_celebrations' && window.__suppressNextBulkCallback) {
+            window.__suppressNextBulkCallback = false;
+            return;
+          }
+          onSuccess({});
+        },
+      };
+    </script>
+    <script src="../EgelTools.user.js?v=1.2.27"></script>
+    <script>
+      const getNotificationMessages = () => {
+        const button = document.getElementById('egeltools-notifications-button');
+        const wasOpen = button.getAttribute('aria-expanded') === 'true';
+        if (!wasOpen) button.click();
+        const messages = [...document.querySelectorAll('.egeltools-notification')].map(row => ({
+          type: row.classList.contains('egeltools-notification--error') ? 'error' : 'success',
+          message: row.querySelector('p')?.textContent || '',
+        }));
+        if (!wasOpen) button.click();
+        return messages;
+      };
+      window.addEventListener('load', async () => {
+        const waitFor = async (condition, timeout = 2000) => {
+          const started = Date.now();
+          while (!condition() && Date.now() - started < timeout) {
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          return condition();
+        };
+        console.assert(
+          await waitFor(() => document.querySelectorAll('.egeltools-trade-capacity-marker').length === 1),
+          'The floating trade activity list should receive one warehouse-capacity line',
+        );
+        const swordRecruitmentTotal = document.querySelector(
+          '#unit_order #sword .egeltools-recruitment-total',
+        );
+        console.assert(
+          await waitFor(() => swordRecruitmentTotal?.textContent === '63')
+            && swordRecruitmentTotal.dataset.present === '40'
+            && swordRecruitmentTotal.dataset.outside === '8'
+            && swordRecruitmentTotal.dataset.queued === '15'
+            && swordRecruitmentTotal.classList.contains('unit_order_total')
+            && document.querySelector('#unit_order #units')
+              .classList.contains('egeltools-recruitment-totals-active')
+            && getComputedStyle(document.querySelector('#unit_order #units')).marginTop === '26px'
+            && getComputedStyle(swordRecruitmentTotal).width === '57px'
+            && getComputedStyle(swordRecruitmentTotal).backgroundColor === 'rgb(255, 240, 189)'
+            && !document.querySelector('#unit_order #archer .egeltools-recruitment-total'),
+          'Barracks should reserve space for a native-style total above buildable units',
+        );
+        document.querySelector('#unit_order #units').innerHTML = `
+          <button class="dio_reload docks" type="button">Refresh</button>
+          <div id="bireme" class="unit_tab">
+            <div class="unit unit_order_unit_image unit_icon50x50 bireme">
+              <span class="unit_order_total">5</span>
+            </div>
+          </div>
+          <div id="attack_ship" class="unit_tab" style="display:none">
+            <div data-unit_id="attack_ship"></div>
+          </div>`;
+        // Wait past EgelTools' five-second maintenance fallback as well as the
+        // mutation observer to prove neither path refreshes an open window.
+        await new Promise((resolve) => setTimeout(resolve, 5200));
+        console.assert(
+          !document.querySelector('#unit_order #bireme .egeltools-recruitment-total'),
+          'Docks should not refresh the combined totals automatically',
+        );
+        document.querySelector('#unit_order .dio_reload').click();
+        document.querySelector('#unit_order #units').append(document.createTextNode(''));
+        console.assert(
+          await waitFor(() => (
+            document.querySelector('#unit_order #bireme .egeltools-recruitment-total')?.textContent
+              === '11'
+          ))
+            && !document.querySelector('#unit_order #attack_ship .egeltools-recruitment-total'),
+          'The Docks refresh button should refresh the combined total and omit hidden unit types',
+        );
+        const tradeCapacityMarker = document.querySelector(
+          '#toolbar_activity_trades_list .egeltools-trade-capacity-marker',
+        );
+        console.assert(
+          tradeCapacityMarker?.dataset.id === '550924'
+            && tradeCapacityMarker.dataset.egeltoolsFullResources === 'stone'
+            && tradeCapacityMarker.dataset.egeltoolsMarkerPosition === 'after'
+            && tradeCapacityMarker.title.includes('stone reaches 18,000 / 18,000')
+            && !document.querySelector('[data-id="550921"].egeltools-trade-capacity-marker'),
+          'The red line should follow the dominant incoming resource and ignore actual returning merchants',
+        );
+        console.assert(
+          getComputedStyle(tradeCapacityMarker, '::before').backgroundColor === 'rgb(210, 13, 13)'
+            && getComputedStyle(tradeCapacityMarker, '::before').bottom === '0px',
+          'The warehouse-capacity marker should render as a solid red line after the filling trade',
+        );
+        window.__trades[550919].attributes.stone = 4100;
+        document.querySelector('#toolbar_activity_trades_list .content').append(document.createTextNode(''));
+        console.assert(
+          await waitFor(() => (
+            document.querySelector('.egeltools-trade-capacity-marker')?.dataset.egeltoolsMarkerPosition === 'after'
+          )),
+          'An exact 2,000-resource overfill should keep the line after the filling trade',
+        );
+        window.__trades[550919].attributes.stone = 4101;
+        document.querySelector('#toolbar_activity_trades_list .content').append(document.createTextNode(''));
+        console.assert(
+          await waitFor(() => (
+            document.querySelector('.egeltools-trade-capacity-marker')?.dataset.egeltoolsMarkerPosition === 'before'
+          )),
+          'An overfill above 2,000 resources should move the line before the filling trade',
+        );
+        const beforeTradeCapacityMarker = document.querySelector(
+          '#toolbar_activity_trades_list .egeltools-trade-capacity-marker',
+        );
+        console.assert(
+          beforeTradeCapacityMarker?.dataset.id === '550919'
+            && beforeTradeCapacityMarker.title.includes('overfill by 2,001')
+            && getComputedStyle(beforeTradeCapacityMarker, '::before').top === '0px'
+            && getComputedStyle(beforeTradeCapacityMarker, '::before').backgroundColor === 'rgb(210, 13, 13)',
+          'The overfill marker should render as a solid red line before the filling trade',
+        );
+        window.__tradeModelIdReads = 0;
+        window.__trades[550919].attributes.stone = 1400;
+        document.querySelector('#toolbar_activity_trades_list .content').append(document.createTextNode(''));
+        console.assert(
+          await waitFor(() => (
+            document.querySelector('.egeltools-trade-capacity-marker')?.dataset.id === '550922'
+          )),
+          'The dominant-resource line should move when Grepolis updates incoming trades, even with a returning icon class',
+        );
+        console.assert(
+          window.__tradeModelIdReads <= 250,
+          'A trade-marker refresh should index the model graph once, not walk it once per trade row',
+        );
+        document.body.dataset.tradeModelIdReads = String(window.__tradeModelIdReads);
+        const getTownsCallsBeforeNoise = window.__getTownsCalls;
+        for (let index = 0; index < 30; index += 1) {
+          const noise = document.createElement('span');
+          document.body.append(noise);
+          noise.remove();
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const unrelatedTownModelReads = window.__getTownsCalls - getTownsCallsBeforeNoise;
+        console.assert(
+          unrelatedTownModelReads < 5,
+          'Unrelated DOM mutation bursts should not repeatedly rescan all town models',
+        );
+        document.body.dataset.unrelatedTownModelReads = String(unrelatedTownModelReads);
+        Object.assign(window.__towns[101].resources(), { wood: 11000, stone: 13000, iron: 11000 });
+        console.assert(
+          await waitFor(() => document.getElementById('wachtrijMainButton')),
+          'The troop-queue button should mount while Administrator is active',
+        );
+        let unitQueueButton = document.getElementById('wachtrijMainButton');
+        console.assert(
+          unitQueueButton.parentElement?.id === 'ui_box'
+            && unitQueueButton.style.top === '140px'
+            && unitQueueButton.style.right === '110px',
+          'The troop-queue button should retain its original position beside the god display',
+        );
+        unitQueueButton.click();
+        let unitQueuePanel = document.getElementById('egeltools-unit-queue-window');
+        const unitQueueContent = unitQueuePanel.querySelector('#egeltools-unit-queue-body').innerHTML;
+        const unitQueuePanelStyle = getComputedStyle(unitQueuePanel);
+        const unitQueueBounds = unitQueuePanel.getBoundingClientRect();
+        const celebrationStylePanel = document.getElementById('egeltools-celebration-finder');
+        const celebrationPanelStyle = getComputedStyle(celebrationStylePanel);
+        const unitQueueHeaderStyle = getComputedStyle(
+          unitQueuePanel.querySelector('.egeltools-unit-queue__header'),
+        );
+        const celebrationHeaderStyle = getComputedStyle(
+          celebrationStylePanel.querySelector('.egeltools-celebration__header'),
+        );
+        const queueCards = Object.fromEntries(['sword', 'bireme'].map((unitId) => [
+          unitId,
+          unitQueuePanel.querySelector(`.egeltools-unit-queue__icon.${unitId}`)
+            ?.closest('.egeltools-unit-queue__unit'),
+        ]));
+        const queueSectionTotals = [...unitQueuePanel.querySelectorAll(
+          '.egeltools-unit-queue__total',
+        )].map((total) => total.textContent.trim());
+        console.assert(
+          unitQueueContent.includes('Land units')
+            && unitQueueContent.includes('Sea units')
+            && unitQueueContent.includes('Swordsmen')
+            && unitQueueContent.includes('Biremes')
+            && unitQueuePanel.querySelector('.egeltools-unit-queue__summary').textContent.trim()
+              === '54 population queued'
+            && queueSectionTotals.join(',') === '22 queued,4 queued'
+            && queueCards.sword.querySelector('.egeltools-unit-queue__count').childNodes[0]
+              .textContent.trim() === '15'
+            && queueCards.sword.querySelector('.egeltools-unit-queue__population')
+              .textContent.trim() === '15 pop'
+            && queueCards.bireme.querySelector('.egeltools-unit-queue__count').childNodes[0]
+              .textContent.trim() === '4'
+            && queueCards.bireme.querySelector('.egeltools-unit-queue__population')
+              .textContent.trim() === '32 pop'
+            && queueCards.bireme.querySelector('.egeltools-unit-queue__population')
+              .title === '4 queued × 8 population each'
+            && unitQueuePanel.textContent.includes('Units in the queue')
+            && (unitQueueContent.match(/unit_icon40x40 sword/g) || []).length === 1
+            && (unitQueueContent.match(/unit_icon40x40 bireme/g) || []).length === 1
+            && !unitQueuePanel.hidden
+            && unitQueuePanel.getAttribute('role') === 'dialog'
+            && unitQueuePanel.querySelector('.egeltools-unit-queue__header')
+            && unitQueuePanel.querySelector('#egeltools-unit-queue-refresh')
+            && unitQueuePanel.querySelector('#egeltools-unit-queue-close')
+            && unitQueueButton.getAttribute('aria-expanded') === 'true'
+            && unitQueuePanelStyle.backgroundColor === celebrationPanelStyle.backgroundColor
+            && unitQueuePanelStyle.borderColor === celebrationPanelStyle.borderColor
+            && unitQueuePanelStyle.borderRadius === celebrationPanelStyle.borderRadius
+            && unitQueueHeaderStyle.backgroundImage === celebrationHeaderStyle.backgroundImage
+            && unitQueueHeaderStyle.color === celebrationHeaderStyle.color
+            && Math.abs(
+              (unitQueueBounds.left + unitQueueBounds.right) / 2
+                - document.documentElement.clientWidth / 2,
+            ) <= 1
+            && Math.abs(
+              (unitQueueBounds.top + unitQueueBounds.bottom) / 2
+                - document.documentElement.clientHeight / 2,
+            ) <= 1
+            && window.__unitQueueWindowCreates === 0,
+          'The troop-queue window should aggregate duplicates and split native unit icons into land and sea',
+        );
+        unitQueueButton.click();
+        console.assert(
+          document.querySelectorAll('#egeltools-unit-queue-window').length === 1,
+          'Clicking the troop-queue button again should reuse the open panel instead of duplicating it',
+        );
+        unitQueuePanel.querySelector('#egeltools-unit-queue-close').click();
+        console.assert(
+          unitQueuePanel.hidden && unitQueueButton.getAttribute('aria-expanded') === 'false',
+          'The troop-queue close control should hide the shared-style panel',
+        );
+        unitQueueButton.click();
+        unitQueuePanel = document.getElementById('egeltools-unit-queue-window');
+        const advisor = document.querySelector('.ui_advisors .advisor');
+        advisor.classList.remove('curator_active');
+        console.assert(
+          await waitFor(() => !document.getElementById('wachtrijMainButton')),
+          'The troop-queue button should be removed when Administrator becomes inactive',
+        );
+        console.assert(
+          !document.getElementById('egeltools-celebration-finder-button')
+            && !document.getElementById('egeltools-celebration-finder')
+            && !document.getElementById('egeltools-town-distance-sorter-button')
+            && !document.getElementById('egeltools-town-distance-sorter')
+            && !document.getElementById('egeltools-resource-checker-button')
+            && !document.getElementById('egeltools-resource-checker')
+            && !document.getElementById('egeltools-unit-queue-window'),
+          'All cross-town overview launchers and panels should be removed while Administrator is inactive',
+        );
+        window.Game.premium_features = { curator: Math.floor(Date.now() / 1000) + 3600 };
+        advisor.classList.add('premium-state-changed');
+        console.assert(
+          await waitFor(() => document.getElementById('wachtrijMainButton')),
+          'An active curator premium expiry should mount the troop-queue button without an advisor class',
+        );
+        console.assert(
+          document.getElementById('egeltools-celebration-finder-button')
+            && document.getElementById('egeltools-town-distance-sorter-button')
+            && document.getElementById('egeltools-resource-checker-button'),
+          'An active Administrator premium entry should restore all gated cross-town tools',
+        );
+        window.Game.premium_features.curator = Math.floor(Date.now() / 1000) - 1;
+        advisor.classList.remove('premium-state-changed');
+        console.assert(
+          await waitFor(() => !document.getElementById('wachtrijMainButton')),
+          'An expired curator premium entry should not keep the troop-queue button mounted',
+        );
+        console.assert(
+          !document.getElementById('egeltools-celebration-finder-button')
+            && !document.getElementById('egeltools-town-distance-sorter-button')
+            && !document.getElementById('egeltools-resource-checker-button'),
+          'Expired Administrator premium should remove all gated cross-town tools',
+        );
+        advisor.classList.add('curator_active');
+        console.assert(
+          await waitFor(() => document.getElementById('wachtrijMainButton')),
+          'The troop-queue button should return when Administrator becomes active again',
+        );
+        unitQueueButton = document.getElementById('wachtrijMainButton');
+        console.assert(
+          await waitFor(() => document.getElementById('egeltools-bd-level-check')),
+          'The FV level checker should mount beside the farming-claim window',
+        );
+        const silverStoreButton = document.getElementById('egeltools-store-silver-button');
+        const collectBounds = document.getElementById('fto_claim_button').getBoundingClientRect();
+        const silverStoreBounds = silverStoreButton?.getBoundingClientRect();
+        const claimResourceBounds = document.querySelector('.bpv_villages.fto_farm_claim_res').getBoundingClientRect();
+        console.assert(
+          silverStoreButton?.previousElementSibling?.id === 'fto_claim_button'
+            && silverStoreBounds.left >= collectBounds.right
+            && silverStoreButton.querySelector('.caption')?.textContent === 'Store 3k'
+            && silverStoreButton.querySelector('.left')
+            && silverStoreButton.querySelector('.right'),
+          'The Store 3k button should appear directly to the right of Collect',
+        );
+        console.assert(
+          collectBounds.left >= claimResourceBounds.right,
+          'Collect and Store 3k should not cover the +resources amount',
+        );
+        const silverStoreResourcesBefore = Object.fromEntries(
+          Object.entries(window.__towns).map(([townId, town]) => [townId, { ...town.resources() }]),
+        );
+        Object.assign(window.__towns[101].resources(), { iron: 31001 });
+        Object.assign(window.__towns[102].resources(), { iron: 28000 });
+        Object.assign(window.__towns[103].resources(), { iron: 35000 });
+        document.body.append(document.createTextNode(''));
+        console.assert(
+          await waitFor(() => !silverStoreButton.disabled)
+            && silverStoreButton.className === document.getElementById('fto_claim_button').className,
+          'Store 3k should enable when at least one town is above 28,000 silver',
+        );
+        const groupBeforeSilverStore = window.__activeTownGroupId;
+        const townBeforeSilverStore = window.Game.townId;
+        silverStoreButton.click();
+        console.assert(
+          await waitFor(() => window.__silverStoreRequests.length === 1),
+          'Store 3k should submit one native all-towns request',
+        );
+        console.assert(
+          window.__silverStoreRequests.every((request) => (
+            request.controller === 'town_overviews'
+              && request.action === 'store_iron_in_all_towns'
+              && request.data.iron_to_keep === 28000
+              && request.data.iron_to_store === 3000
+              && !Object.hasOwn(request.data, 'town_id')
+              && request.data.town_group_id === -1
+              && request.activeGroupId === groupBeforeSilverStore
+          ))
+            && window.__silverStoreRequests.length === 1,
+          'The native request should match the tested request-only All towns payload',
+        );
+        console.assert(
+          window.__activeTownGroupId === groupBeforeSilverStore
+            && window.Game.townId === townBeforeSilverStore
+            && window.__townGroupChanges.length === 0
+            && window.__switchedTownIds.length === 0,
+          'Storing silver should pass All towns without changing the active group or selected town',
+        );
+        window.__townGroupChanges.length = 0;
+        window.__suppressNextSilverCallback = true;
+        silverStoreButton.click();
+        console.assert(
+          await waitFor(() => window.__silverStoreRequests.length === 2)
+            && await waitFor(() => (
+              silverStoreButton.querySelector('.caption')?.textContent === 'Store 3k'
+                && window.__activeTownGroupId === groupBeforeSilverStore
+            ), 4000),
+          'An interrupted silver callback should restore the button and selected town group',
+        );
+        console.assert(
+          window.__townGroupChanges.length === 0
+            && getNotificationMessages().some(({ type, message }) => (
+              type === 'success' && message.includes('another script interrupted')
+            )),
+          'A timed-out silver response should be reported without changing groups or leaving the action stuck',
+        );
+        document.body.dataset.silverStoreRequests = JSON.stringify(window.__silverStoreRequests);
+        window.__townGroupChanges.length = 0;
+        window.__bulkActionSequence.length = 0;
+        Object.entries(silverStoreResourcesBefore).forEach(([townId, resources]) => {
+          Object.assign(window.__towns[townId].resources(), resources);
+        });
+        const bdPanel = document.getElementById('egeltools-bd-level-check');
+        const bdLinks = [...bdPanel.querySelectorAll('.egeltools-bd-level__town-link')];
+        console.assert(
+          bdPanel.parentElement?.id === 'farm-town-claim-window',
+          'The FV level checker should be a sidecar of the farming-claim window',
+        );
+        console.assert(bdPanel.dataset.collapsed === 'true', 'The FV level checker should start collapsed');
+        console.assert(bdLinks.length === 2, `Expected one FV link per island, found ${bdLinks.length}`);
+        console.assert(
+          document.getElementById('egeltools-bd-level-check-count').textContent === '3',
+          'The FV badge should count all non-max farming villages rather than grouped islands',
+        );
+        console.assert(
+          bdPanel.textContent.includes('2 FVs (levels 2, 4)') && bdPanel.textContent.includes('FV level 0'),
+          'The FV level checker should group island levels and normalize Grepolis\'s stage-1 sentinel to level 0',
+        );
+        console.assert(
+          !bdPanel.textContent.includes('Sparta'),
+          'A level-6 farming village should not appear in the FV level checker',
+        );
+        const athensBdLink = bdLinks.find((link) => link.textContent === 'Athens');
+        const athensBdTarget = JSON.parse(atob(athensBdLink.hash.slice(1)));
+        console.assert(
+          athensBdTarget.tp === 'town'
+            && athensBdTarget.id === 101
+            && athensBdTarget.ix === 436
+            && athensBdTarget.iy === 445,
+          'FV island links should retain their Grepolis target data as a fallback',
+        );
+        console.assert(
+          !athensBdLink.classList.contains('gp_town_link') && !athensBdLink.hasAttribute('onclick'),
+          'FV island links should not trigger Grepolis town-link or old farm-town popup actions',
+        );
+        const hashBeforeBdClick = window.location.hash;
+        athensBdLink.click();
+        console.assert(
+          await waitFor(() => window.__islandWindowCreates.length === 1),
+          'An FV town link should create a native island window',
+        );
+        console.assert(
+          window.__closedIslandWindows === 1,
+          'An FV town link should close an existing island window before opening the target',
+        );
+        const islandCreate = window.__islandWindowCreates[0];
+        console.assert(
+          islandCreate.type === 1
+            && islandCreate.title === 'Island info'
+            && Object.keys(islandCreate.options).length === 0
+            && islandCreate.target.id === 60232
+            && islandCreate.target.ix === 436
+            && islandCreate.target.iy === 445,
+          'An FV town link should pass the resolved island ID into the legacy handler-data slot',
+        );
+        console.assert(
+          window.__fetchRequests.filter((url) => url.endsWith('/data/islands.txt')).length === 1,
+          'The island coordinate index should be loaded once',
+        );
+        athensBdLink.click();
+        console.assert(
+          await waitFor(() => window.__islandWindowCreates.length === 2)
+            && window.__islandWindowCreates[1].target.id === 60232
+            && window.__fetchRequests.filter((url) => url.endsWith('/data/islands.txt')).length === 1,
+          'Later FV island clicks should reuse the cached island coordinate index',
+        );
+        console.assert(
+          window.__switchedTownIds.length === 0 && window.location.hash === hashBeforeBdClick,
+          'An FV town link should not switch the selected city or use hash navigation',
+        );
+        const bdToggle = document.getElementById('egeltools-bd-level-check-toggle');
+        bdToggle.click();
+        console.assert(bdPanel.dataset.collapsed === 'false', 'The FV side window should expand');
+        console.assert(
+          localStorage.getItem('egeltools_bd_level_check_collapsed_v2') === 'off',
+          'The expanded FV side-window state should persist',
+        );
+        bdToggle.click();
+        console.assert(bdPanel.dataset.collapsed === 'true', 'The FV side window should collapse again');
+
+        const islandOverview = document.createElement('section');
+        islandOverview.id = 'gpwnd_3001';
+        islandOverview.innerHTML = `
+          <div class="farm_town_el_301"><span>FV 301</span></div>
+          <div class="farm_town_el_302"><span>FV 302</span></div>
+          <div class="farm_town_el_303"><span>FV 303</span></div>
+          <div class="farm_town_el_304"><span>FV 304</span></div>`;
+        document.body.append(islandOverview);
+        console.assert(
+          await waitFor(() => islandOverview.querySelectorAll('[data-egeltools-island-utility]').length === 7),
+          'Island utility controls should mount on every FV in a newly rendered island overview',
+        );
+        const fv301 = islandOverview.querySelector('.farm_town_el_301');
+        const fv302 = islandOverview.querySelector('.farm_town_el_302');
+        const fv303 = islandOverview.querySelector('.farm_town_el_303');
+        const fv304 = islandOverview.querySelector('.farm_town_el_304');
+        console.assert(
+          fv301.querySelector('[data-island-utility-action="trade"]')
+            && fv301.querySelector('[data-island-utility-action="upgrade"]')
+            && fv302.querySelector('[data-island-utility-action="unlock"]')
+            && !fv303.querySelector('[data-island-utility-action="upgrade"]')
+            && !fv303.querySelector('[data-island-utility-action="unlock"]')
+            && fv304.querySelector('[data-island-utility-action="upgrade"]')?.classList.contains('disabled'),
+          'FV controls should distinguish upgrade, unlock, maximum level, and an upgrade in progress',
+        );
+        console.assert(
+          fv301.querySelector('[data-island-utility-action="trade"]')?.matches('a.button')
+            && fv301.querySelector('[data-island-utility-action="trade"] .left > .right > .middle.mid > .img_trade')
+            && fv301.querySelector('[data-island-utility-action="upgrade"] .left > .right > .middle.mid > .img_trade')
+            && fv301.querySelector('[data-island-utility-action="trade"]').className === 'button',
+          'FV controls should retain IslandUtilities\' exact original Grepolis button markup',
+        );
+        fv301.querySelector('[data-island-utility-action="trade"]').click();
+        fv301.querySelector('[data-island-utility-action="upgrade"]').click();
+        const unlockButton = fv302.querySelector('[data-island-utility-action="unlock"]');
+        unlockButton.click();
+        console.assert(
+          window.__islandUtilityRequests.length === 3
+            && window.__islandUtilityRequests[0].data.action_name === 'trade'
+            && window.__islandUtilityRequests[0].data.arguments.amount === 3000
+            && window.__islandUtilityRequests[0].data.town_id === 101
+            && window.__islandUtilityRequests[0].data.model_url === 'FarmTownPlayerRelation/701'
+            && window.__islandUtilityRequests[1].data.action_name === 'upgrade'
+            && window.__islandUtilityRequests[2].data.action_name === 'unlock',
+          'FV controls should post the safe trade amount and correct upgrade or unlock bridge actions',
+        );
+        console.assert(
+          unlockButton.dataset.islandUtilityAction === 'upgrade'
+            && unlockButton.title === 'Upgrade this FV'
+            && !unlockButton.classList.contains('disabled')
+            && fv302.querySelector('[data-island-utility-action="unlock"]') == null
+            && fv302.querySelector('[data-island-utility-action="upgrade"]') === unlockButton,
+          'A successful FV unlock should turn the same control into an enabled upgrade button in place',
+        );
+        unlockButton.click();
+        console.assert(
+          window.__islandUtilityRequests.length === 4
+            && window.__islandUtilityRequests[3].data.action_name === 'upgrade'
+            && unlockButton.classList.contains('disabled'),
+          'The in-place FV upgrade button should immediately perform the upgrade action',
+        );
+        islandOverview.append(document.createElement('span'));
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        console.assert(
+          islandOverview.querySelectorAll('[data-egeltools-island-utility]').length === 7,
+          'Repeated island mutations should not duplicate FV controls',
+        );
+
+        const distanceButton = document.getElementById('egeltools-town-distance-sorter-button');
+        const toolDock = document.getElementById('egeltools-tool-dock');
+        console.assert(distanceButton, 'The town-distance button should mount in the quick-tools dock');
+        console.assert(
+          toolDock
+            && distanceButton.parentElement?.id === 'egeltools-tool-dock-actions'
+            && [...distanceButton.parentElement.children].map((button) => button.id).join(',')
+              === 'egeltools-celebration-finder-button,egeltools-town-distance-sorter-button,egeltools-resource-checker-button',
+          'The three launch buttons should share the option-B horizontal dock in the intended order',
+        );
+        const toolDockBounds = toolDock.getBoundingClientRect();
+        console.assert(
+          toolDock.dataset.anchor === 'bottom-left'
+            && Math.abs(toolDockBounds.left - 10) <= 1
+            && Math.abs(toolDockBounds.bottom - (window.innerHeight - 10)) <= 1,
+          'The quick-tools dock should stay fixed to the bottom-left corner',
+        );
+        console.assert(distanceButton.textContent === 'Town distances', 'The town-distance sorter should start closed');
+        const loadedTownPositionModels = window.__townPositionModels;
+        window.__townPositionModels = undefined;
+        distanceButton.click();
+        const distancePanel = document.getElementById('egeltools-town-distance-sorter');
+        console.assert(!distancePanel.hidden, 'The town-distance panel should open');
+        console.assert(
+          distancePanel.textContent.includes('retry automatically'),
+          'Missing raw Town models should be treated as transient Grepolis loading, not requested from the user',
+        );
+        window.__townPositionModels = loadedTownPositionModels;
+        console.assert(
+          await waitFor(() => distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 3),
+          'The sorter should automatically collect coordinates from MM Town models when they become available',
+        );
+        const distanceRows = [...distancePanel.querySelectorAll('tbody tr[data-town-id]')];
+        console.assert(
+          distancePanel.querySelector('.egeltools-town-distance__title').textContent === 'Distances from Athens',
+          'The current town should be the distance reference',
+        );
+        console.assert(distanceRows.length === 3, `Expected 3 distance rows, found ${distanceRows.length}`);
+        console.assert(
+          distanceRows.map((row) => row.dataset.townId).join(',') === '101,103,102',
+          'Towns should be sorted using their full map positions, including same-island offsets',
+        );
+        console.assert(
+          distanceRows.map((row) => row.children[1].textContent).join(',') === '0.0,5.0,118.0',
+          'Distances should use MM absolute town positions rather than island coordinates alone',
+        );
+        console.assert(
+          !distancePanel.textContent.includes('Coordinates')
+            && distanceRows.every((row) => row.children.length === 4)
+            && distanceRows[1].children[2].textContent === 'Trade',
+          'The distance list should replace coordinates with a trade action',
+        );
+        const selectedTownBeforeTradeWindow = window.Game.townId;
+        distanceRows[1].querySelector('[data-trade-town-id="103"]').click();
+        console.assert(
+          window.__townWindowCreates.length === 1
+            && window.__townWindowCreates[0].target.id === 103
+            && window.__townWindowCreates[0].options.action === 'trading'
+            && window.__townWindowCreates[0].title === 'Sparta'
+            && window.Game.townId === selectedTownBeforeTradeWindow,
+          'The row trade action should open Grepolis trading for its target without switching towns',
+        );
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true, cancelable: true }));
+        console.assert(
+          window.__switchedTownIds.at(-1) === 103
+            && distanceRows[1].getAttribute('aria-current') === 'true',
+          'S should select and switch to the next nearest town',
+        );
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'w', bubbles: true, cancelable: true }));
+        console.assert(
+          window.__switchedTownIds.at(-1) === 101
+            && distanceRows[0].getAttribute('aria-current') === 'true',
+          'W should select and switch to the previous town',
+        );
+        distancePanel.querySelector('[data-trade-lock-town-id="102"]').click();
+        console.assert(
+          [...distancePanel.querySelectorAll('tbody tr[data-town-id]')]
+            .map((row) => row.dataset.townId).join(',') === '101,103'
+            && distancePanel.querySelector('[data-trade-unlock-town-id="102"]')
+              ?.parentElement.textContent.includes('Thèbes')
+            && localStorage.getItem('egeltools_trade_locks_zz1_999')?.includes('"102"'),
+          'A trade lock should persist and remove its town from the sorted distance rows',
+        );
+        const lockedResourceButton = document.getElementById('egeltools-resource-checker-button');
+        const lockedResourcePanel = document.getElementById('egeltools-resource-checker');
+        lockedResourceButton.click();
+        const lockedSourceTarget = lockedResourcePanel.querySelector('[data-resource-shortage-town="101"]');
+        console.assert(
+          lockedSourceTarget.querySelector('[data-donors-for-town="101"]').textContent.includes('Sparta')
+            && !lockedSourceTarget.querySelector('[data-donors-for-town="101"]').textContent.includes('Thèbes'),
+          'All recommendations should be visible immediately and exclude trade-locked source towns',
+        );
+        lockedResourcePanel.querySelector('#egeltools-resource-checker-close').click();
+
+        const thebesTradeLockResources = window.__towns[102].resources();
+        thebesTradeLockResources.wood = 18250;
+        distancePanel.querySelector('#egeltools-town-distance-sorter-refresh').click();
+        console.assert(
+          !distancePanel.querySelector('tbody tr[data-town-id="102"]'),
+          'Filling a locked warehouse should raise its high-water mark without releasing the lock',
+        );
+        thebesTradeLockResources.wood = 9000;
+        distancePanel.querySelector('#egeltools-town-distance-sorter-refresh').click();
+        console.assert(
+          distancePanel.querySelector('tbody tr[data-town-id="102"]')
+            && !distancePanel.querySelector('[data-trade-unlock-town-id="102"]')
+            && localStorage.getItem('egeltools_trade_locks_zz1_999') === null,
+          'Spending more than half of one warehouse resource should automatically release the trade lock',
+        );
+        thebesTradeLockResources.wood = 16000;
+
+        distancePanel.querySelector('[data-trade-lock-town-id="103"]').click();
+        distancePanel.querySelector('[data-trade-unlock-town-id="103"]').click();
+        console.assert(
+          distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 3,
+          'A trade lock should also remain manually removable from the locked-town tray',
+        );
+        distancePanel.querySelector('#egeltools-town-distance-sorter-close').click();
+        console.assert(distancePanel.hidden, 'The town-distance close button should hide the panel');
+        window.__switchedTownIds = [];
+
+        const resourceButton = document.getElementById('egeltools-resource-checker-button');
+        const resourcePanel = document.getElementById('egeltools-resource-checker');
+        console.assert(resourceButton && resourcePanel, 'The compact resource checker should mount');
+        resourceButton.click();
+        const resourceRows = resourcePanel.querySelectorAll('[data-resource-shortage-town]');
+        console.assert(!resourcePanel.hidden, 'The resource checker should open');
+        console.assert(resourceRows.length === 1, `Expected one shortage town, found ${resourceRows.length}`);
+        console.assert(
+          resourceRows[0].dataset.resourceShortageTown === '101'
+            && resourceRows[0].textContent.includes('Athens')
+            && resourceRows[0].querySelector('.egeltools-resource-checker__party-time')
+              .textContent.startsWith('Party in '),
+          'An underfunded town whose city party ends within 90 minutes should be listed with its urgency',
+        );
+        console.assert(
+          resourceRows[0].querySelector('.egeltools-resource-checker__icon-frame > .resources_small.wood')
+            && resourceRows[0].querySelector('.egeltools-resource-checker__icon-frame > .resources_small.stone')
+            && resourceRows[0].querySelector('.egeltools-resource-checker__icon-frame > .resources_small.iron'),
+          'Native Grepolis resource sprites should sit inside uncropped icon frames',
+        );
+        console.assert(
+          resourceRows[0].querySelector('.egeltools-resource-checker__incoming')
+            .textContent.includes('Already in transit:')
+            && resourceRows[0].querySelector('.egeltools-resource-checker__incoming')
+              .textContent.includes('2,800')
+            && !resourceRows[0].querySelector('.egeltools-resource-checker__incoming')
+              .textContent.includes('10,500')
+            && !resourcePanel.querySelector('#egeltools-resource-checker-apply')
+            && !resourcePanel.querySelector('[data-resource-sort]'),
+          'Inbound trades arriving before the party should be counted while later shipments and old controls are excluded',
+        );
+        console.assert(
+          resourcePanel.querySelector('.egeltools-resource-checker__scope')
+            .textContent.includes('shorter trade time'),
+          'The Party trades window should explain its arrival-time optimization',
+        );
+        const spartaTradeTimeResources = window.__towns[103].resources();
+        const thebesTradeTimeResources = window.__towns[102].resources();
+        const originalSpartaTradeTimeResources = { ...spartaTradeTimeResources };
+        const originalThebesTradeTimeResources = { ...thebesTradeTimeResources };
+        Object.assign(spartaTradeTimeResources, { wood: 16000, stone: 18001, iron: 15001 });
+        Object.assign(thebesTradeTimeResources, { wood: 15001, stone: 18001, iron: 16000 });
+        window.__towns[103].setAvailableTradeCapacity(1000);
+        window.__towns[102].setAvailableTradeCapacity(1000);
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        const tradeTimeDonors = resourcePanel.querySelectorAll(
+          '[data-resource-shortage-town="101"] .egeltools-resource-checker__donor',
+        );
+        console.assert(
+          tradeTimeDonors.length === 2
+            && tradeTimeDonors[0].textContent.includes('Sparta')
+            && tradeTimeDonors[0].textContent.includes('5.0 fields')
+            && tradeTimeDonors[1].textContent.includes('Thèbes'),
+          'Equally incomplete donor options should prefer the shorter trade time before partial coverage',
+        );
+        Object.assign(spartaTradeTimeResources, originalSpartaTradeTimeResources);
+        Object.assign(thebesTradeTimeResources, originalThebesTradeTimeResources);
+        window.__towns[103].setAvailableTradeCapacity(20000);
+        window.__towns[102].setAvailableTradeCapacity(500);
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        const athensPartyResources = window.__towns[101].resources();
+        const originalAthensWood = athensPartyResources.wood;
+        const displayedWoodDeficit = Number(
+          resourceRows[0].querySelector('.egeltools-resource-checker__deficits [title^="Wood:"]')
+            .title.split(':')[1].replaceAll(',', '').trim(),
+        );
+        athensPartyResources.wood += displayedWoodDeficit - 400;
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        const smallWoodDeficit = Number(
+          resourcePanel.querySelector('.egeltools-resource-checker__deficits [title^="Wood:"]')
+            .title.split(':')[1].replaceAll(',', '').trim(),
+        );
+        console.assert(
+          smallWoodDeficit >= 395 && smallWoodDeficit <= 405
+            && resourcePanel.querySelector('.egeltools-resource-checker__donor-resources [title="Wood: 500"]'),
+          'A deficit below 500 should be completed with one 500-resource shipment',
+        );
+        athensPartyResources.wood = originalAthensWood;
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        let activeResourceRow = resourcePanel.querySelector('[data-resource-shortage-town="101"]');
+        let donorRows = activeResourceRow.querySelectorAll('.egeltools-resource-checker__donor');
+        const deferredRemainder = Number(
+          activeResourceRow.querySelector(
+            '.egeltools-resource-checker__remaining-resources > .egeltools-resource-checker__resource',
+          ).title.split(':')[1].replaceAll(',', '').trim(),
+        );
+        console.assert(
+          donorRows.length === 1
+            && donorRows[0].textContent.includes('Sparta')
+            && !activeResourceRow.textContent.includes('Thèbes')
+            && deferredRemainder >= 900
+            && deferredRemainder <= 1000,
+          'A capacity-limited trade should be deferred when it would leave a sub-500 remainder',
+        );
+        window.__towns[102].setAvailableTradeCapacity(1000);
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        activeResourceRow = resourcePanel.querySelector('[data-resource-shortage-town="101"]');
+        donorRows = activeResourceRow.querySelectorAll('.egeltools-resource-checker__donor');
+        console.assert(donorRows.length === 2, `Expected a two-town donor plan, found ${donorRows.length}`);
+        console.assert(
+          [...donorRows].every((row) => (
+            row.scrollWidth <= row.clientWidth
+              && row.querySelector('.egeltools-resource-checker__trade-button').getBoundingClientRect().right
+                <= row.getBoundingClientRect().right
+          )),
+          'Donor cards should keep every resource and action inside the trade window',
+        );
+        console.assert(
+          donorRows[0].textContent.includes('Sparta')
+            && donorRows[1].textContent.includes('Thèbes'),
+          'Donor matching should prefer the town covering most deficits, then add a source that closes the remainder',
+        );
+        console.assert(
+          (() => {
+            const finalTradeTotal = Number(
+              donorRows[1].querySelector('[data-trade-donor-id="102"]')
+                ?.title.match(/[\d,]+-resource/)?.[0].replace('-resource', '').replaceAll(',', ''),
+            );
+            return finalTradeTotal >= 900 && finalTradeTotal <= 1000;
+          })()
+            &&
+          [...donorRows].every((row) => (
+            [...row.querySelectorAll(
+              '.egeltools-resource-checker__donor-resources > .egeltools-resource-checker__resource',
+            )]
+              .every((amount) => Number(amount.title.split(':')[1].replaceAll(',', '').trim()) >= 500)
+          ))
+            && donorRows[1].querySelector('[data-trade-donor-id="102"]'),
+          'Every resource amount should be at least 500 and a capable donor should close the remainder cleanly',
+        );
+        console.assert(
+          !activeResourceRow.textContent.includes('Still missing:'),
+          'A clean donor plan should not leave a sub-500 follow-up fragment',
+        );
+        const resourceBody = resourcePanel.querySelector('#egeltools-resource-checker-body');
+        resourceBody.style.maxHeight = '65px';
+        donorRows[0].querySelector('[data-trade-donor-id="103"]').focus();
+        resourceBody.scrollTop = 35;
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        console.assert(
+          resourceBody.scrollTop === 35
+            && document.activeElement?.dataset.tradeDonorId === '103',
+          'Refreshing the trade window should preserve its scroll position and focused trade action',
+        );
+        resourceBody.style.maxHeight = '';
+        resourcePanel.querySelector('[data-trade-donor-id="103"]').click();
+        await waitFor(() => window.__tradeRequests.length === 1);
+        document.body.dataset.resourceTradeRequest = JSON.stringify(window.__tradeRequests[0]);
+        console.assert(
+          window.__tradeRequests[0].controller === 'town_info'
+            && window.__tradeRequests[0].action === 'trade'
+            && window.__tradeRequests[0].data.town_id === 103
+            && window.__tradeRequests[0].data.id === 101
+            && window.__tradeRequests[0].data.wood >= 2200
+            && window.__tradeRequests[0].data.wood <= 2300
+            && window.__tradeRequests[0].data.stone === 1000
+            && window.__tradeRequests[0].data.iron >= 1900
+            && window.__tradeRequests[0].data.iron <= 2000,
+          'The Trade button should send the freshly revalidated proposal after subtracting inbound shipments',
+        );
+        console.assert(
+          window.Game.townId === 101
+            && window.__switchedTownIds.length === 0,
+          'Instant trade should post with the donor ID without changing the selected town',
+        );
+        console.assert(
+          await waitFor(() => {
+            const refreshedDonors = resourcePanel.querySelectorAll(
+              '[data-resource-shortage-town="101"] .egeltools-resource-checker__donor',
+            );
+            return refreshedDonors.length === 1
+              && refreshedDonors[0].textContent.includes('Thèbes')
+              && !resourcePanel.querySelector(
+                '[data-resource-shortage-town="101"] [data-trade-donor-id="103"]',
+              );
+          }),
+          'A sent trade should be counted immediately so the same donor is replaced by the next adjusted recommendation',
+        );
+        const sentPartyTrade = window.__tradeRequests[0].data;
+        window.__trades[550926] = {
+          attributes: {
+            id: 550926,
+            origin_town_id: sentPartyTrade.town_id,
+            destination_town_id: sentPartyTrade.id,
+            wood: sentPartyTrade.wood,
+            stone: sentPartyTrade.stone,
+            iron: sentPartyTrade.iron,
+            arrival_at: Math.floor(Date.now() / 1000) + 10 * 60,
+          },
+        };
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        const synchronizedIncoming = resourcePanel.querySelector(
+          '[data-resource-shortage-town="101"] .egeltools-resource-checker__incoming',
+        ).textContent;
+        console.assert(
+          synchronizedIncoming.includes((1500 + sentPartyTrade.wood).toLocaleString())
+            && synchronizedIncoming.includes((2800 + sentPartyTrade.stone).toLocaleString())
+            && synchronizedIncoming.includes((1800 + sentPartyTrade.iron).toLocaleString())
+            && !resourcePanel.querySelector(
+              '[data-resource-shortage-town="101"] [data-trade-donor-id="103"]',
+            ),
+          'The temporary shipment should reconcile with Grepolis’s trade model without double-counting or reoffering its donor',
+        );
+        resourcePanel.querySelector(
+          '.egeltools-resource-checker__donor [data-resource-town-id="102"]',
+        ).click();
+        console.assert(
+          window.__switchedTownIds.at(-1) === 102,
+          'Clicking a donor town should switch directly to that source town',
+        );
+        const thebesResources = window.__towns[102].resources();
+        const originalThebesResources = { ...thebesResources };
+        Object.assign(thebesResources, { wood: 1000, stone: 1000, iron: 1000 });
+        window.__celebrations.lockedThebes = {
+          attributes: {
+            town_id: 102,
+            celebration_type: 'party',
+            end_at: Math.floor(Date.now() / 1000) + 30 * 60,
+          },
+        };
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        const lockedAthensRow = resourcePanel.querySelector('[data-resource-shortage-town="101"]');
+        const lockedAthensDonors = lockedAthensRow.querySelector('[data-donors-for-town="101"]');
+        console.assert(
+          lockedAthensRow && resourcePanel.querySelector('[data-resource-shortage-town="102"]')
+            && !resourcePanel.querySelector('[data-resource-shortage-town="103"]'),
+          'Underfunded towns with active parties inside the 90-minute window should be visible',
+        );
+        console.assert(
+          [...resourcePanel.querySelectorAll('[data-resource-shortage-town]')]
+            .map((row) => row.dataset.resourceShortageTown).join(',') === '102,101',
+          'Urgent party towns should be ordered by their remaining time',
+        );
+        console.assert(
+          !lockedAthensDonors.textContent.includes('Thèbes'),
+          'A party-locked town should never be offered as a resource donor',
+        );
+        Object.assign(thebesResources, originalThebesResources);
+        delete window.__celebrations.lockedThebes;
+        window.__celebrations.activeParty.attributes.end_at = Math.floor(Date.now() / 1000) + 91 * 60;
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        console.assert(
+          resourcePanel.querySelectorAll('[data-resource-shortage-town]').length === 0
+            && resourcePanel.textContent.includes('No trades are needed'),
+          'Parties more than 90 minutes away should be excluded from the trade queue',
+        );
+        thebesResources.stone = 17000;
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        const idlePartyRow = resourcePanel.querySelector('[data-resource-shortage-town="102"]');
+        console.assert(
+          resourcePanel.querySelectorAll('[data-resource-shortage-town]').length === 1
+            && idlePartyRow
+            && idlePartyRow.querySelector('.egeltools-resource-checker__party-time')
+              .textContent === 'No party running'
+            && idlePartyRow.querySelector('.egeltools-resource-checker__deficits [title="Stone: 1,000"]'),
+          'An underfunded capable town with no active city party should receive an immediate trade plan',
+        );
+        thebesResources.stone = originalThebesResources.stone;
+        window.__celebrations.activeParty.attributes.end_at = Math.floor(Date.now() / 1000) + 60 * 60;
+        resourcePanel.querySelector('#egeltools-resource-checker-close').click();
+        console.assert(resourcePanel.hidden, 'The resource-checker close button should hide the panel');
+        window.__switchedTownIds = [];
+
+        const settingsWindow = document.getElementById('egeltools-settings-window');
+        console.assert(
+          settingsWindow.querySelector('#egeltools-celebration-olympics-enabled'),
+          'Settings should retain the Olympic Games option',
+        );
+        console.assert(
+          !settingsWindow.querySelector('#egeltools-celebration-finder-toggle'),
+          'Settings should not contain a PartyTracker show/hide control',
+        );
+        const dockSettingsButton = document.getElementById('egeltools-tool-dock-settings');
+        console.assert(
+          dockSettingsButton && !document.getElementById('egeltools-launcher'),
+          'The dock brand should replace the old left-menu settings launcher',
+        );
+        dockSettingsButton.click();
+        await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        console.assert(
+          !settingsWindow.hidden && dockSettingsButton.getAttribute('aria-expanded') === 'true',
+          'The dock brand should open settings and expose its expanded state',
+        );
+        const settingsWindowHeight = settingsWindow.getBoundingClientRect().height;
+        console.assert(
+          settingsWindowHeight <= Math.min(410, window.innerHeight - 24),
+          `The settings panel should remain content-sized and viewport-safe; found ${settingsWindowHeight}px`,
+        );
+        console.assert(
+          settingsWindow.getBoundingClientRect().bottom <= window.innerHeight - 8,
+          'The settings window should stay inside the viewport at the bottom',
+        );
+        const frameBottom = settingsWindow.getBoundingClientRect().bottom;
+        console.assert(
+          settingsWindow.querySelector('.egeltools-settings__body').getBoundingClientRect().bottom <= frameBottom + 1,
+          'The settings body should stay inside the EgelTools panel',
+        );
+        settingsWindow.querySelector('.egeltools-window__close').click();
+        console.assert(
+          settingsWindow.hidden
+            && dockSettingsButton.getAttribute('aria-expanded') === 'false'
+            && document.activeElement === dockSettingsButton,
+          'Closing settings should restore focus and state to the dock brand',
+        );
+
+        const makeAttack = (id, playerId, playerName, playerPoints, originTownId) => ({
+          id,
+          attributes: {
+            type: 'attack',
+            incoming: true,
+            origin_town: {
+              player_id: playerId,
+              player_name: playerName,
+              player_points: playerPoints,
+            },
+            destination_town: { id: 101, player_id: 999 },
+            home_town_id: originTownId,
+            target_town_id: 101,
+          },
+        });
+        const alarmSoundInput = document.getElementById('egeltools-alarm-sound-url');
+        const alarmSoundSave = document.getElementById('egeltools-alarm-sound-save');
+        const alarmSoundTest = document.getElementById('egeltools-alarm-sound-test');
+        const alarmSoundDefault = document.getElementById('egeltools-alarm-sound-default');
+        const alarmSoundStatus = document.getElementById('egeltools-alarm-sound-status');
+        console.assert(alarmSoundInput, 'The alarm sound setting should be present');
+        console.assert(alarmSoundInput.value === '', 'The default alarm should be selected when no URL is saved');
+
+        alarmSoundInput.value = 'https://youtu.be/dQw4w9WgXcQ?t=3';
+        alarmSoundSave.click();
+        console.assert(
+          localStorage.getItem('m23_alarm_sound_url') === 'https://youtu.be/dQw4w9WgXcQ?t=3',
+          'A valid YouTube alarm link should persist',
+        );
+        alarmSoundTest.click();
+        const youtubeTestPlayer = document.getElementById('egeltools-alarm-youtube-test-player');
+        console.assert(youtubeTestPlayer, 'Testing a YouTube link should create an embedded player');
+        console.assert(
+          youtubeTestPlayer.src.includes('/embed/dQw4w9WgXcQ?'),
+          'The embedded player should use the video ID from the saved YouTube link',
+        );
+        alarmSoundTest.click();
+        console.assert(
+          !document.getElementById('egeltools-alarm-youtube-test-player'),
+          'Stopping a YouTube test should remove its player',
+        );
+
+        alarmSoundInput.value = 'https://example.com/not-youtube';
+        alarmSoundSave.click();
+        console.assert(
+          localStorage.getItem('m23_alarm_sound_url') === 'https://youtu.be/dQw4w9WgXcQ?t=3',
+          'An invalid alarm link should not replace the saved sound',
+        );
+        console.assert(alarmSoundStatus.dataset.error === 'true', 'An invalid alarm link should show an error');
+        alarmSoundInput.value = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+        alarmSoundSave.click();
+        localStorage.setItem('m23_alarm_target', String(Date.now() - 1));
+        localStorage.setItem('m23_alarm_state', 'running');
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          window.__audioInstances.some((audio) => (
+            audio.src.startsWith('data:audio/mpeg;base64,') && !audio.paused
+          )),
+          'An expired collection timer should play the fixed FV claim sound',
+        );
+        console.assert(
+          !document.getElementById('egeltools-alarm-youtube-player'),
+          'A custom attack sound should not affect the collection alarm',
+        );
+        document.getElementById('egeltools-farm-alarm-stop').click();
+        console.assert(localStorage.getItem('m23_alarm_state') === 'idle', 'The alarm stop button should reset the state');
+        console.assert(
+          window.__audioInstances
+            .filter((audio) => audio.src.startsWith('data:audio/mpeg;base64,'))
+            .every((audio) => audio.paused),
+          'Stopping the collection alarm should stop the FV sound',
+        );
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'Opening the page should not alarm for an attack that was already incoming',
+        );
+        window.__attacks = {};
+        await new Promise((resolve) => setTimeout(resolve, 4200));
+        window.__attackModels = {
+          outgoingSent: {
+            id: 'outgoingSent',
+            attributes: {
+              type: 'attack',
+              // Live models may encode false as 0 and omit nested town data.
+              is_incoming: 0,
+              home_town_id: 101,
+              target_town_id: 901,
+            },
+          },
+        };
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'Sending an attack from an owned town should not start the incoming-attack alarm',
+        );
+        window.__attackModels = {
+          outgoingLanded: {
+            id: 'outgoingLanded',
+            attributes: {
+              type: 'attack',
+              // A generic Attack entry can briefly look incoming as the
+              // command lands, while still pointing at its foreign target.
+              incoming: 1,
+              target_town_id: 901,
+            },
+          },
+        };
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'An owned attack landing should not start the incoming-attack alarm',
+        );
+        window.__attackModels = {
+          outgoingReturning: {
+            id: 'outgoingReturning',
+            attributes: {
+              type: 'attack',
+              incoming: '1',
+              returning: '1',
+              target_town_id: 101,
+            },
+          },
+        };
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'Units returning after an owned attack lands should not start the alarm',
+        );
+        window.__attackModels = {
+          genericIncoming: {
+            id: 'genericIncoming',
+            attributes: {
+              type: 'attack',
+              incoming: '1',
+              origin_town: { player_id: 212, player_name: 'Generic Enemy' },
+              target_town_id: 101,
+            },
+          },
+        };
+        console.assert(
+          await waitFor(() => document.getElementById('egeltools-attack-alarm-stop')),
+          'A generic Attack entry targeting an owned town should still start the alarm',
+        );
+        document.getElementById('egeltools-attack-alarm-stop').click();
+        window.__attackModels = undefined;
+        window.__attacks.customSound = makeAttack('customSound', 207, 'YouTubeGuy', 50000);
+        console.assert(
+          await waitFor(() => document.getElementById('egeltools-attack-alarm-stop')),
+          'An incoming attack should start the configured YouTube alarm',
+        );
+        const youtubeAttackPlayer = document.getElementById('egeltools-alarm-youtube-player');
+        console.assert(
+          youtubeAttackPlayer
+            && youtubeAttackPlayer.src.includes('loop=1')
+            && youtubeAttackPlayer.src.includes('playlist=dQw4w9WgXcQ'),
+          'A repeating custom attack alarm should loop the selected YouTube video',
+        );
+        document.getElementById('egeltools-attack-alarm-stop').click();
+        window.__attacks = {};
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          !document.getElementById('egeltools-alarm-youtube-player'),
+          'Stopping an attack alarm should remove its YouTube player',
+        );
+        alarmSoundDefault.click();
+        console.assert(!localStorage.getItem('m23_alarm_sound_url'), 'The Default button should clear the custom sound');
+        alarmSoundTest.click();
+        console.assert(
+          window.__audioInstances.some((audio) => (
+            audio.src === 'https://cdn.grcrt.net/ui/s/alarm.mp3' && !audio.paused
+          )),
+          'Testing the default incoming-attack sound should play GRCRT\'s alarm',
+        );
+        alarmSoundTest.click();
+
+        const attackEnabled = document.getElementById('egeltools-attack-alarm-enabled');
+        const mutedPlayers = document.getElementById('egeltools-attack-alarm-muted-players');
+        const minimumPoints = document.getElementById('egeltools-attack-alarm-minimum-points');
+        const delayEnabled = document.getElementById('egeltools-attack-alarm-delay-enabled');
+        const delayStart = document.getElementById('egeltools-attack-alarm-delay-start');
+        const delayEnd = document.getElementById('egeltools-attack-alarm-delay-end');
+        const attackStatus = document.getElementById('egeltools-attack-alarm-status');
+        console.assert(attackEnabled?.checked, 'The incoming-attack alarm should be enabled by default');
+
+        mutedPlayers.value = 'MutedGuy\nOfficial Muted\nEncoded & Name';
+        mutedPlayers.dispatchEvent(new Event('input', { bubbles: true }));
+        minimumPoints.value = '10000';
+        minimumPoints.dispatchEvent(new Event('change', { bubbles: true }));
+        console.assert(
+          localStorage.getItem('egeltools_attack_alarm_muted_players')
+            === 'MutedGuy\nOfficial Muted\nEncoded & Name'
+            && localStorage.getItem('egeltools_attack_alarm_minimum_points') === '10000',
+          'Muted players and the minimum-points rule should persist',
+        );
+
+        window.__attacks.muted = makeAttack('muted', 201, 'MutedGuy', 50000);
+        window.__attacks.officialMuted = makeAttack('officialMuted', 208, undefined, 50000);
+        window.__attacks.encodedMuted = makeAttack('encodedMuted', 209, 'Encoded%20%26%20Name', 50000);
+        window.__attacks.small = makeAttack('small', 202, 'SmallGuy', 9999);
+        window.__attacks.dataset = makeAttack('dataset', 206, 'DatasetGuy');
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'Muted and below-threshold attackers should not start the alarm',
+        );
+        console.assert(
+          window.__fetchRequests.some((url) => url.endsWith('/data/players.txt')),
+          'Missing attack-model points should be resolved from the official world dataset',
+        );
+
+        window.__attacks = {};
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        mutedPlayers.value = 'Space User';
+        mutedPlayers.dispatchEvent(new Event('input', { bubbles: true }));
+        console.assert(
+          localStorage.getItem('egeltools_attack_alarm_muted_players') === 'Space User',
+          'A typed mute should persist immediately without waiting for the field to lose focus',
+        );
+        window.__attacks.spaceUser = makeAttack('spaceUser', null, undefined, 50000, 501);
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'A spaced username resolved from the origin town should stay muted',
+        );
+        console.assert(
+          window.__fetchRequests.some((url) => url.endsWith('/data/towns.txt')),
+          'An attack without a player ID should resolve its town owner from the world dataset',
+        );
+
+        window.__attacks = {};
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        window.__attacks.strong = makeAttack('strong', 203, 'StrongGuy', 10000);
+        console.assert(
+          await waitFor(() => document.getElementById('egeltools-attack-alarm-stop')),
+          'An attacker at the points threshold should start the alarm',
+        );
+        console.assert(
+          window.__audioInstances.some((audio) => (
+            audio.src === 'https://cdn.grcrt.net/ui/s/alarm.mp3' && !audio.paused
+          )),
+          'An incoming attack should use GRCRT\'s default alarm sound',
+        );
+        document.getElementById('egeltools-attack-alarm-stop').click();
+        mutedPlayers.value = 'MutedGuy, StrongGuy';
+        mutedPlayers.dispatchEvent(new Event('input', { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'Changing ignore rules should not retrigger an alarm for an existing attack',
+        );
+        window.__attacks = {};
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+
+        delayEnabled.checked = true;
+        delayEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        delayStart.value = '00:00';
+        delayStart.dispatchEvent(new Event('change', { bubbles: true }));
+        delayEnd.value = '00:00';
+        delayEnd.dispatchEvent(new Event('change', { bubbles: true }));
+        window.__attacks.cancelled = makeAttack('cancelled', 204, 'CancelledGuy', 50000);
+        console.assert(
+          await waitFor(() => attackStatus.textContent.includes('Waiting 20 seconds')),
+          'An attack in the configured hours should enter the 20-second grace period',
+        );
+        delete window.__attacks.cancelled;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        console.assert(
+          !document.getElementById('egeltools-attack-alarm-stop'),
+          'An attack cancelled during the grace period should stay silent',
+        );
+
+        window.__attacks.delayed = makeAttack('delayed', 205, 'DelayedGuy', 50000);
+        console.assert(
+          await waitFor(() => document.getElementById('egeltools-attack-alarm-stop')),
+          'An attack that survives the grace period should start the alarm',
+        );
+        document.getElementById('egeltools-attack-alarm-stop').click();
+        window.__attacks = {};
+
+        delayEnabled.checked = false;
+        delayEnabled.dispatchEvent(new Event('change', { bubbles: true }));
+        minimumPoints.value = '0';
+        minimumPoints.dispatchEvent(new Event('change', { bubbles: true }));
+        mutedPlayers.value = '';
+        mutedPlayers.dispatchEvent(new Event('input', { bubbles: true }));
+        window.__attacks = undefined;
+        const legacyAttackIndicator = document.createElement('div');
+        legacyAttackIndicator.className = 'activity attack_indicator active';
+        legacyAttackIndicator.innerHTML = '<span class="count js-caption">1</span>';
+        document.body.append(legacyAttackIndicator);
+        console.assert(
+          await waitFor(() => document.getElementById('egeltools-attack-alarm-stop')),
+          'The toolbar attack count should remain a safe fallback when detailed models are unavailable',
+        );
+        document.getElementById('egeltools-attack-alarm-stop').click();
+        legacyAttackIndicator.remove();
+        window.__attacks = {};
+
+        const floatingButton = document.getElementById('egeltools-celebration-finder-button');
+        const hostileStyle = document.createElement('style');
+        hostileStyle.textContent = `
+          #egeltools-celebration-finder-button {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
+          #egeltools-town-distance-sorter-button {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
+          #egeltools-resource-checker-button {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+          }
+          .gp_town_link {
+            display: block !important;
+            width: 100% !important;
+            text-align: center !important;
+          }
+          button.egeltools-celebration__badge {
+            display: block !important;
+            width: 100% !important;
+            float: left !important;
+            clear: both !important;
+          }
+        `;
+        document.head.append(hostileStyle);
+
+        console.assert(floatingButton, 'The celebrations button should mount in the quick-tools dock');
+        console.assert(getComputedStyle(floatingButton).display !== 'none', 'Grepolis CSS should not hide the docked celebrations button');
+        console.assert(getComputedStyle(floatingButton).visibility === 'visible', 'The docked celebrations button should remain visible');
+        console.assert(
+          getComputedStyle(distanceButton).display !== 'none'
+            && getComputedStyle(distanceButton).visibility === 'visible',
+          'Grepolis CSS should not hide the town-distance button',
+        );
+        console.assert(
+          getComputedStyle(resourceButton).display !== 'none'
+            && getComputedStyle(resourceButton).visibility === 'visible',
+          'Grepolis CSS should not hide the resource-checker button',
+        );
+        console.assert(floatingButton.textContent === 'Show CFs', 'The docked celebrations button should start closed');
+        floatingButton.click();
+        distanceButton.click();
+        const celebrationPanel = document.getElementById('egeltools-celebration-finder');
+        console.assert(
+          !celebrationPanel.hidden && !distancePanel.hidden,
+          'The celebration finder and town-distance sorter should stay open together',
+        );
+        distancePanel.querySelector('#egeltools-town-distance-sorter-close').click();
+        console.assert(
+          !celebrationPanel.hidden,
+          'Closing the town-distance sorter should leave the celebration finder open',
+        );
+
+        const rows = document.querySelectorAll('.egeltools-celebration__town');
+        window.__initialCelebrationRowHeights = [...rows].map((row) => row.getBoundingClientRect().height);
+        document.body.dataset.initialCelebrationRowHeights = JSON.stringify(window.__initialCelebrationRowHeights);
+        const rowLayouts = [...rows].map((row) => ({
+          linkTop: row.querySelector('.egeltools-celebration__town-link').getBoundingClientRect().top,
+          actionsTop: row.querySelector('.egeltools-celebration__actions').getBoundingClientRect().top,
+        }));
+        document.body.dataset.celebrationRowLayouts = JSON.stringify(rowLayouts);
+        const text = document.getElementById('egeltools-celebration-finder-body').textContent;
+        console.assert(floatingButton.textContent === 'Hide CFs', 'The docked celebrations button should reflect the open state');
+        console.assert(rows.length === 2, `Expected 2 celebration rows, found ${rows.length}`);
+        console.assert(
+          rowLayouts.every((layout) => Math.abs(layout.linkTop - layout.actionsTop) <= 2),
+          'Town names and celebration buttons should stay on one line',
+        );
+        console.assert(text.includes('Athens') && text.includes('Theater'), 'Athens should offer a theater performance');
+        console.assert(text.includes('Thèbes') && text.includes('City party'), 'Thèbes should offer a city party');
+        console.assert(!text.includes('Sparta'), 'Sparta should not be eligible below 18,000 effective capacity');
+        console.assert(!text.includes('Olympics'), 'Olympic Games should be disabled by default');
+
+        const athens = window.__towns[101];
+        const athensBuildings = athens.buildings().attributes;
+        const originalAthensGetStorage = athens.getStorage;
+        athens.getStorage = () => 12000;
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+        console.assert(
+          document.querySelector('[data-town-id="101"][data-celebration-type="theater"]'),
+          'A theater town with Academy 30 and exactly 12,000 effective capacity should be eligible',
+        );
+        athens.getStorage = () => 11999;
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+        console.assert(
+          !document.querySelector('[data-town-id="101"][data-celebration-type="theater"]'),
+          'A theater town below 12,000 effective capacity should not be eligible',
+        );
+        athens.getStorage = originalAthensGetStorage;
+        athensBuildings.academy = 29;
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+        console.assert(
+          !document.querySelector('[data-town-id="101"][data-celebration-type="theater"]'),
+          'A theater town below Academy 30 should not be eligible',
+        );
+        athensBuildings.academy = 30;
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+
+        const activeCelebrations = window.__celebrations;
+        window.__celebrations = undefined;
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+        const emptyCelebrationText = document.getElementById('egeltools-celebration-finder-body').textContent;
+        console.assert(
+          !emptyCelebrationText.includes('data is not available'),
+          'A missing Celebration model bucket should be treated as zero active celebrations',
+        );
+        console.assert(
+          document.querySelector('[data-town-id="101"][data-celebration-type="party"]'),
+          'A town should offer its city party when no Celebration model bucket exists',
+        );
+        window.__celebrations = activeCelebrations;
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+
+        const olympicsSetting = document.getElementById('egeltools-celebration-olympics-enabled');
+        console.assert(olympicsSetting && !olympicsSetting.checked, 'The Olympics setting should default to off');
+        olympicsSetting.click();
+        const olympicsRows = document.querySelectorAll('.egeltools-celebration__town');
+        const olympicsText = document.getElementById('egeltools-celebration-finder-body').textContent;
+        console.assert(
+          localStorage.getItem('egeltools_celebration_olympics_enabled') === 'on',
+          'The Olympics setting should persist',
+        );
+        console.assert(olympicsRows.length === 3, `Expected 3 rows with Olympics enabled, found ${olympicsRows.length}`);
+        console.assert(
+          olympicsText.includes('Sparta') && olympicsText.includes('Olympics'),
+          'An Academy 30 town should offer Olympic Games even when it cannot host a city party',
+        );
+        document.querySelector('.gold_amount').textContent = '49';
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+        console.assert(
+          [...document.querySelectorAll('[data-celebration-type="games"]')]
+            .every((button) => button.disabled),
+          'Olympic Games should be disabled when fewer than 50 gold is available',
+        );
+        document.querySelector('.gold_amount').textContent = '200';
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+
+        delete window.__celebrations.activeParty;
+        Object.assign(window.__towns[101].resources(), { wood: 15000, stone: 18000, iron: 15000 });
+        document.getElementById('egeltools-celebration-finder-refresh').click();
+
+        document.querySelector('.egeltools-celebration__town-link[data-town-id="102"]').click();
+        document.body.dataset.switchedTownIds = JSON.stringify(window.__switchedTownIds);
+        console.assert(window.__switchedTownIds[0] === 102, 'Clicking a town name should switch to that town');
+
+        const bulkButtons = Object.fromEntries(
+          [...document.querySelectorAll('[data-bulk-celebration-type]')]
+            .map((button) => [button.dataset.bulkCelebrationType, button]),
+        );
+        console.assert(
+          Object.keys(bulkButtons).length === 3
+            && Object.values(bulkButtons).every((button) => !button.disabled),
+          'Separate affordable bulk controls should be available for festivals, theater, and Olympics',
+        );
+        const panelHeightBeforeBulkStart = document.getElementById('egeltools-celebration-finder')
+          .getBoundingClientRect().height;
+        window.__activeTownGroupId = 7;
+        bulkButtons.party.click();
+        console.assert(
+          window.__celebrationRequests.length === 0
+            && getNotificationMessages().some(({ type, message }) => (
+              type === 'error' && message.includes('Select “All towns”')
+            )),
+          'A selected town group should show a red warning and block the bulk celebration request',
+        );
+        window.__activeTownGroupId = -1;
+        window.__suppressNextBulkCallback = true;
+        bulkButtons.party.click();
+        await waitFor(() => (
+          window.__celebrationRequests.length === 1
+            && window.__activeTownGroupId === -1
+        ));
+        console.assert(
+          window.__activeTownGroupId === -1 && window.__townGroupChanges.length === 0,
+          'Starting all city parties should not change the active group',
+        );
+        bulkButtons.theater.click();
+        await waitFor(() => (
+          window.__celebrationRequests.length === 2
+            && window.__activeTownGroupId === -1
+        ));
+        console.assert(
+          window.__activeTownGroupId === -1 && window.__townGroupChanges.length === 0,
+          'Starting all theater performances should not change the active group',
+        );
+        bulkButtons.games.click();
+        await waitFor(() => (
+          window.__celebrationRequests.length === 3
+            && window.__activeTownGroupId === -1
+        ));
+        const panelHeightAfterBulkStart = document.getElementById('egeltools-celebration-finder')
+          .getBoundingClientRect().height;
+        document.body.dataset.celebrationRequests = JSON.stringify(window.__celebrationRequests);
+        console.assert(
+          window.__celebrationRequests.length === 3,
+          'Each bulk control should send exactly one Administrator request',
+        );
+        console.assert(
+          window.__celebrationRequests.every((request) => (
+            request.controller === 'town_overviews'
+          )),
+          'Every bulk request should use the town-overviews controller',
+        );
+        console.assert(
+          window.__celebrationRequests
+            .filter((request) => ['party', 'theater', 'games'].includes(request.data.celebration_type))
+            .every((request) => (
+              request.action === 'start_all_celebrations'
+                && !Object.hasOwn(request.data, 'town_id')
+                && !Object.hasOwn(request.data, 'group_id')
+                && !Object.hasOwn(request.data, 'town_group_id')
+            )),
+          'Every bulk control should match the native Administrator request payload',
+        );
+        console.assert(
+          window.__celebrationRequests
+            .filter((request) => request.data.celebration_type === 'party')
+            .length === 1,
+          'Starting all city parties should use one Administrator request',
+        );
+        console.assert(
+          window.__celebrationRequests.filter((request) => (
+            request.data.celebration_type === 'games'
+              && request.action === 'start_all_celebrations'
+              && !Object.hasOwn(request.data, 'town_id')
+          )).length === 1,
+          'The Olympics bulk button should send one Administrator request',
+        );
+        console.assert(
+          window.__celebrationRequests.some((request) => request.data.celebration_type === 'party')
+            && window.__celebrationRequests.some((request) => request.data.celebration_type === 'theater'),
+          'The festival and theater bulk buttons should send their own requests',
+        );
+        console.assert(
+          window.__townGroupChanges.length === 0 && window.__activeTownGroupId === -1,
+          'No Administrator bulk action should change the active group',
+        );
+        console.assert(
+          window.__bulkActionSequence.join(',')
+            === 'request:party,request:theater,request:games',
+          'Every celebration bulk action should submit once without selecting another group',
+        );
+        console.assert(
+          await waitFor(() => bulkButtons.party.textContent !== 'Starting…', 4000),
+          'An interrupted Grepolis callback should not leave the bulk celebration button stuck',
+        );
+        console.assert(
+          panelHeightAfterBulkStart <= panelHeightBeforeBulkStart,
+          'Putting the split bulk controls in the existing header should not increase the panel footprint',
+        );
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        console.assert(
+          !document.querySelector('[data-town-id="102"][data-celebration-type="party"]'),
+          'A successfully started celebration action should disappear from the available list',
+        );
+        console.assert(
+          !document.getElementById('egeltools-celebration-finder-body').textContent.includes('Sparta'),
+          'A town with no remaining celebration actions should disappear from the list',
+        );
+        const captainRequestCount = window.__islandUtilityRequests.length;
+        const staleCaptainTradeButton = fv301.querySelector('[data-island-utility-action="trade"]');
+        advisor.classList.remove('captain_active');
+        console.assert(
+          await waitFor(() => !document.getElementById('egeltools-bd-level-check'))
+            && islandOverview.querySelectorAll('[data-egeltools-island-utility]').length === 0,
+          'The FV overview and quick actions should be removed when Captain becomes inactive',
+        );
+        staleCaptainTradeButton.click();
+        console.assert(
+          window.__islandUtilityRequests.length === captainRequestCount,
+          'A detached FV quick action must not submit after Captain becomes inactive',
+        );
+        window.Game.premium_features.captain = Math.floor(Date.now() / 1000) + 3600;
+        advisor.classList.add('captain-state-changed');
+        console.assert(
+          await waitFor(() => document.getElementById('egeltools-bd-level-check'))
+            && await waitFor(() => islandOverview.querySelector('[data-egeltools-island-utility]')),
+          'An active Captain premium entry should restore the FV overview and quick actions',
+        );
+        document.body.dataset.smokeFailed = window.__assertFailures.join('\n');
+        document.body.dataset.smokeComplete = 'true';
+      });
+    </script>
+  </body>
+</html>
