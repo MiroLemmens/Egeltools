@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.78
+// @version      1.2.79
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.78',
+    version: '1.2.79',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -379,8 +379,6 @@
       }
 
 
-      #egeltools-trade-overview-button { color: #f3d58d; background: linear-gradient(#61492e, #382718); border: 1px solid #806238; cursor: pointer; }
-      #egeltools-trade-overview-button[aria-expanded="true"] { background: #886533; }
       #egeltools-trade-overview[hidden] { display: none !important; }
       #egeltools-trade-overview {
         position: fixed; left: min(180px, 4vw); top: 100px; width: 480px;
@@ -421,7 +419,6 @@
       #egeltools-trade-overview .egeltools-trade-overview__town.is-selected { background: #f1e7ca; }
       #egeltools-trade-overview .egeltools-trade-overview__town.is-at-line { border-left-color: #b5392e; }
       #egeltools-trade-overview .egeltools-trade-overview__town button { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; background: none; border: 0; color: #70451e; font: inherit; font-weight: bold; cursor: pointer; text-align: left; }
-      #egeltools-trade-overview-button.has-trade-alarms { background: #9d2824 !important; color: #fff4eb; border-color: #ea8d7f; }
       #egeltools-trade-overview.has-alarms .egeltools-trade-overview__header { background: linear-gradient(#973c31, #602720); color: #fff1d6; }
       #egeltools-trade-overview .egeltools-trade-overview__town.has-alarm { background: #ffebe2; border-color: #d07969; border-left: 4px solid #b52923; }
       #egeltools-trade-overview .egeltools-trade-overview__alarm { display: inline-block; color: #a0221e; font-size: 11px; font-weight: bold; margin-top: 3px; }
@@ -1383,7 +1380,21 @@
       .egeltools-notification p { margin: 4px 0 8px; white-space: normal; }
       .egeltools-notification button { margin-right: 6px; }
       #egeltools-notification-preview { padding: 10px 12px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      #egeltools-notifications-button { cursor: pointer; padding: 5px 8px; }
+      #egeltools-notifications-button {
+        border: 1px solid #3f2d18;
+        color: #fff3c5;
+        background: linear-gradient(#61492e, #382718);
+        box-shadow: inset 0 1px rgba(255, 255, 255, .25), 0 2px 5px rgba(0, 0, 0, .5);
+        font: bold 11px Arial, Helvetica, sans-serif;
+        text-shadow: 0 1px #2c1b0d;
+        cursor: pointer;
+      }
+      #egeltools-notifications-button:hover { background: linear-gradient(#80613d, #50391f); }
+      #egeltools-notifications-button[aria-expanded='true'] {
+        background: linear-gradient(#886533, #614520);
+        box-shadow: inset 0 1px 4px rgba(0, 0, 0, .5);
+      }
+      #egeltools-notifications-button:focus-visible { outline: 2px solid #f3d58d; outline-offset: 2px; }
       #${APP.toolDockId} {
         display: flex !important;
         position: fixed !important;
@@ -1453,7 +1464,7 @@
 
       #${APP.toolDockId} #${CELEBRATION_FINDER.floatingButtonId},
       #${APP.toolDockId} #${TOWN_DISTANCE_SORTER.floatingButtonId},
-      #${APP.toolDockId} #egeltools-trade-overview-button,
+      #${APP.toolDockId} #egeltools-notifications-button,
       #${APP.toolDockId} #${RESOURCE_CHECKER.floatingButtonId} {
         display: inline-flex !important;
         position: static !important;
@@ -1494,7 +1505,7 @@
 
         #${APP.toolDockId} #${CELEBRATION_FINDER.floatingButtonId},
         #${APP.toolDockId} #${TOWN_DISTANCE_SORTER.floatingButtonId},
-        #${APP.toolDockId} #egeltools-trade-overview-button,
+        #${APP.toolDockId} #egeltools-notifications-button,
       #${APP.toolDockId} #${RESOURCE_CHECKER.floatingButtonId} {
           padding: 7px 6px;
           overflow: hidden;
@@ -3686,12 +3697,7 @@
       if (key.startsWith('warehouse:') && !tradeCapacityNotices.has(key.slice(10))) removeNotification(key);
     }
     document.getElementById('egeltools-trade-capacity-notices')?.remove();
-    const button = document.getElementById('egeltools-trade-overview-button');
-    if (!button) return;
-    const count = tradeCapacityNotices.size;
-    const label = count ? `Incoming trades · ${count} alarm${count === 1 ? '' : 's'}` : 'Incoming trades';
-    if (button.textContent !== label) button.textContent = label;
-    button.classList.toggle('has-trade-alarms', count > 0);
+
   }
 
   function acknowledgeTradeCapacityNotice(townId) {
@@ -3897,7 +3903,6 @@
     tradeOverviewOpen = open;
     const panel = createTradeOverviewPanel();
     panel.hidden = !open;
-    document.getElementById('egeltools-trade-overview-button')?.setAttribute('aria-expanded', String(open));
     if (open) {
       renderTradeOverview(getTradeCapacityArrivals(), getResourceCheckerServerTime());
       clampTradeOverviewViewport();
@@ -3910,22 +3915,6 @@
     const bounds = panel.getBoundingClientRect();
     panel.style.left = `${Math.max(0, Math.min(bounds.left, window.innerWidth - bounds.width))}px`;
     panel.style.top = `${Math.max(0, Math.min(bounds.top, window.innerHeight - bounds.height))}px`;
-  }
-
-  function createTradeOverviewButton() {
-    let button = document.getElementById('egeltools-trade-overview-button');
-    if (!button) {
-      button = document.createElement('button');
-      button.id = 'egeltools-trade-overview-button';
-      button.type = 'button';
-      button.textContent = 'Incoming trades';
-      button.setAttribute('aria-controls', 'egeltools-trade-overview');
-      button.setAttribute('aria-expanded', String(tradeOverviewOpen));
-      button.addEventListener('click', () => setTradeOverviewOpen(!tradeOverviewOpen));
-    }
-    mountToolDockButton(button);
-    renderTradeCapacityNotices();
-    return button;
   }
 
   function createTradeOverviewPanel() {
@@ -9138,7 +9127,7 @@
     document.getElementById(APP.launcherId)?.remove();
     createSettingsWindow();
     createToolDock();
-    createTradeOverviewButton();
+    document.getElementById('egeltools-trade-overview-button')?.remove();
     renderNotificationCenter();
     syncAdvisorGatedTools();
     renderTradeCapacityMarkers();
