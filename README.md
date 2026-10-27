@@ -16,7 +16,7 @@ The publisher reads the committed userscript (`EgelTools.user.js` or the legacy 
 3. The Action publishes the merged branch automatically. Check its result and the public download.
 4. For an explicit deployment or retry, run `scripts/deploy.sh dev` (or `main`). This publishes the latest remote branch head, not uncommitted local work. Reuse the version for documentation-only changes.
 
-The Action can also be run manually on either branch. An older queued run is skipped if a newer commit is already the branch head. Publish to `main` only for major releases such as `1.0` or `2.0` (`1.0.0` or `2.0.0`), through a PR from `dev` into `main`. Retain feature branches after ordinary merges into `dev`; clean up released feature branches only after the major-release merge and successful deployment. See `AGENTS.md` for the cleanup safeguards.
+The Action can also be run manually on either branch. An older queued run is skipped if a newer commit is already the branch head. Publish to `main` only for major releases such as `1.0` or `2.0` (`1.0.0` or `2.0.0`), through a PR from `dev` into `main`. Retain feature branches after ordinary merges into `dev`; clean up released feature branches only after the major-release merge and successful deployment. See `CLAUDE.md` (or `AGENTS.md`) for the cleanup safeguards.
 
 ## Server setup
 
