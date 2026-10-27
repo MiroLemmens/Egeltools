@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.85
+// @version      1.2.86
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.85',
+    version: '1.2.86',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -2506,7 +2506,7 @@
     olympicsSetting.checked = getOlympicsEnabled();
     olympicsSetting.addEventListener('change', () => {
       setOlympicsEnabled(olympicsSetting.checked);
-      if (celebrationFinderOpen) renderCelebrationFinder();
+      refreshCelebrationFinder();
     });
 
     const capacityLimit = settingsWindow.querySelector('#egeltools-distance-capacity-limit');
@@ -2736,6 +2736,7 @@
   }
 
   let celebrationFinderOpen = false;
+  let celebrationFinderCount = null;
   let celebrationRefreshTimer = null;
   const celebrationBulkStartsInFlight = new Set();
   const celebrationStartsInFlight = new Set();
@@ -2813,7 +2814,7 @@
       button.type = 'button';
       button.setAttribute('aria-controls', CELEBRATION_FINDER.panelId);
       button.setAttribute('aria-expanded', String(celebrationFinderOpen));
-      button.textContent = celebrationFinderOpen ? 'Hide CFs' : 'Show CFs';
+      button.textContent = getCelebrationFinderButtonLabel();
     }
 
     return mountToolDockButton(button);
@@ -5186,6 +5187,7 @@
     if (!body) return;
 
     const availableTowns = getCelebrationFinderData();
+    updateCelebrationFinderButton(availableTowns);
     updateCelebrationBulkButtons(availableTowns);
     body.replaceChildren();
 
@@ -5249,6 +5251,27 @@
     }
   }
 
+  function getCelebrationFinderButtonLabel() {
+    const label = celebrationFinderOpen ? 'Hide CFs' : 'Show CFs';
+    return celebrationFinderCount === null ? label : `${label} · ${celebrationFinderCount}`;
+  }
+
+  // Like the Notifications button, the dock label carries the number of listed towns.
+  function updateCelebrationFinderButton(availableTowns) {
+    if (availableTowns !== undefined) celebrationFinderCount = availableTowns?.length ?? null;
+    const button = createCelebrationFinderButton();
+    if (!button) return;
+    button.setAttribute('aria-expanded', String(celebrationFinderOpen));
+    const label = getCelebrationFinderButtonLabel();
+    if (button.textContent !== label) button.textContent = label;
+  }
+
+  // While the panel is closed, only the count is refreshed; its rows are not rebuilt.
+  function refreshCelebrationFinder() {
+    if (celebrationFinderOpen) renderCelebrationFinder();
+    else updateCelebrationFinderButton(getCelebrationFinderData());
+  }
+
   function setCelebrationFinderOpen(open) {
     if (open && !isAdministratorActive()) {
       removeAdministratorGatedTools();
@@ -5258,33 +5281,23 @@
     const panel = createCelebrationFinderPanel();
     if (!panel) return;
     panel.hidden = !open;
-
-    const floatingButton = createCelebrationFinderButton();
-    if (!floatingButton) return;
-    floatingButton.setAttribute('aria-expanded', String(open));
-    floatingButton.textContent = open ? 'Hide CFs' : 'Show CFs';
-
-    if (celebrationRefreshTimer !== null) {
-      window.clearInterval(celebrationRefreshTimer);
-      celebrationRefreshTimer = null;
-    }
-    if (open) {
-      renderCelebrationFinder();
-      celebrationRefreshTimer = window.setInterval(
-        renderCelebrationFinder,
-        CELEBRATION_FINDER.refreshInterval,
-      );
-    }
+    if (open) renderCelebrationFinder();
+    updateCelebrationFinderButton();
   }
 
   function initCelebrationFinder() {
     createCelebrationFinderButton();
     createCelebrationFinderPanel();
+    refreshCelebrationFinder();
+    // The timer keeps running without Administrator; its tick is then a no-op.
+    if (celebrationRefreshTimer === null) {
+      celebrationRefreshTimer = window.setInterval(refreshCelebrationFinder, CELEBRATION_FINDER.refreshInterval);
+    }
     window.addEventListener('storage', (event) => {
       if (event.key !== CELEBRATION_FINDER.olympicsEnabledKey) return;
       const olympicsSetting = document.getElementById(CELEBRATION_FINDER.olympicsSettingId);
       if (olympicsSetting) olympicsSetting.checked = getOlympicsEnabled();
-      if (celebrationFinderOpen) renderCelebrationFinder();
+      refreshCelebrationFinder();
     });
     document.addEventListener('click', (event) => {
       if (!(event.target instanceof Element)) return;
@@ -5999,6 +6012,8 @@
   }
 
   let resourceCheckerOpen = false;
+  let resourceCheckerTradeCount = null;
+  let resourceCheckerSnapshotTimer = null;
   const resourceTradesInFlight = new Set();
   const resourceTradeConfirmations = new Map();
   const resourceTradesAwaitingModel = new Map();
@@ -7197,7 +7212,7 @@
       button.type = 'button';
       button.setAttribute('aria-controls', RESOURCE_CHECKER.panelId);
       button.setAttribute('aria-expanded', String(resourceCheckerOpen));
-      button.textContent = 'Party trades';
+      button.textContent = getResourceCheckerButtonLabel();
     }
     return mountToolDockButton(button);
   }
@@ -7289,13 +7304,11 @@
     if (!panel) return;
     const body = panel.querySelector(`#${RESOURCE_CHECKER.bodyId}`);
     const count = panel.querySelector(`#${RESOURCE_CHECKER.countId}`);
-    const button = createResourceCheckerButton();
     if (!body || !count) return;
 
     // Keep the displayed proposal stable until the user explicitly refreshes.
     if (panel.dataset.snapshotReady && !refresh) return;
     if (!resourceCheckerOpen && !refresh) return;
-    panel.dataset.snapshotReady = 'true';
     const previousScrollTop = body.scrollTop;
     const activeTradeButton = document.activeElement?.closest?.(
       `#${RESOURCE_CHECKER.panelId} [data-trade-donor-id][data-trade-target-id]`,
@@ -7320,7 +7333,7 @@
     body.replaceChildren();
     if (!data) {
       count.textContent = '…';
-      button.textContent = resourceCheckerOpen ? 'Hide party trades' : 'Party trades';
+      updateResourceCheckerButton(null);
       const state = document.createElement('p');
       state.className = 'egeltools-resource-checker__state';
       state.textContent = 'Town resources are still loading. Refresh in a moment.';
@@ -7329,6 +7342,7 @@
       return;
     }
 
+    panel.dataset.snapshotReady = 'true';
     const reservations = new Map();
     const farmPlans = new Map();
     for (const town of data.shortages) {
@@ -7348,9 +7362,7 @@
     data.shortages.sort((left, right) => compareResourceTradeTargets(left, right, plans));
     const tradeCount = [...plans.values()].reduce((total, plan) => total + plan.donors.length, [...farmPlans.values()].reduce((sum, trades) => sum + trades.length, 0));
     count.textContent = `${tradeCount} ${tradeCount === 1 ? 'trade' : 'trades'}`;
-    button.textContent = resourceCheckerOpen
-      ? 'Hide party trades'
-      : tradeCount ? `Party trades (${tradeCount})` : 'Party trades ✓';
+    updateResourceCheckerButton(tradeCount);
 
     if (!data.shortages.length) {
       const state = document.createElement('p');
@@ -7405,6 +7417,36 @@
     restoreView();
   }
 
+  function getResourceCheckerButtonLabel() {
+    const label = resourceCheckerOpen ? 'Hide party trades' : 'Party trades';
+    return resourceCheckerTradeCount === null ? label : `${label} · ${resourceCheckerTradeCount}`;
+  }
+
+  // Like the Notifications button, the dock label carries the snapshot's trade count.
+  function updateResourceCheckerButton(tradeCount) {
+    if (tradeCount !== undefined) resourceCheckerTradeCount = tradeCount;
+    const button = createResourceCheckerButton();
+    if (!button) return;
+    button.setAttribute('aria-expanded', String(resourceCheckerOpen));
+    const label = getResourceCheckerButtonLabel();
+    if (button.textContent !== label) button.textContent = label;
+  }
+
+  // Build the first snapshot in the background so the count shows before the panel is opened.
+  // Retries until town resources are loaded; later snapshots stay user-driven.
+  function scheduleInitialResourceCheckerSnapshot() {
+    if (resourceCheckerSnapshotTimer !== null) return;
+    if (document.getElementById(RESOURCE_CHECKER.panelId)?.dataset.snapshotReady) return;
+    resourceCheckerSnapshotTimer = window.setInterval(() => {
+      const panel = document.getElementById(RESOURCE_CHECKER.panelId);
+      if (!panel) return;
+      if (!panel.dataset.snapshotReady) renderResourceChecker(true);
+      if (!document.getElementById(RESOURCE_CHECKER.panelId)?.dataset.snapshotReady) return;
+      window.clearInterval(resourceCheckerSnapshotTimer);
+      resourceCheckerSnapshotTimer = null;
+    }, RESOURCE_CHECKER.refreshInterval);
+  }
+
   function setResourceCheckerOpen(open) {
     if (open && !isAdministratorActive()) {
       removeAdministratorGatedTools();
@@ -7415,19 +7457,8 @@
     if (!panel) return;
     panel.hidden = !open;
     if (!open) panel.querySelector(`#${RESOURCE_CHECKER.windowMenuId}`)?.hidePopover();
-    const button = createResourceCheckerButton();
-    if (!button) return;
-    button.setAttribute('aria-expanded', String(open));
-    if (open) {
-      renderResourceChecker(true);
-      button.textContent = 'Hide party trades';
-    } else {
-      const count = document.getElementById(RESOURCE_CHECKER.countId)?.textContent || '';
-      const number = Number.parseInt(count, 10);
-      button.textContent = Number.isFinite(number)
-        ? number ? `Party trades (${number})` : 'Party trades ✓'
-        : 'Party trades';
-    }
+    if (open) renderResourceChecker(true);
+    updateResourceCheckerButton();
   }
 
   function initResourceChecker() {
@@ -7435,6 +7466,7 @@
     const button = createResourceCheckerButton();
     createResourceCheckerPanel();
     renderResourceChecker();
+    scheduleInitialResourceCheckerSnapshot();
     document.addEventListener('click', (event) => {
       if (!(event.target instanceof Element)) return;
       if (!isAdministratorActive() && event.target.closest([
@@ -8613,12 +8645,12 @@
 
   function removeAdministratorGatedTools() {
     celebrationFinderOpen = false;
+    celebrationFinderCount = null;
     townDistanceSorterOpen = false;
     resourceCheckerOpen = false;
+    resourceCheckerTradeCount = null;
     unitQueueOpen = false;
-    if (celebrationRefreshTimer !== null) window.clearInterval(celebrationRefreshTimer);
     if (townDistanceRetryTimer !== null) window.clearTimeout(townDistanceRetryTimer);
-    celebrationRefreshTimer = null;
     townDistanceRetryTimer = null;
     [
       CELEBRATION_FINDER.floatingButtonId,
@@ -8654,6 +8686,7 @@
       createTownDistanceSorterPanel();
       createResourceCheckerButton();
       createResourceCheckerPanel();
+      scheduleInitialResourceCheckerSnapshot();
     } else if (
       administratorActive !== previousAdministratorActive
       || document.getElementById(CELEBRATION_FINDER.floatingButtonId)
