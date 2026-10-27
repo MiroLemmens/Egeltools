@@ -2,11 +2,15 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
-## 1.2.83 — 2026-10-27
+## 1.2.84 — 2026-10-27
 
 - Make warehouse alerts compact horizontal rows with a clickable city name, native resource icons, live stored and incoming amounts, and an inline dismiss control. Remove the redundant Go to town button.
 - Use only the resource with the largest total incoming delivery for red lines, arrival alerts, selection chimes, and automatic resolution. Already-full dominant resources are no longer skipped in favor of smaller resources.
 - Refresh resource amounts without replacing the city link or dismiss control, preserving focus while the inbox updates.
+
+## 1.2.83 — 2026-10-27
+
+- Show the total number of entries in the Notifications button, including after opening the center, using the existing compact text and colors. Show zero when empty.
 
 ## 1.2.82 — 2026-10-27
 
