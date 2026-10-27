@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.80 — 2026-10-27
+
+- Remove the retired Incoming trades window, its styles, rendering state, countdown and unit-ratio helpers, and window event handlers.
+- Check warehouse status directly from town stock and incoming deliveries, keeping notification-center alerts, town navigation, and chimes independent of the removed window.
+
 ## 1.2.79 — 2026-10-27
 
 - Remove the redundant Incoming trades dock button; warehouse alerts continue through Notifications.
