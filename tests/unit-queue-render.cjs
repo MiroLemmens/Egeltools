@@ -14,7 +14,7 @@ const context = vm.createContext({
 });
 vm.runInContext('let unitQueueList = [];', context);
 vm.runInContext(extract('getQueuedUnits', 'getRecruitmentUnitId'), context);
-vm.runInContext(extract('refreshUnitQueue', 'makeUnitQueueDraggable'), context);
+vm.runInContext(extract('refreshUnitQueue', 'makePanelDraggable'), context);
 vm.runInContext(extract('renderUnitQueueWindow', 'createUnitQueueWindow'), context);
 vm.runInContext('renderUnitQueueWindow()', context);
 assert.ok(body.innerHTML.includes('Swordsman'), 'Existing orders must render without Party trades state');

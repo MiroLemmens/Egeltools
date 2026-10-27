@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.81 — 2026-10-27
+
+- Drag the Notifications window by its header using a mouse or touch. Header buttons continue to work normally.
+- Keep the moved window within the viewport when resized, reopened, or updated with new notifications; retain its position while the page stays open.
+
 ## 1.2.80 — 2026-10-27
 
 - Remove the retired Incoming trades window, its styles, rendering state, countdown and unit-ratio helpers, and window event handlers.
