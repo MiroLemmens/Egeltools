@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.83 — 2026-10-27
+
+- Show the total number of entries in the Notifications button, including after opening the center, using the existing compact text and colors. Show zero when empty.
+
 ## 1.2.82 — 2026-10-27
 
 - Add a native-styled Assign here button beside each owned hero in the Council of Heroes. Reassign an available or travelling hero to the selected city with one click, using normal game travel time.

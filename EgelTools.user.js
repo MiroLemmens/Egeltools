@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.82
+// @version      1.2.83
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.82',
+    version: '1.2.83',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -3529,9 +3529,8 @@
   function renderNotificationCenter() {
     const panel = createNotificationCenter();
     panel.hidden = !notificationCenterOpen;
-    const unread = [...notifications.values()].filter((notice) => notice.unread).length;
     const button = document.getElementById('egeltools-notifications-button');
-    const label = `Notifications${unread ? ` · ${unread}` : ''}`;
+    const label = `Notifications · ${notifications.size}`;
     if (button.textContent !== label) button.textContent = label;
     button.setAttribute('aria-expanded', String(notificationCenterOpen));
     if (!notificationCenterOpen) return;
