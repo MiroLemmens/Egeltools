@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.17
+// @version      1.2.18
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.17',
+    version: '1.2.18',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -175,7 +175,10 @@
     rootSelector: '#unit_order #units',
     tabSelector: '.unit_tab',
     activeClass: 'egeltools-recruitment-totals-active',
+    stackedClass: 'egeltools-recruitment-totals-stacked',
     totalClass: 'egeltools-recruitment-total',
+    populationClass: 'egeltools-recruitment-population',
+    populationGap: 6,
   });
 
   const CELEBRATION_COSTS = Object.freeze({
@@ -2060,6 +2063,35 @@
         text-shadow: none;
         white-space: nowrap;
         pointer-events: none;
+      }
+
+      ${RECRUITMENT_TOTALS.rootSelector}.${RECRUITMENT_TOTALS.stackedClass} {
+        margin-top: 50px !important;
+      }
+
+      ${RECRUITMENT_TOTALS.rootSelector} .${RECRUITMENT_TOTALS.populationClass} {
+        position: absolute;
+        top: -24px;
+        left: 0;
+        z-index: 50;
+        box-sizing: border-box;
+        height: 20px;
+        padding: 0 8px;
+        border: 1px solid #8a672c;
+        border-radius: 2px;
+        color: #000;
+        background: #fff0bd;
+        box-shadow: inset 0 1px rgba(255, 255, 255, .55);
+        font: bold 11px/20px Arial, Helvetica, sans-serif;
+        text-align: center;
+        text-shadow: none;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      ${RECRUITMENT_TOTALS.rootSelector}.${RECRUITMENT_TOTALS.stackedClass} .${RECRUITMENT_TOTALS.populationClass} {
+        top: -48px;
+        left: 0 !important;
       }
 
       #${COLLECT_ALARM.fallbackStopButtonId} .boerendorpIcoon {
@@ -7329,13 +7361,69 @@
     return counts;
   }
 
+  function getRecruitmentPopulation(counts, buildableUnitIds) {
+    const unitData = window.GameData?.units || {};
+    const isNavalBuilding = buildableUnitIds.some((unitId) => Boolean(unitData[unitId]?.is_naval));
+    const population = { present: 0, outside: 0, queued: 0, total: 0 };
+
+    counts.forEach((count, unitId) => {
+      const unit = unitData[unitId];
+      if (!unit) return;
+      const belongsToBuilding = 'is_naval' in unit
+        ? Boolean(unit.is_naval) === isNavalBuilding
+        : buildableUnitIds.includes(unitId);
+      if (!belongsToBuilding) return;
+
+      const perUnit = Math.max(0, Number(unit.population) || 0);
+      if (perUnit === 0) return;
+      population.present += count.present * perUnit;
+      population.outside += count.outside * perUnit;
+      population.queued += count.queued * perUnit;
+      population.total += count.total * perUnit;
+    });
+    return population;
+  }
+
+  function renderRecruitmentPopulation(root, counts, buildableTabs) {
+    let box = root.querySelector(`:scope > .${RECRUITMENT_TOTALS.populationClass}`);
+    if (buildableTabs.length === 0) {
+      box?.remove();
+      root.classList.remove(RECRUITMENT_TOTALS.stackedClass);
+      return;
+    }
+
+    const population = getRecruitmentPopulation(counts, buildableTabs.map(getRecruitmentUnitId));
+    if (!box) {
+      box = document.createElement('span');
+      box.className = RECRUITMENT_TOTALS.populationClass;
+      box.setAttribute('aria-hidden', 'true');
+      root.append(box);
+    }
+    const text = `Pop: ${population.total.toLocaleString()}`;
+    if (box.textContent !== text) box.textContent = text;
+    box.title = `Population: ${population.total.toLocaleString()} (present: ${population.present.toLocaleString()}, outside: ${population.outside.toLocaleString()}, queued: ${population.queued.toLocaleString()})`;
+    box.dataset.present = String(population.present);
+    box.dataset.outside = String(population.outside);
+    box.dataset.queued = String(population.queued);
+
+    // Place the box right after the last unit box; drop to its own row when it would not fit.
+    const rootWidth = root.clientWidth;
+    if (!rootWidth) return;
+    const rightEdge = Math.max(...buildableTabs.map((tab) => tab.offsetLeft + tab.offsetWidth));
+    const left = rightEdge + RECRUITMENT_TOTALS.populationGap;
+    const fits = left + box.offsetWidth <= rootWidth;
+    root.classList.toggle(RECRUITMENT_TOTALS.stackedClass, !fits);
+    const leftStyle = fits ? `${left}px` : '';
+    if (box.style.left !== leftStyle) box.style.left = leftStyle;
+  }
+
   function renderRecruitmentTotals() {
     const roots = document.querySelectorAll(RECRUITMENT_TOTALS.rootSelector);
     if (roots.length === 0) return;
 
     const counts = getCurrentTownRecruitmentCounts();
     roots.forEach((root) => {
-      let hasBuildableUnits = false;
+      const buildableTabs = [];
       root.querySelectorAll(RECRUITMENT_TOTALS.tabSelector).forEach((tab) => {
         let total = tab.querySelector(`.${RECRUITMENT_TOTALS.totalClass}`);
         if (!isBuildableRecruitmentTab(tab)) {
@@ -7343,7 +7431,7 @@
           return;
         }
 
-        hasBuildableUnits = true;
+        buildableTabs.push(tab);
         const unitId = getRecruitmentUnitId(tab);
         const count = counts.get(unitId) || {
           present: 0,
@@ -7364,7 +7452,8 @@
         total.dataset.outside = String(count.outside);
         total.dataset.queued = String(count.queued);
       });
-      root.classList.toggle(RECRUITMENT_TOTALS.activeClass, hasBuildableUnits);
+      root.classList.toggle(RECRUITMENT_TOTALS.activeClass, buildableTabs.length > 0);
+      renderRecruitmentPopulation(root, counts, buildableTabs);
     });
   }
 
