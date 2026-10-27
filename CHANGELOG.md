@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.87 — 2026-10-27
+
+- Mirror Grepolis status bar messages, including the trade on the way confirmation after sending resources, into the Notifications inbox so they stay readable after the bar fades. The native bar is unchanged, mirrored entries skip the EgelTools preview, and repeats group like other inbox entries.
+
 ## 1.2.86 — 2026-10-27
 
 - Show the number of listed towns in the Show CFs dock button and the recommended-trade count in the Party trades button, in the same compact ` · N` format as Notifications. Both counts stay visible while their panels are open, and zero is shown as a number instead of a check mark.
