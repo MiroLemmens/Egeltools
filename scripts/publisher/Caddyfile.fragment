@@ -1,0 +1,8 @@
+# Merge inside the existing files site block.
+handle /egeltools/deploy {
+    reverse_proxy egeltools-publisher:8094
+}
+@egeltools_channels path /egeltools/dev/EgelTools.user.js /egeltools/main/EgelTools.user.js /egeltools/dev/deployment.json /egeltools/main/deployment.json
+header @egeltools_channels Cache-Control "no-cache, no-store, must-revalidate"
+@egeltools_channel_releases path /egeltools/dev/releases/* /egeltools/main/releases/*
+header @egeltools_channel_releases Cache-Control "public, max-age=31536000, immutable"
