@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.85 — 2026-10-27
+
+- Show the Council of Heroes Assign here control as a compact native-styled icon button placed directly to the right of each hero's Assign/Unassign button and vertically centered with it. The tooltip names the action, and the icon dims while the action is unavailable.
+- A row whose hero shows a town link instead of a button uses the button position of the other rows, or sits beside that link.
+
 ## 1.2.84 — 2026-10-27
 
 - Make warehouse alerts compact horizontal rows with a clickable city name, native resource icons, live stored and incoming amounts, and an inline dismiss control. Remove the redundant Go to town button.
