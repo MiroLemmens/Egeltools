@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.89
+// @version      1.2.90
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.89',
+    version: '1.2.90',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -4930,8 +4930,8 @@
 
   const COUNCIL_HERO_SWAP_ICON = `data:image/svg+xml,${encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-    + '<path d="M8 1.3 1.6 7.2V14.2h12.8V7.2z" fill="#f4e6c3" stroke="#3b2918" stroke-width="1.4" stroke-linejoin="round"/>'
-    + '<path d="M8 5.4v5.4M5.5 8.5 8 11l2.5-2.5" fill="none" stroke="#3b2918" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '<path d="M8 1.4 1.8 7.1V14h12.4V7.1z" fill="none" stroke="#ffcc66" stroke-width="1.5" stroke-linejoin="round"/>'
+    + '<path d="M8 5.6v5.2M5.6 8.6 8 11l2.4-2.4" fill="none" stroke="#ffcc66" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
     + '</svg>',
   )}`;
 
@@ -4941,10 +4941,10 @@
     style.id = 'egeltools-hero-swap-style';
     style.textContent = `
       .egeltools-hero-swap { white-space:nowrap; }
-      .egeltools-hero-swap .caption { padding:0 5px !important;min-width:0 !important; }
+      .egeltools-hero-swap .caption { padding:0 7px !important;min-width:0 !important; }
       .egeltools-hero-swap-icon { display:inline-block;width:16px;height:16px;vertical-align:middle;
         background:url("${COUNCIL_HERO_SWAP_ICON}") center/contain no-repeat; }
-      .egeltools-hero-swap.disabled .egeltools-hero-swap-icon { opacity:.45;filter:grayscale(1); }
+      .egeltools-hero-swap.disabled .egeltools-hero-swap-icon { opacity:.45; }
     `;
     document.head.append(style);
   }
@@ -4967,67 +4967,135 @@
     return { travelling, town, attacking };
   }
 
-  // Finds the widest visible element matching the selector (the native Assign/Unassign button when
-  // present) and returns where an adjacent control belongs, relative to the row's top-left corner.
-  function getCouncilHeroButtonPlacement(row, ownButton, selector, minWidth) {
+  // Position of an element inside root in root's own layout coordinates (offset chains), so the
+  // game's UI scaling cannot skew it the way viewport rectangles would.
+  function getCouncilLocalRect(element, root) {
+    let left = 0;
+    let top = 0;
+    let node = element;
+    while (node && node !== root) {
+      left += node.offsetLeft;
+      top += node.offsetTop;
+      node = node.offsetParent;
+    }
+    if (node !== root) return null;
+    const width = element.offsetWidth;
+    const height = element.offsetHeight;
+    return { left, top, width, height, right: left + width, bottom: top + height };
+  }
+
+  function isCouncilElementVisible(element) {
+    return element.offsetWidth > 0 && element.offsetHeight > 0;
+  }
+
+  // Visible leaf elements, native buttons and non-empty text runs inside the row, in row layout
+  // coordinates; anything matched by skip (and its subtree) is left out.
+  function collectCouncilObstacles(parent, row, skip, rowRect, scale, list = []) {
+    for (const node of parent.childNodes) {
+      if (node.nodeType === 3) {
+        if (!node.textContent.trim() || typeof document.createRange !== 'function') continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rect = range.getBoundingClientRect();
+        if (!rect.width || !rect.height) continue;
+        list.push({
+          left: (rect.left - rowRect.left) / scale, top: (rect.top - rowRect.top) / scale,
+          right: (rect.right - rowRect.left) / scale, bottom: (rect.bottom - rowRect.top) / scale,
+        });
+      } else if (node.nodeType === 1 && !skip(node) && isCouncilElementVisible(node)) {
+        if (node.children.length === 0 || node.classList.contains('button_new')) {
+          const rect = getCouncilLocalRect(node, row);
+          if (rect) list.push(rect);
+        } else {
+          collectCouncilObstacles(node, row, skip, rowRect, scale, list);
+        }
+      }
+    }
+    return list;
+  }
+
+  // Places the swap button beside the native button cluster in the row's .locations box: to its
+  // right when that space is free, otherwise to its left, so a Cancel control or a travel timer
+  // never ends up underneath it.
+  function getCouncilHeroButtonPlacement(row, ownButton) {
+    const isOwn = (element) => element === ownButton || Boolean(ownButton?.contains(element));
+    const locations = row.querySelector('.locations');
+    const cluster = locations
+      ? [...locations.querySelectorAll('.button_new')].filter((element) => !isOwn(element) && isCouncilElementVisible(element))
+      : [];
+    const rects = cluster.map((element) => getCouncilLocalRect(element, row)).filter(Boolean);
     let anchor = null;
-    for (const element of row.querySelectorAll(selector)) {
-      if (element === ownButton || ownButton?.contains(element)) continue;
-      const rect = element.getBoundingClientRect();
-      if (rect.width < minWidth || rect.height <= 0) continue;
-      if (!anchor || rect.width > anchor.width) anchor = rect;
+    if (rects.length) {
+      anchor = {
+        left: Math.min(...rects.map((rect) => rect.left)), right: Math.max(...rects.map((rect) => rect.right)),
+        top: Math.min(...rects.map((rect) => rect.top)), bottom: Math.max(...rects.map((rect) => rect.bottom)),
+      };
+    } else if (locations && isCouncilElementVisible(locations)) {
+      anchor = getCouncilLocalRect(locations, row);
     }
     if (!anchor) return null;
+    const width = ownButton?.offsetWidth || 42;
+    const height = ownButton?.offsetHeight || 29;
+    const top = Math.round(anchor.top + (anchor.bottom - anchor.top - height) / 2);
+    const candidates = [anchor.right + 6, anchor.left - 6 - width].map((left) => ({ left: Math.round(left), top }));
     const rowRect = row.getBoundingClientRect();
-    return {
-      left: Math.round(anchor.right - rowRect.left + 6),
-      top: Math.round(anchor.top - rowRect.top + anchor.height / 2),
-    };
+    const scale = row.offsetWidth && rowRect.width ? rowRect.width / row.offsetWidth : 1;
+    const skip = (element) => isOwn(element) || cluster.some((member) => member === element || member.contains(element));
+    const obstacles = collectCouncilObstacles(row, row, skip, rowRect, scale);
+    const blocked = (candidate) => obstacles.some((rect) => candidate.left < rect.right
+      && candidate.left + width > rect.left && candidate.top < rect.bottom && candidate.top + height > rect.top);
+    return candidates.find((candidate) => candidate.left >= 0 && !blocked(candidate)) || candidates[0];
+  }
+
+  function createCouncilHeroSwapButton(row, hero) {
+    ensureCouncilHeroSwapStyle();
+    row.style.position = 'relative';
+    const button = document.createElement('div');
+    button.className = 'egeltools-hero-swap';
+    button.style.cssText = 'position:absolute;z-index:1;margin:0;';
+    button.setAttribute('role', 'button');
+    button.tabIndex = 0;
+    row.append(button);
+    window.jQuery(button).button({ caption: '' }).on('btn:click', () => {
+      if (button.getAttribute('aria-disabled') !== 'true') {
+        moveCouncilHero(hero.getId(), Number(window.Game?.townId));
+      }
+    });
+    // Match the double-bordered Assign/Unassign buttons beside it and show only the icon.
+    button.classList.add('double_border');
+    const caption = button.querySelector('.caption') || button;
+    for (const node of [...caption.childNodes]) if (node.nodeType === 3) node.remove();
+    const icon = document.createElement('span');
+    icon.className = 'egeltools-hero-swap-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    caption.prepend(icon);
+    button.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        window.jQuery(button).trigger('btn:click');
+      }
+    });
+    return button;
   }
 
   function renderCouncilHeroButtons() {
     const rows = [...document.querySelectorAll('.heroes_overview .hero_slot')];
     if (!rows.length || typeof window.jQuery?.fn?.button !== 'function') return;
     const heroes = getCouncilHeroes();
-    const entries = rows.map((row) => {
-      const own = row.querySelector('.egeltools-hero-swap');
-      return { row, placement: getCouncilHeroButtonPlacement(row, own, '.button_new, .button, button', 40) };
-    });
-    // Rows share one layout, so a row whose hero shows a town link instead of a button borrows the
-    // button position found in another row.
-    const shared = entries.find((entry) => entry.placement)?.placement;
-    for (const { row, placement } of entries) {
+    const entries = [];
+    for (const row of rows) {
       const hero = heroes.find((candidate) => row.classList.contains(String(candidate.getId())));
       if (!hero) continue;
-      let button = row.querySelector('.egeltools-hero-swap');
-      if (!button) {
-        ensureCouncilHeroSwapStyle();
-        row.style.position = 'relative';
-        button = document.createElement('div');
-        button.className = 'egeltools-hero-swap';
-        button.style.cssText = 'position:absolute;z-index:1;margin:0;';
-        button.setAttribute('role', 'button');
-        button.tabIndex = 0;
-        row.append(button);
-        window.jQuery(button).button({ caption: '' }).on('btn:click', () => {
-          if (button.getAttribute('aria-disabled') !== 'true') {
-            moveCouncilHero(hero.getId(), Number(window.Game?.townId));
-          }
-        });
-        const icon = document.createElement('span');
-        icon.className = 'egeltools-hero-swap-icon';
-        icon.setAttribute('aria-hidden', 'true');
-        (button.querySelector('.caption') || button).prepend(icon);
-        button.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            window.jQuery(button).trigger('btn:click');
-          }
-        });
-      }
-      const target = placement || shared || getCouncilHeroButtonPlacement(row, button, 'a.gp_town_link', 1);
+      const button = row.querySelector('.egeltools-hero-swap') || createCouncilHeroSwapButton(row, hero);
+      entries.push({ row, hero, button });
+    }
+    // Rows share one layout, so a row without a native button borrows another row's placement.
+    const placements = entries.map(({ row, button }) => getCouncilHeroButtonPlacement(row, button));
+    const shared = placements.find(Boolean);
+    entries.forEach(({ row, hero, button }, index) => {
+      const target = placements[index] || shared;
       Object.assign(button.style, target
-        ? { left: `${target.left}px`, top: `${target.top}px`, right: 'auto', bottom: 'auto', transform: 'translateY(-50%)' }
+        ? { left: `${target.left}px`, top: `${target.top}px`, right: 'auto', bottom: 'auto', transform: '' }
         : { left: 'auto', top: 'auto', right: '20px', bottom: '2px', transform: '' });
       const state = getCouncilHeroState(hero);
       const here = String(state.town) === String(window.Game?.townId);
@@ -5040,7 +5108,7 @@
           : here ? (state.travelling ? 'Already on the way to this city.' : 'Already assigned to this city.')
             : 'Assign here: move this hero to the selected city (normal travel time applies).';
       button.setAttribute('aria-label', button.title);
-    }
+    });
   }
 
   function executeCultureHeroAction(hero, action, townId) {

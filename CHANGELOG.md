@@ -19,6 +19,11 @@ All published EgelTools releases are preserved at <https://files.miro23.uk/egelt
 - Show the number of listed towns in the Show CFs dock button and the recommended-trade count in the Party trades button, in the same compact ` · N` format as Notifications. Both counts stay visible while their panels are open, and zero is shown as a number instead of a check mark.
 - Refresh the CFs count every 10 seconds while its panel is closed, and build the first Party trades snapshot in the background so its count appears before the panel is opened. Later Party trades snapshots remain user-driven.
 
+## 1.2.90 — 2026-10-27
+
+- Give the Council of Heroes Assign here icon button the same double-bordered frame as the native Assign/Unassign buttons, with a gold icon that matches their text.
+- Position it from the row's own layout instead of screen coordinates, so the game's UI scaling no longer shifts it, and keep it clear of other controls: it sits to the right of the native button cluster when that space is free and moves to the left side when a Cancel control or timer is in the way.
+
 ## 1.2.85 — 2026-10-27
 
 - Show the Council of Heroes Assign here control as a compact native-styled icon button placed directly to the right of each hero's Assign/Unassign button and vertically centered with it. The tooltip names the action, and the icon dims while the action is unavailable.
