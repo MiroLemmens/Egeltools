@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.87
+// @version      1.2.88
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.87',
+    version: '1.2.88',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -139,6 +139,7 @@
     minimumTradeAmount: 500,
     loyaltyClaimInterval: 13 * 60,
     loyaltyClaimByFarmLevel: Object.freeze([0, 28, 34, 40, 45, 51, 57]),
+    silentSendMirrorMs: 5000,
   });
 
   const BD_LEVEL_CHECK = Object.freeze({
@@ -3657,6 +3658,16 @@
   // messages into the inbox so they stay readable; the game bar still shows.
   const GAME_STATUS_LEVELS = Object.freeze({ success: 'success', error: 'error', warning: 'warning' });
 
+  // Party trades send resources without the trade window, so the game's
+  // "trade on the way" confirmation would only add inbox noise. A send keeps
+  // success-level status messages out of the inbox for a few seconds; the
+  // native status bar and error messages are untouched.
+  let gameStatusMirrorQuietUntil = 0;
+
+  function quietGameStatusMirror(durationMs) {
+    gameStatusMirrorQuietUntil = Math.max(gameStatusMirrorQuietUntil, Date.now() + durationMs);
+  }
+
   function getGameStatusText(message) {
     if (typeof Element === 'function' && message instanceof Element) return message.textContent.trim();
     if (typeof message !== 'string' && typeof message !== 'number') return '';
@@ -3683,7 +3694,8 @@
         const result = original.call(this, message, ...rest);
         try {
           const text = getGameStatusText(message);
-          if (text) notify({ title: 'Grepolis', message: text, level, preview: false });
+          const quiet = level === 'success' && Date.now() < gameStatusMirrorQuietUntil;
+          if (text && !quiet) notify({ title: 'Grepolis', message: text, level, preview: false });
         } catch (error) {
           console.warn(`[${APP.name}] could not mirror a game status message`, error);
         }
@@ -7144,12 +7156,20 @@
           response,
         );
       }
-      showCelebrationMessage(
-        success
-          ? `${donor.name} sent ${donor.total.toLocaleString()} resources to ${targetTown.name}.`
-          : message || (uncertain ? 'Trade was not confirmed. Check outgoing trades before reloading.' : 'Grepolis could not send the proposed trade.'),
-        !success,
-      );
+      if (success) {
+        // A sent party trade stays silent: the button's Sent state and the
+        // panel's in-transit line already confirm it, so no inbox entry or
+        // preview is raised and the game's own confirmation is not mirrored.
+        quietGameStatusMirror(RESOURCE_CHECKER.silentSendMirrorMs);
+        console.info(
+          `[${APP.name}] ${donor.name} sent ${donor.total.toLocaleString()} resources to ${targetTown.name}.`,
+        );
+      } else {
+        showCelebrationMessage(
+          message || (uncertain ? 'Trade was not confirmed. Check outgoing trades before reloading.' : 'Grepolis could not send the proposed trade.'),
+          true,
+        );
+      }
       setTradeStatus(success ? 'Sent' : uncertain ? 'Check trades' : 'Retry', success || uncertain);
       updateResourceTradeButtons();
     };
@@ -7163,6 +7183,9 @@
         iron: Math.floor(donor.contributions.iron || 0),
       };
       knownTradeIdsBeforeSend = getResourceTradeModelIds();
+      // The game may confirm the trade through its status bar before the
+      // callback runs, so the mirror is quieted before the request goes out.
+      quietGameStatusMirror(RESOURCE_CHECKER.silentSendMirrorMs);
       resourceTradeConfirmations.set(tradeKey, {
         donor, targetTown, knownTradeIds: knownTradeIdsBeforeSend,
         confirm: (response) => finish(true, '', response),

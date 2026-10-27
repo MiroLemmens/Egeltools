@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.88 — 2026-10-27
+
+- Sending a party trade no longer raises a notification: the Trade button's Sent state and the Already in transit line confirm the shipment, while failed or unconfirmed sends still report in the Notifications inbox.
+- Grepolis success messages raised while a party trade is being sent, such as the trade on the way confirmation, are left out of the inbox mirror for a few seconds. The native status bar and error messages are unchanged.
+
 ## 1.2.87 — 2026-10-27
 
 - Mirror Grepolis status bar messages, including the trade on the way confirmation after sending resources, into the Notifications inbox so they stay readable after the bar fades. The native bar is unchanged, mirrored entries skip the EgelTools preview, and repeats group like other inbox entries.

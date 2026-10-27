@@ -54,6 +54,9 @@ Object.assign(context, {
   getResourceTradeModelIds: () => new Set(),
   rememberResourceTradeAwaitingModel: () => remembered++,
   showCelebrationMessage() {},
+  quietGameStatusMirror() {},
+  APP: { name: 'EgelTools' },
+  console: { info() {} },
   window: { ITowns: { getTown: id => ({ id }) }, setTimeout: fn => { timeout = fn; return 1; }, clearTimeout() {}, gpAjax: { ajaxPost: (controller, action, data, flag, done, failed) => {
     posts++; sent = data; callback = done; failure = failed;
   } } },

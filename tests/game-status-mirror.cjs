@@ -45,6 +45,17 @@ humanMessage.success({ unexpected: true });
 humanMessage.success('');
 assert.equal(read('notifications.size'), 2, 'Non-text and empty messages are ignored');
 
+// A party trade send quiets success mirroring without touching the native call or errors.
+context.quietGameStatusMirror(60000);
+assert.equal(humanMessage.success('Trade on the way', 7), 'shown', 'The game still shows its own message');
+assert.deepEqual(calls.at(-1), ['success', 'Trade on the way', 7, true]);
+assert.equal(read('[...notifications.values()].find((n) => n.message === "Trade on the way").count'), 2,
+  'Success messages stay out of the inbox while a party trade is being sent');
+humanMessage.error('Not enough merchants.');
+assert.equal(read('[...notifications.values()].at(-1).message'), 'Not enough merchants.', 'Errors are still mirrored during a send');
+assert.equal(read('notifications.size'), 3);
+read('gameStatusMirrorQuietUntil = 0');
+
 // A later wrapper by another script must not produce a second mirror.
 const ours = humanMessage.success;
 humanMessage.success = function (message) { return ours.call(this, message); };
