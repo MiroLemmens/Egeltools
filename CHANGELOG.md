@@ -2,6 +2,12 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.83 — 2026-10-27
+
+- Make warehouse alerts compact horizontal rows with a clickable city name, native resource icons, live stored and incoming amounts, and an inline dismiss control. Remove the redundant Go to town button.
+- Use only the resource with the largest total incoming delivery for red lines, arrival alerts, selection chimes, and automatic resolution. Already-full dominant resources are no longer skipped in favor of smaller resources.
+- Refresh resource amounts without replacing the city link or dismiss control, preserving focus while the inbox updates.
+
 ## 1.2.82 — 2026-10-27
 
 - Add a native-styled Assign here button beside each owned hero in the Council of Heroes. Reassign an available or travelling hero to the selected city with one click, using normal game travel time.

@@ -11,6 +11,7 @@ let selected;
 const towns = { 1: { name: 'Alpha', stock: { wood: 9000, stone: 0, iron: 0 } }, 2: { name: 'Beta', stock: { wood: 9000, stone: 0, iron: 0 } } };
 const context = vm.createContext({
   Map, Set, console,
+  updateNotificationResources: () => {},
   notifications: new Map(),
   notify: notice => context.notifications.set(notice.key, notice),
   removeNotification: key => context.notifications.delete(key),
@@ -44,8 +45,11 @@ tick();
 assert.equal(sounds, 1, 'Alert when the marked shipment arrives');
 assert.equal(context.notifications.size, 1, 'Warehouse alert uses the shared inbox');
 assert.equal(context.notifications.get('warehouse:1').message, 'Warehouse reached the red line.');
+assert.equal(context.notifications.get('warehouse:1').warehouse.stock.wood, 10000);
+assert.equal(context.notifications.get('warehouse:1').warehouse.incoming.wood, 100);
+assert.equal(context.notifications.get('warehouse:1').warehouse.resource, 'wood');
 assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), true);
-context.selectTradeCapacityTown('1');
+context.notifications.get('warehouse:1').action();
 assert.equal(selected, '1');
 assert.equal(sounds, 2, 'Selecting the alerted town plays the alarm');
 now = 111;
@@ -96,8 +100,8 @@ tick();
 assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), true, 'Alarm survives stock lagging the arrival');
 towns[1].stock.wood = 10000; now = 511; tick();
 assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), true, 'Full warehouse keeps the alarm');
-towns[1].stock.wood = 9999; now = 512; tick();
-assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), false, 'Spending resources clears the alarm without a reload');
+towns[1].stock.wood = 9999; towns[1].stock.stone = 10000; now = 512; tick();
+assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), false, 'Spending the dominant resource clears the alarm even if a smaller resource stays full');
 now = 600; towns[1].stock.wood = 9000;
 arrivals = new Map([['g', trade('g', 610, 1000)]]);
 tick();
@@ -117,7 +121,26 @@ towns[1].stock.wood = 10000;
 assert.equal(atLine([trade('incoming', 710, 100)]), true, 'A full incoming resource alerts');
 assert.equal(atLine([]), false, 'No alert without incoming trades or an existing notice');
 assert.equal(atLine([], 'missing'), false, 'Unavailable towns do not alert');
-console.log('Trade selection checks passed without window state');
+const mixed = { id: 'mixed', townId: '1', arrivalAt: 710, resources: { wood: 5000, stone: 100, iron: 0 } };
+towns[1].stock = { wood: 0, stone: 10000, iron: 0 };
+assert.equal(boundary([mixed]), null, 'Ignore a full smaller incoming resource when the largest will not fill');
+assert.equal(atLine([mixed]), false, 'Selection follows the same dominant-only rule');
+towns[1].stock = { wood: 10000, stone: 9990, iron: 0 };
+const fullDominant = boundary([mixed]);
+assert.equal(fullDominant.resource, 'wood', 'Never skip an already-full dominant resource');
+assert.equal(fullDominant.position, 'before');
+assert.equal(fullDominant.index, 0);
+assert.equal(fullDominant.completedTrade, null);
+assert.equal(atLine([mixed]), true);
+const summed = [
+ { ...mixed, id: 'first', resources: { wood: 100, stone: 2000, iron: 0 } },
+ { ...mixed, id: 'second', resources: { wood: 3000, stone: 0, iron: 0 } },
+];
+towns[1].stock = { wood: 9000, stone: 9500, iron: 0 };
+assert.equal(boundary(summed).resource, 'wood', 'Choose by total incoming across all shipments, not the earliest overflow');
+assert.equal(boundary(summed).index, 1, 'Ignore the smaller resource overflowing in an earlier shipment');
+assert.equal(context.getDominantIncomingResource([]).resource, null);
+console.log('Trade selection and dominant-resource checks passed');
 
 // Reproduce the live Grepolis predicate: isReturning() is true for inbound
 // deliveries to the selected town, despite its misleading name.

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.82
+// @version      1.2.83
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.82',
+    version: '1.2.83',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -1330,6 +1330,24 @@
       .egeltools-notification small { float: right; color: #6b5b46; margin-left: 8px; }
       .egeltools-notification p { margin: 4px 0 8px; white-space: normal; }
       .egeltools-notification button { margin-right: 6px; }
+      .egeltools-notification__heading { display: flex; align-items: center; gap: 6px; min-width: 0; }
+      .egeltools-notification__heading > :first-child { flex: 1; min-width: 0; }
+      #egeltools-notifications .egeltools-notification__dismiss { flex: 0 0 22px; width: 22px; height: 22px; padding: 0; margin: 0; border: 0; background: transparent; color: #70543b; font-size: 19px; line-height: 1; }
+      .egeltools-notification--warehouse { display: grid; grid-template-columns: minmax(45px, 1fr) auto 22px; align-items: center; gap: 7px; padding: 7px; }
+      #egeltools-notifications .egeltools-notification__town { padding: 0; margin: 0; border: 0; background: transparent; color: #70451e; font-weight: bold; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .egeltools-notification__resources { display: flex; align-items: center; gap: 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
+      .egeltools-notification__resource { display: grid; grid-template-columns: 28px auto; align-items: center; column-gap: 2px; }
+      .egeltools-notification__resource .resources_small { position: static; display: inline-block; min-width: 18px; min-height: 18px; margin: 0; float: none; }
+      .egeltools-notification__incoming { grid-column: 2; color: #6b5b46; font-size: 10px; }
+      .egeltools-notification__resource.is-dominant { color: #a0221e; font-weight: bold; }
+      @media (max-width: 380px) {
+        .egeltools-notification--warehouse { grid-template-columns: minmax(0, 1fr) 22px; }
+        .egeltools-notification--warehouse .egeltools-notification__resources { grid-row: 2; grid-column: 1 / -1; justify-content: space-between; }
+        .egeltools-notification--warehouse > .egeltools-notification__dismiss { grid-row: 1; grid-column: 2; }
+      }
+      #egeltools-notifications .egeltools-notification__dismiss:hover { background: #e7d9bb; border-radius: 3px; }
+      #egeltools-notifications .egeltools-notification__town:focus-visible,
+      #egeltools-notifications .egeltools-notification__dismiss:focus-visible { outline: 2px solid #467ba4; outline-offset: 1px; }
       #egeltools-notification-preview { padding: 10px 12px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       #egeltools-notifications-button {
         border: 1px solid #3f2d18;
@@ -3434,13 +3452,13 @@
   let notificationToastTimer = null;
   let notificationPreviewKey = null;
 
-  function notify({ key, title, message = '', level = 'info', action, actionLabel = 'Open', onDismiss } = {}) {
+  function notify({ key, title, message = '', level = 'info', action, actionLabel = 'Open', onDismiss, warehouse } = {}) {
     title = String(title || APP.name).trim();
     message = String(message).replace(/\s+/g, ' ').trim();
     key = key || `${level}:${title}:${message}`;
     const previous = notifications.get(key);
     notifications.delete(key);
-    notifications.set(key, { key, title, message, level, action, actionLabel, onDismiss,
+    notifications.set(key, { key, title, message, level, action, actionLabel, onDismiss, warehouse,
       count: (previous?.count || 0) + 1, unread: !notificationCenterOpen, time: Date.now() });
     while (notifications.size > NOTIFICATION_LIMIT) notifications.delete(notifications.keys().next().value);
     renderNotificationCenter();
@@ -3526,6 +3544,42 @@
     panel.style.top = `${Math.max(0, Math.min(bounds.top, window.innerHeight - bounds.height))}px`;
   }
 
+  function createNotificationResources(warehouse) {
+    const resources = document.createElement('div');
+    resources.className = 'egeltools-notification__resources';
+    for (const resource of TRADE_CAPACITY_MARKER.resources) {
+      const stock = warehouse.stock?.[resource];
+      const incoming = warehouse.incoming[resource] || 0;
+      const amount = document.createElement('span');
+      amount.className = 'egeltools-notification__resource';
+      const dominant = resource === warehouse.resource;
+      amount.classList.toggle('is-dominant', dominant);
+      const format = (value) => Number.isFinite(value) ? Math.floor(value).toLocaleString() : '?';
+      const label = `${RESOURCE_NAMES[resource]}: ${format(stock)} stored, ${format(incoming)} incoming, capacity ${format(warehouse.capacity)}${dominant ? ' · controls the red line' : ''}`;
+      amount.title = label;
+      amount.setAttribute('aria-label', label);
+      const icon = document.createElement('span');
+      icon.className = `resources_small ${resource}`;
+      icon.setAttribute('aria-hidden', 'true');
+      const value = document.createElement('span');
+      value.textContent = format(stock);
+      const arriving = document.createElement('span');
+      arriving.className = 'egeltools-notification__incoming';
+      arriving.textContent = `+${format(incoming)}`;
+      amount.append(icon, value, arriving);
+      resources.append(amount);
+    }
+    return resources;
+  }
+
+  function updateNotificationResources(key, warehouse) {
+    if (!notificationCenterOpen) return;
+    const row = [...document.querySelectorAll('#egeltools-notifications [data-notification-key]')]
+      .find((element) => element.dataset.notificationKey === key);
+    row?.querySelector('.egeltools-notification__resources')?.replaceWith(createNotificationResources(warehouse));
+    clampNotificationCenter();
+  }
+
   function renderNotificationCenter() {
     const panel = createNotificationCenter();
     panel.hidden = !notificationCenterOpen;
@@ -3546,32 +3600,51 @@
     [...notifications.values()].reverse().forEach((notice) => {
       const row = document.createElement('article');
       row.className = `egeltools-notification egeltools-notification--${notice.level}`;
-      const title = document.createElement('strong');
+      row.dataset.notificationKey = notice.key;
+      const heading = document.createElement('div');
+      heading.className = 'egeltools-notification__heading';
+      const title = document.createElement(notice.warehouse ? 'button' : 'strong');
       title.textContent = notice.title;
+      if (notice.warehouse) {
+        row.classList.add('egeltools-notification--warehouse');
+        title.type = 'button';
+        title.className = 'egeltools-notification__town';
+        title.title = `Go to ${notice.title}`;
+        title.addEventListener('click', () => notice.action?.());
+      }
       const meta = document.createElement('small');
       meta.textContent = `${new Date(notice.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${notice.count > 1 ? ` · ×${notice.count}` : ''}`;
-      row.append(title, meta);
-      if (notice.message) {
-        const message = document.createElement('p');
-        message.textContent = notice.message;
-        row.append(message);
-      }
-      if (notice.action) {
-        const action = document.createElement('button');
-        action.type = 'button';
-        action.textContent = notice.actionLabel;
-        action.addEventListener('click', () => notice.action());
-        row.append(action);
-      }
+      heading.append(title);
+      if (!notice.warehouse) heading.append(meta);
+      else row.title = `Warehouse red line · ${meta.textContent}`;
       const dismiss = document.createElement('button');
       dismiss.type = 'button';
-      dismiss.textContent = 'Dismiss';
+      dismiss.className = 'egeltools-notification__dismiss';
+      dismiss.textContent = '×';
+      dismiss.title = 'Dismiss';
       dismiss.setAttribute('aria-label', `Dismiss ${notice.title}`);
       dismiss.addEventListener('click', () => {
         removeNotification(notice.key, true);
         panel.querySelector('[data-close]').focus();
       });
-      row.append(dismiss);
+      row.append(heading);
+      if (notice.warehouse) {
+        row.append(createNotificationResources(notice.warehouse), dismiss);
+      } else {
+        heading.append(dismiss);
+        if (notice.message) {
+          const message = document.createElement('p');
+          message.textContent = notice.message;
+          row.append(message);
+        }
+        if (notice.action) {
+          const action = document.createElement('button');
+          action.type = 'button';
+          action.textContent = notice.actionLabel;
+          action.addEventListener('click', () => notice.action());
+          row.append(action);
+        }
+      }
       list.append(row);
     });
     clampNotificationCenter();
@@ -3579,23 +3652,33 @@
 
   function getTradeCapacityBoundary(currentResources, capacity, incomingTrades) {
     if (!currentResources || !Number.isFinite(capacity) || capacity <= 0) return null;
-    const totals = Object.fromEntries([...TRADE_CAPACITY_MARKER.resources].map((resource) => (
-      [resource, incomingTrades.reduce((sum, trade) => sum + trade.resources[resource], 0)]
-    )));
-    const resource = [...TRADE_CAPACITY_MARKER.resources]
-      .filter((key) => Number(currentResources[key]) < capacity)
-      .reduce((best, key) => best === null || totals[key] > totals[best] ? key : best, null);
-    if (resource === null || totals[resource] <= 0) return null;
+    const { resource, incoming } = getDominantIncomingResource(incomingTrades);
+    if (resource === null || incoming[resource] <= 0) return null;
+    if (Number(currentResources[resource]) >= capacity) {
+      const projected = Number(currentResources[resource]) + incomingTrades[0].resources[resource];
+      return { index: 0, resource, incoming, projected, overfill: projected - capacity,
+        position: 'before', completedTrade: null };
+    }
     let projected = Number(currentResources[resource]) || 0;
     for (let index = 0; index < incomingTrades.length; index += 1) {
       projected += incomingTrades[index].resources[resource];
       if (projected < capacity) continue;
       const overfill = Math.max(0, projected - capacity);
       const position = overfill > TRADE_CAPACITY_MARKER.maximumOverfillForAfterMarker ? 'before' : 'after';
-      return { index, resource, projected, overfill, position,
+      return { index, resource, incoming, projected, overfill, position,
         completedTrade: incomingTrades[position === 'before' ? index - 1 : index] || null };
     }
     return null;
+  }
+
+  function getDominantIncomingResource(trades) {
+    const incoming = Object.fromEntries([...TRADE_CAPACITY_MARKER.resources].map((resource) => (
+      [resource, trades.reduce((sum, trade) => sum + trade.resources[resource], 0)]
+    )));
+    const resource = [...TRADE_CAPACITY_MARKER.resources].reduce((best, key) => (
+      incoming[key] > (incoming[best] || 0) ? key : best
+    ), null);
+    return { resource, incoming };
   }
 
   const tradeCapacityPending = new Map();
@@ -3643,16 +3726,27 @@
     oscillator.stop(now + 0.5);
   }
 
-  function syncTradeCapacityNotifications() {
-    // Keep warehouse alerts synchronized with the shared inbox.
+  function syncTradeCapacityNotifications(arrivals = getTradeCapacityArrivals(), now = getResourceCheckerServerTime()) {
+    // Update amounts in place without replaying previews or increasing unread counts.
     for (const [townId, notice] of tradeCapacityNotices) {
       const key = `warehouse:${townId}`;
-      if (notice.published) continue;
-      notice.published = true;
       const town = findTown(townId);
+      const trades = [...arrivals.values()].filter((trade) => trade.townId === townId && trade.arrivalAt > now);
+      const warehouse = { stock: town ? { ...getTownResources(town) } : null,
+        capacity: town ? getTownStorageCapacity(town) : null,
+        incoming: getDominantIncomingResource(trades).incoming, resource: notice.resource };
+      const existing = notifications.get(key);
+      if (notice.published) {
+        if (existing && JSON.stringify(existing.warehouse) !== JSON.stringify(warehouse)) {
+          existing.warehouse = warehouse;
+          updateNotificationResources(key, warehouse);
+        }
+        continue;
+      }
+      notice.published = true;
       const name = String(getFirstMethodValue(town, ['getName'], ['name']) || `Town ${townId}`);
-      notify({ key, title: name, message: 'Warehouse reached the red line.', level: 'warning',
-        actionLabel: 'Go to town', action: () => selectTradeCapacityTown(townId),
+      notify({ key, title: name, message: 'Warehouse reached the red line.', level: 'warning', warehouse,
+        action: () => selectTradeCapacityTown(townId),
         onDismiss: () => acknowledgeTradeCapacityNotice(townId) });
     }
     for (const key of notifications.keys()) {
@@ -3673,7 +3767,7 @@
       const stock = town && getTownResources(town);
       const capacity = town && getTownStorageCapacity(town);
       if (!stock || !(capacity > 0)) continue;
-      const full = [...TRADE_CAPACITY_MARKER.resources].some((resource) => Number(stock[resource]) >= capacity);
+      const full = Number(stock[notice.resource]) >= capacity;
       if (full) {
         notice.seenFull = true;
       } else if (notice.seenFull || now - (notice.since ?? now) >= TRADE_CAPACITY_NOTICE_GRACE_SECONDS) {
@@ -3690,7 +3784,7 @@
       if (pending.arrivalAt <= now) {
         if (!tradeCapacityNotified.has(pending.id)) {
           tradeCapacityNotified.add(pending.id);
-          tradeCapacityNotices.set(townId, tradeCapacityNotices.get(townId) || { since: now, seenFull: false });
+          tradeCapacityNotices.set(townId, tradeCapacityNotices.get(townId) || { since: now, seenFull: false, resource: pending.resource });
           notify = true;
         }
         tradeCapacityPending.delete(townId);
@@ -3710,20 +3804,21 @@
       const town = findTown(townId);
       const boundary = getTradeCapacityBoundary(getTownResources(town), getTownStorageCapacity(town), trades);
       tradeCapacityPending.delete(townId);
-      if (boundary?.completedTrade) tradeCapacityPending.set(townId, boundary.completedTrade);
+      if (boundary?.completedTrade) tradeCapacityPending.set(townId, { ...boundary.completedTrade, resource: boundary.resource });
     }
     const selectionAlert = checkTradeCapacityTownSelection(arrivals, now);
     if (selectionAlert) {
       const townId = String(getCurrentTownId());
       if (!tradeCapacityNotices.has(townId)) {
-        tradeCapacityNotices.set(townId, { since: now, seenFull: false });
+        const { resource } = getDominantIncomingResource(byTown.get(townId) || []);
+        tradeCapacityNotices.set(townId, { since: now, seenFull: false, resource });
         notify = true;
       }
     }
     clearResolvedTradeCapacityNotices(now);
     if (notify || selectionAlert) playTradeCapacitySound();
 
-    syncTradeCapacityNotifications();
+    syncTradeCapacityNotifications(arrivals, now);
   }
 
   let tradeCapacitySelectedTownId = null;
@@ -3737,9 +3832,6 @@
     const trades = [...arrivals.values()].filter((trade) => (
       trade.townId === townId && trade.arrivalAt > now
     ));
-    if ([...TRADE_CAPACITY_MARKER.resources].some((resource) => (
-      stock[resource] >= capacity && trades.some((trade) => trade.resources[resource] > 0)
-    ))) return true;
     trades.sort((a, b) => a.arrivalAt - b.arrivalAt || a.id.localeCompare(b.id));
     const boundary = getTradeCapacityBoundary(stock, capacity, trades);
     return boundary?.position === 'before' && boundary.index === 0;
@@ -5256,7 +5348,7 @@
         const peak = Number.isFinite(previousPeak) ? Math.max(previousPeak, current) : current;
         if (peak !== previousPeak) {
           peaks[resource] = peak;
-          changed = true;
+          updateNotificationResources(key, warehouse);
         }
         if (Number.isFinite(effectiveCapacity)
           && effectiveCapacity > 0
@@ -5273,7 +5365,7 @@
         lock.peakResources = peaks;
         if (!Number.isFinite(savedCapacity) && Number.isFinite(effectiveCapacity)) {
           lock.storageCapacity = effectiveCapacity;
-          changed = true;
+          updateNotificationResources(key, warehouse);
         }
       }
     }
