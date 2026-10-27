@@ -1,0 +1,47 @@
+name: Publish userscript
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'MiroLemmens/Egeltools' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Publish authenticated branch head
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint=https://files.miro23.uk/egeltools/deploy
+          token=$(curl --fail --silent --show-error --max-time 30 \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${endpoint}" | jq -er .value)
+          echo "::add-mask::${token}"
+          curl --fail-with-body --silent --show-error --max-time 180 \
+            -X POST -H "Authorization: Bearer ${token}" "$endpoint" > result.json
+          cat result.json
+          echo "skipped=$(jq -r 'has("skipped")' result.json)" >> "$GITHUB_OUTPUT"
+      - name: Verify public download
+        if: steps.deploy.outputs.skipped != 'true'
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          base="https://files.miro23.uk/egeltools/${BRANCH}"
+          curl --fail --silent --show-error "${base}/deployment.json?commit=${COMMIT}" > deployment.json
+          if [ "$(jq -r .commit deployment.json)" != "$COMMIT" ]; then
+            echo 'Public deployment commit does not match this run.'
+            exit 1
+          fi
+          curl --fail --silent --show-error "${base}/EgelTools.user.js?commit=${COMMIT}" > EgelTools.user.js
+          echo "$(jq -r .sha256 deployment.json)  EgelTools.user.js" | sha256sum --check
+          node --check EgelTools.user.js
