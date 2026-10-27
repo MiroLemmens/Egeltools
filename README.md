@@ -104,3 +104,5 @@ Under **Settings → Attack movements**, **Hide non-cancellable movements** cont
 Town distances includes a saved sliding toggle in its title bar. It filters available trade capacity strictly above the threshold under **Settings → Town distances** (default **5,000**). Unknown capacity is excluded. Refresh recalculates current capacity.
 
 Under **Settings → Culture overview**, **Show Orpheus** controls Orpheus status and transfer controls while Administrator is active. Enabled by default, the preference persists across reloads and takes effect immediately.
+
+The Council of Heroes has an **Assign here** button beside each owned hero. It cancels an existing transfer or unassigns the selected hero before assigning them to the current city, with normal travel time. If another hero is assigned or incoming, a native confirmation popup explains their removal first. Heroes already here or incoming here, and heroes accompanying an army, cannot be reassigned through this button. An unconfirmed request blocks further transfers until refresh; check the hero status before retrying.

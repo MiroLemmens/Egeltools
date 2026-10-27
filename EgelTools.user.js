@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.81
+// @version      1.2.82
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.81',
+    version: '1.2.82',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -4837,10 +4837,70 @@
   }
 
   let orpheusTransferPending = false;
+  let heroTransferUncertain = false;
+
+  function getCouncilHeroes() {
+    return getModelArray(window.MM?.getCollections?.()?.PlayerHero?.[0]
+      || window.MM?.getModels?.()?.PlayerHero);
+  }
+
+  function getCouncilHeroState(hero) {
+    const arrival = normalizeResourceCheckerTimestamp(getFirstMethodValue(
+      hero, ['getArrivalAt', 'getAssignmentArrivalAt'], ['town_arrival_at', 'assignment_arrival_at'],
+    ));
+    const travelling = arrival != null && arrival > getResourceCheckerServerTime();
+    const town = getFirstMethodValue(hero, ['getOriginTownId', 'getHomeTownId'], ['origin_town_id', 'home_town_id']);
+    const attacking = hero?.attacksTown?.() || getFirstMethodValue(hero, [], ['assignment_type']) === 'command';
+    return { travelling, town, attacking };
+  }
+
+  function renderCouncilHeroButtons() {
+    const rows = document.querySelectorAll('.heroes_overview .hero_slot');
+    if (!rows.length || typeof window.jQuery?.fn?.button !== 'function') return;
+    const heroes = getCouncilHeroes();
+    for (const row of rows) {
+      const hero = heroes.find((candidate) => row.classList.contains(String(candidate.getId())));
+      if (!hero) continue;
+      let button = row.querySelector('.egeltools-hero-swap');
+      if (!button) {
+        row.style.position = 'relative';
+        button = document.createElement('div');
+        button.className = 'egeltools-hero-swap';
+        button.style.cssText = 'position:absolute;right:20px;bottom:2px;z-index:1;max-width:150px;';
+        button.setAttribute('role', 'button');
+        button.tabIndex = 0;
+        row.append(button);
+        window.jQuery(button).button({ caption: 'Assign here' }).on('btn:click', () => {
+          if (button.getAttribute('aria-disabled') !== 'true') {
+            moveCouncilHero(hero.getId(), Number(window.Game?.townId));
+          }
+        });
+        button.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            window.jQuery(button).trigger('btn:click');
+          }
+        });
+      }
+      const state = getCouncilHeroState(hero);
+      const here = String(state.town) === String(window.Game?.townId);
+      const disabled = orpheusTransferPending || heroTransferUncertain || here || state.attacking
+        || typeof hero.execute !== 'function';
+      button.classList.toggle('disabled', Boolean(disabled));
+      button.setAttribute('aria-disabled', String(Boolean(disabled)));
+      button.title = heroTransferUncertain ? 'Refresh before retrying: a hero request was not confirmed.'
+        : state.attacking ? 'This hero is accompanying an army.'
+          : here ? (state.travelling ? 'Already on the way to this city.' : 'Already assigned to this city.')
+            : 'Assign this hero to the selected city (normal travel time applies).';
+    }
+  }
 
   function executeCultureHeroAction(hero, action, townId) {
     return new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => reject(new Error('Hero request timed out; refresh before retrying.')), 15000);
+      const timer = window.setTimeout(() => {
+        heroTransferUncertain = true;
+        reject(new Error('Hero request timed out; refresh before retrying.'));
+      }, 15000);
       const finish = (error) => {
         window.clearTimeout(timer);
         if (error) reject(new Error('The game could not complete the hero action.'));
@@ -4855,68 +4915,79 @@
   }
 
   async function moveCultureOrpheus(townId) {
-    const hero = getCultureOrpheus();
-    if (orpheusTransferPending || !isAdministratorActive() || !hero) return;
-    const heroes = getModelArray(window.MM?.getCollections?.()?.PlayerHero?.[0]
-      || window.MM?.getModels?.()?.PlayerHero);
-    const occupant = heroes.find((candidate) => candidate !== hero && [
-      getFirstMethodValue(candidate, ['getHomeTownId'], ['home_town_id']),
-      getFirstMethodValue(candidate, ['getOriginTownId'], ['origin_town_id']),
-      getFirstMethodValue(candidate, ['getTargetTownId'], ['target_town_id']),
-    ].some((id) => id != null && String(id) === String(townId)));
+    if (!isAdministratorActive()) return;
+    return moveCouncilHero('orpheus', townId, true);
+  }
+
+  async function moveCouncilHero(heroId, townId, requiresAdministrator = false) {
+    const findHero = () => getCouncilHeroes().find((hero) => String(hero.getId()) === String(heroId));
+    const hero = findHero();
+    if (orpheusTransferPending || heroTransferUncertain || !hero || !Number.isInteger(townId) || townId <= 0) return;
+    const state = getCouncilHeroState(hero);
+    if (state.attacking || String(state.town) === String(townId)) return;
+    const occupants = () => getCouncilHeroes().filter((candidate) => candidate.getId() !== hero.getId()
+      && String(getCouncilHeroState(candidate).town) === String(townId));
+    const initialOccupants = occupants();
+    const name = String(getFirstMethodValue(hero, ['getName', 'getId'], ['type']) || 'hero');
+    const escape = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[character]));
     orpheusTransferPending = true;
     renderAdministratorOrpheus();
+    renderCouncilHeroButtons();
     try {
-      if (occupant) {
-        const occupantArrival = normalizeResourceCheckerTimestamp(getFirstMethodValue(
-          occupant, ['getAssignmentArrivalAt', 'getArrivalAt'], ['town_arrival_at', 'assignment_arrival_at', 'arrival_at'],
-        ));
-        const travelling = occupantArrival != null && occupantArrival > getResourceCheckerServerTime();
-        const name = String(getFirstMethodValue(occupant, ['getName', 'getId'], ['type']) || 'Another hero');
+      if (initialOccupants.length) {
         const factory = window.ConfirmationWindowFactory;
         if (typeof factory?.openSimpleConfirmation !== 'function') {
           throw new Error('The game confirmation window is unavailable.');
         }
-        const escapedName = name.replace(/[&<>"']/g, (character) => ({
-          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-        }[character]));
+        const details = initialOccupants.map((occupant) => {
+          const occupantName = escape(getFirstMethodValue(occupant, ['getName', 'getId'], ['type']) || 'Another hero');
+          return getCouncilHeroState(occupant).travelling
+            ? `${occupantName} is on the way to this city. Their journey will be cancelled.`
+            : `${occupantName} is assigned to this city and will be unassigned.`;
+        }).join('<br>');
         const confirmed = await new Promise((resolve) => factory.openSimpleConfirmation(
-          'Move Orpheus',
-          travelling
-            ? `${escapedName} is on the way to this city. Cancel that hero’s journey and move Orpheus here?`
-            : `${escapedName} is already assigned to this city. Remove that hero and move Orpheus here?`,
+          `Move ${escape(name)}`, `${details}<br>Assign ${escape(name)} here?`,
           () => resolve(true), () => resolve(false),
         ));
         if (!confirmed) return;
       }
-      if (!isAdministratorActive()) throw new Error('Administrator is no longer active.');
-      const arrival = normalizeResourceCheckerTimestamp(getFirstMethodValue(
-        hero, ['getArrivalAt'], ['town_arrival_at'],
-      ));
-      if (arrival != null && arrival > getResourceCheckerServerTime()) {
-        const travelTown = getFirstMethodValue(hero, ['getOriginTownId'], ['origin_town_id']);
-        await executeCultureHeroAction(hero, 'cancelTownTravel', travelTown);
-      }
-      const current = getCultureOrpheus();
-      const origin = getFirstMethodValue(current, ['getOriginTownId', 'getHomeTownId'], ['origin_town_id', 'home_town_id']);
-      if (origin != null) await executeCultureHeroAction(current, 'unassignFromTown', origin);
-      if (occupant) {
-        const occupantArrival = normalizeResourceCheckerTimestamp(getFirstMethodValue(
-          occupant, ['getAssignmentArrivalAt', 'getArrivalAt'], ['town_arrival_at', 'assignment_arrival_at', 'arrival_at'],
-        ));
-        if (occupantArrival != null && occupantArrival > getResourceCheckerServerTime()) {
-          const travelTown = getFirstMethodValue(occupant, ['getOriginTownId', 'getTargetTownId'], ['origin_town_id', 'target_town_id']);
-          await executeCultureHeroAction(occupant, 'cancelTownTravel', travelTown ?? townId);
-        } else {
-          await executeCultureHeroAction(occupant, 'unassignFromTown', townId);
+      const check = () => {
+        if (requiresAdministrator && !isAdministratorActive()) throw new Error('Administrator is no longer active.');
+        if (!requiresAdministrator && String(window.Game?.townId) !== String(townId)) {
+          throw new Error('The selected city changed. Please try again.');
         }
+        if (!findHero() || getCouncilHeroState(findHero()).attacking) throw new Error('The hero is no longer available.');
+        if (occupants().some((occupant) => !initialOccupants.some((old) => old.getId() === occupant.getId()))) {
+          throw new Error('The city’s hero changed. Please try again.');
+        }
+      };
+      check();
+      // Clear the destination first, only after the player has confirmed its occupants.
+      for (const occupant of occupants()) {
+        const current = getCouncilHeroState(occupant);
+        if (current.attacking) throw new Error('The city’s hero is accompanying an army.');
+        await executeCultureHeroAction(occupant, current.travelling ? 'cancelTownTravel' : 'unassignFromTown', current.town);
+        check();
       }
-      await executeCultureHeroAction(hero, 'assignToTown', townId);
+      let current = getCouncilHeroState(findHero());
+      if (current.travelling) {
+        await executeCultureHeroAction(findHero(), 'cancelTownTravel', current.town);
+        check();
+        current = getCouncilHeroState(findHero());
+      }
+      if (current.town != null) {
+        await executeCultureHeroAction(findHero(), 'unassignFromTown', current.town);
+        check();
+      }
+      await executeCultureHeroAction(findHero(), 'assignToTown', townId);
     } catch (error) {
-      showCelebrationMessage(`Could not finish moving Orpheus: ${error.message}`, true);
+      showCelebrationMessage(`Could not finish moving ${name}: ${error.message}`, true);
     } finally {
       orpheusTransferPending = false;
       renderAdministratorOrpheus();
+      renderCouncilHeroButtons();
       renderCelebrationFinder();
     }
   }
@@ -4950,7 +5021,7 @@
     button.className = 'egeltools-orpheus-button hero25x25 orpheus';
     button.dataset.state = here ? incoming ? 'incoming' : 'present' : 'away';
     if (timing) button.dataset.timing = timing;
-    button.disabled = orpheusTransferPending || !hero || here || typeof hero.execute !== 'function';
+    button.disabled = orpheusTransferPending || heroTransferUncertain || !hero || here || typeof hero.execute !== 'function';
     button.title = button.disabled && !here ? 'Orpheus transfer is unavailable in the current game state.' : 'Assign Orpheus to this city';
     button.title = text || button.title;
     button.setAttribute('aria-label', button.title);
@@ -9298,6 +9369,8 @@
     initCelebrationFinder();
     renderAdministratorOrpheus();
     window.setInterval(renderAdministratorOrpheus, 1000);
+    renderCouncilHeroButtons();
+    window.setInterval(renderCouncilHeroButtons, 1000);
     initTownDistanceSorter();
     initResourceChecker();
     initBdLevelCheck();
