@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.88
+// @version      1.2.89
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.88',
+    version: '1.2.89',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -7091,12 +7091,19 @@
           response,
         );
       }
-      showCelebrationMessage(
-        success
-          ? `${donor.name} sent ${donor.total.toLocaleString()} resources to ${targetTown.name}.`
-          : message || (uncertain ? 'Trade was not confirmed. Check outgoing trades before reloading.' : 'Grepolis could not send the proposed trade.'),
-        !success,
-      );
+      if (success) {
+        // A sent party trade stays silent: the button's Sent state and the
+        // panel's in-transit line already confirm it, so no inbox entry or
+        // preview is raised.
+        console.info(
+          `[${APP.name}] ${donor.name} sent ${donor.total.toLocaleString()} resources to ${targetTown.name}.`,
+        );
+      } else {
+        showCelebrationMessage(
+          message || (uncertain ? 'Trade was not confirmed. Check outgoing trades before reloading.' : 'Grepolis could not send the proposed trade.'),
+          true,
+        );
+      }
       setTradeStatus(success ? 'Sent' : uncertain ? 'Check trades' : 'Retry', success || uncertain);
       updateResourceTradeButtons();
     };
