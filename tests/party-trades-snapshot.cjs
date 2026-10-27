@@ -11,7 +11,7 @@ const context = vm.createContext({
   localStorage: { getItem: () => null },
   isAdministratorActive: () => true,
   createResourceCheckerPanel: () => panel,
-  createResourceCheckerButton: () => ({}),
+  createResourceCheckerButton: () => ({ setAttribute() {} }),
   RESOURCE_CHECKER: { resources: ['wood', 'stone', 'iron'], minimumTradeAmount: 500 },
   resourceCheckerOpen: true,
   document: { createElement: () => ({}) },
