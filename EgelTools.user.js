@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.93
+// @version      1.2.94
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.93',
+    version: '1.2.94',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -3684,7 +3684,10 @@
   const tradeCapacityPending = new Map();
   const tradeCapacityNotified = new Set();
   const tradeCapacityNotices = new Map();
-  const TRADE_CAPACITY_NOTICE_GRACE_SECONDS = 10;
+  // Other towns' stock can refresh well after a delivery lands.
+  const TRADE_CAPACITY_NOTICE_GRACE_SECONDS = 60;
+  // Grepolis may drop a delivered trade model just before its arrival tick.
+  const TRADE_CAPACITY_ARRIVAL_TOLERANCE_SECONDS = 3;
   let tradeCapacityAudio = null;
 
   function getTradeCapacityArrivals() {
@@ -3759,18 +3762,20 @@
     syncTradeCapacityNotifications();
   }
 
-  // Town stock can lag the arrival tick, so only clear an alarm once the
-  // warehouse was seen full (or the grace period passed) and has room again.
-  function clearResolvedTradeCapacityNotices(now) {
+  // Town stock can lag the arrival tick, so only clear an alarm once the town
+  // was seen at the line (or the grace period passed) and is below it again.
+  // A line before the next delivery keeps the alarm, even with room left now.
+  function clearResolvedTradeCapacityNotices(now, arrivals) {
     for (const [townId, notice] of tradeCapacityNotices) {
       const town = findTown(townId);
       const stock = town && getTownResources(town);
       const capacity = town && getTownStorageCapacity(town);
       if (!stock || !(capacity > 0)) continue;
-      const full = Number(stock[notice.resource]) >= capacity;
-      if (full) {
-        notice.seenFull = true;
-      } else if (notice.seenFull || now - (notice.since ?? now) >= TRADE_CAPACITY_NOTICE_GRACE_SECONDS) {
+      const atLine = Number(stock[notice.resource]) >= capacity
+        || isTradeCapacityLineReached(townId, arrivals, now);
+      if (atLine) {
+        notice.seenAtLine = true;
+      } else if (notice.seenAtLine || now - (notice.since ?? now) >= TRADE_CAPACITY_NOTICE_GRACE_SECONDS) {
         tradeCapacityNotices.delete(townId);
       }
     }
@@ -3784,12 +3789,16 @@
       if (pending.arrivalAt <= now) {
         if (!tradeCapacityNotified.has(pending.id)) {
           tradeCapacityNotified.add(pending.id);
-          tradeCapacityNotices.set(townId, tradeCapacityNotices.get(townId) || { since: now, seenFull: false, resource: pending.resource });
-          notify = true;
+          // A town already in alarm is not chimed again for its next delivery.
+          if (!tradeCapacityNotices.has(townId)) {
+            tradeCapacityNotices.set(townId, { since: now, seenAtLine: false, resource: pending.resource });
+            notify = true;
+          }
         }
         tradeCapacityPending.delete(townId);
-      } else if (!arrivals.has(pending.id)) {
-        // A shipment removed before its deadline was cancelled, not completed.
+      } else if (!arrivals.has(pending.id)
+        && pending.arrivalAt - now > TRADE_CAPACITY_ARRIVAL_TOLERANCE_SECONDS) {
+        // A shipment removed well before its deadline was cancelled, not completed.
         tradeCapacityPending.delete(townId);
       }
     }
@@ -3802,20 +3811,29 @@
     for (const [townId, trades] of byTown) {
       trades.sort((a, b) => a.arrivalAt - b.arrivalAt || a.id.localeCompare(b.id));
       const town = findTown(townId);
-      const boundary = getTradeCapacityBoundary(getTownResources(town), getTownStorageCapacity(town), trades);
+      // Keep a shipment that is landing right now until its arrival settles.
+      const landing = tradeCapacityPending.get(townId);
+      if (landing && !arrivals.has(landing.id)) continue;
+      const stock = getTownResources(town);
+      const capacity = getTownStorageCapacity(town);
+      const boundary = getTradeCapacityBoundary(stock, capacity, trades);
       tradeCapacityPending.delete(townId);
-      if (boundary?.completedTrade) tradeCapacityPending.set(townId, { ...boundary.completedTrade, resource: boundary.resource });
+      // Without a predecessor, alert when the overfilling shipment itself lands,
+      // unless the warehouse is already full (selection covers that case).
+      const alertTrade = boundary && (boundary.completedTrade
+        || (Number(stock[boundary.resource]) < capacity ? trades[boundary.index] : null));
+      if (alertTrade) tradeCapacityPending.set(townId, { ...alertTrade, resource: boundary.resource });
     }
     const selectionAlert = checkTradeCapacityTownSelection(arrivals, now);
     if (selectionAlert) {
       const townId = String(getCurrentTownId());
       if (!tradeCapacityNotices.has(townId)) {
         const { resource } = getDominantIncomingResource(byTown.get(townId) || []);
-        tradeCapacityNotices.set(townId, { since: now, seenFull: false, resource });
+        tradeCapacityNotices.set(townId, { since: now, seenAtLine: false, resource });
         notify = true;
       }
     }
-    clearResolvedTradeCapacityNotices(now);
+    clearResolvedTradeCapacityNotices(now, arrivals);
     if (notify || selectionAlert) playTradeCapacitySound();
 
     syncTradeCapacityNotifications(arrivals, now);
@@ -3824,7 +3842,11 @@
   let tradeCapacitySelectedTownId = null;
 
   function isTradeCapacityTownAtLine(townId, arrivals, now) {
-    if (tradeCapacityNotices.has(townId)) return true;
+    return tradeCapacityNotices.has(townId) || isTradeCapacityLineReached(townId, arrivals, now);
+  }
+
+  // The red line sits before the next delivery: the town is already at it.
+  function isTradeCapacityLineReached(townId, arrivals, now) {
     const town = findTown(townId);
     const stock = town && getTownResources(town);
     const capacity = town && getTownStorageCapacity(town);

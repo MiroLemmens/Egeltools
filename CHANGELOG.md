@@ -19,6 +19,12 @@ All published EgelTools releases are preserved at <https://files.miro23.uk/egelt
 - Show the number of listed towns in the Show CFs dock button and the recommended-trade count in the Party trades button, in the same compact ` · N` format as Notifications. Both counts stay visible while their panels are open, and zero is shown as a number instead of a check mark.
 - Refresh the CFs count every 10 seconds while its panel is closed, and build the first Party trades snapshot in the background so its count appears before the panel is opened. Later Party trades snapshots remain user-driven.
 
+## 1.2.94 — 2026-10-28
+
+- Fix warehouse alerts for incoming trades that never appeared or vanished unseen. A shipment that overfills a warehouse with room left by more than 2,000 now alerts when it lands, even without an earlier shipment to mark the line.
+- An alert raised one shipment before the line stays while the next delivery would still overfill, instead of clearing after 10 seconds because the warehouse was not full yet. Stock updates for other towns now get 60 seconds instead of 10 before an unconfirmed alert expires.
+- A trade the game removes just before its arrival tick counts as delivered instead of cancelled. A town already in alarm is not chimed again for its next delivery.
+
 ## 1.2.93 — 2026-10-28
 
 - Fix the Council of Heroes Assign here button being invisible in 1.2.92: add the `button_new` class the game’s square tile styles require.
