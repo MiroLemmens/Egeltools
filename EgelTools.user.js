@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.94
+// @version      1.2.96
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.94',
+    version: '1.2.96',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -5482,7 +5482,7 @@
         const peak = Number.isFinite(previousPeak) ? Math.max(previousPeak, current) : current;
         if (peak !== previousPeak) {
           peaks[resource] = peak;
-          updateNotificationResources(key, warehouse);
+          changed = true;
         }
         if (Number.isFinite(effectiveCapacity)
           && effectiveCapacity > 0
@@ -5499,7 +5499,7 @@
         lock.peakResources = peaks;
         if (!Number.isFinite(savedCapacity) && Number.isFinite(effectiveCapacity)) {
           lock.storageCapacity = effectiveCapacity;
-          updateNotificationResources(key, warehouse);
+          changed = true;
         }
       }
     }
