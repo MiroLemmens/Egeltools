@@ -19,6 +19,11 @@ All published EgelTools releases are preserved at <https://files.miro23.uk/egelt
 - Show the number of listed towns in the Show CFs dock button and the recommended-trade count in the Party trades button, in the same compact ` · N` format as Notifications. Both counts stay visible while their panels are open, and zero is shown as a number instead of a check mark.
 - Refresh the CFs count every 10 seconds while its panel is closed, and build the first Party trades snapshot in the background so its count appears before the panel is opened. Later Party trades snapshots remain user-driven.
 
+## 1.2.91 — 2026-10-28
+
+- Draw the Council of Heroes Assign here button with the same small square frame as the native Cancel travel button, with its own light house-and-arrow icon.
+- Treat a travelling hero's arrival bar and Cancel button as one group: the Assign here button sits to the right of Cancel and never covers it or the timer. Without a journey it stays aligned right beside the Assign/Unassign button.
+
 ## 1.2.90 — 2026-10-27
 
 - Give the Council of Heroes Assign here icon button the same double-bordered frame as the native Assign/Unassign buttons, with a gold icon that matches their text.
