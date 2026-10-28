@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.92
+// @version      1.2.93
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.92',
+    version: '1.2.93',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -5042,7 +5042,9 @@
     });
     // The game's own square "transfer in" tile: same frame, hover and disabled states as the
     // Cancel travel button (square remove), with a door-and-arrow icon instead of the X.
-    button.classList.add('square', 'transfer_in');
+    // The widget builds the inner parts but not the button_new class the square tile rules need;
+    // without it the button has no size or image.
+    button.classList.add('button_new', 'square', 'transfer_in');
     button.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
