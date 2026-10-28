@@ -9285,6 +9285,18 @@
       narcissism: 'Narcissism',
       town_protection: 'City Protection',
     };
+    // These ritual effects have no documented power IDs, so match the ID or the game's own name.
+    const effects = [
+      [/nereid/, 'Help from the Nereids'],
+      [/passion/, 'Passionate Population'],
+    ];
+    function getSpellName(id) {
+      if (names[id]) return names[id];
+      const gameName = window.GameData?.powers?.[id]?.name;
+      const text = `${id} ${gameName || ''}`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      const effect = effects.find(([pattern]) => pattern.test(text));
+      return effect ? gameName || effect[1] : null;
+    }
     const collections = window.MM?.getCollections?.() || {};
     const powers = Object.values(collections.CastedPowers || collections.CastedPower || {})
       .flatMap(getModelArray);
@@ -9298,16 +9310,17 @@
       // The segmented collection holds this specific town’s powers.
       const townPowers = townModel?.casted_powers_collection;
       const candidates = townPowers != null ? getModelArray(townPowers) : powers;
-      const active = new Set();
+      const active = new Map();
       candidates.forEach((power) => {
         const id = getFirstMethodValue(power, ['getPowerId'], ['power_id']);
         const town = getFirstMethodValue(power, ['getTownId'], ['town_id'])
           ?? (townPowers != null ? townId : null);
         const end = normalizeResourceCheckerTimestamp(getFirstMethodValue(
           power, ['getEndAt'], ['end_at', 'expires_at']));
-        if (String(town) === String(townId) && names[id] && (!end || end > now)) active.add(id);
+        const name = id ? getSpellName(id) : null;
+        if (String(town) === String(townId) && name && (!end || end > now)) active.set(id, name);
       });
-      const signature = [...active].sort().join(',');
+      const signature = [...active.keys()].sort().join(',');
       let container = row.querySelector('.egeltools-town-spells');
       if (!signature) { container?.remove(); return; }
       if (container?.dataset.spells === signature) return;
@@ -9319,11 +9332,11 @@
       }
       container.dataset.spells = signature;
       container.replaceChildren();
-      [...active].sort().forEach((id) => {
+      [...active.keys()].sort().forEach((id) => {
         const icon = document.createElement('span');
         icon.className = `power_icon16x16 ${id}`;
         icon.style.cssText = 'display:inline-block;width:16px;height:16px';
-        icon.title = `${names[id]} active`;
+        icon.title = `${active.get(id)} active`;
         icon.setAttribute('aria-label', icon.title);
         container.append(icon);
       });

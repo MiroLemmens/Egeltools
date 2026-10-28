@@ -23,6 +23,10 @@ All published EgelTools releases are preserved at <https://files.miro23.uk/egelt
 - Show the number of listed towns in the Show CFs dock button and the recommended-trade count in the Party trades button, in the same compact ` · N` format as Notifications. Both counts stay visible while their panels are open, and zero is shown as a number instead of a check mark.
 - Refresh the CFs count every 10 seconds while its panel is closed, and build the first Party trades snapshot in the background so its count appears before the panel is opened. Later Party trades snapshots remain user-driven.
 
+## 1.2.95 — 2026-10-28
+
+- Show Help from the Nereids and Passionate Population in the town list's spell icons, next to Call of the Ocean, Population Growth and the other tracked spells. Their tooltips use the game's own power name.
+
 ## 1.2.94 — 2026-10-28
 
 - Fix warehouse alerts for incoming trades that never appeared or vanished unseen. A shipment that overfills a warehouse with room left by more than 2,000 now alerts when it lands, even without an earlier shipment to mark the line.
