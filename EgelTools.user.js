@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.90
+// @version      1.2.91
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.90',
+    version: '1.2.91',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -4930,8 +4930,8 @@
 
   const COUNCIL_HERO_SWAP_ICON = `data:image/svg+xml,${encodeURIComponent(
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-    + '<path d="M8 1.4 1.8 7.1V14h12.4V7.1z" fill="none" stroke="#ffcc66" stroke-width="1.5" stroke-linejoin="round"/>'
-    + '<path d="M8 5.6v5.2M5.6 8.6 8 11l2.4-2.4" fill="none" stroke="#ffcc66" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
+    + '<path d="M8 1.4 1.8 7.1V14h12.4V7.1z" fill="none" stroke="#fff3d1" stroke-width="1.6" stroke-linejoin="round"/>'
+    + '<path d="M8 5.6v5.2M5.6 8.6 8 11l2.4-2.4" fill="none" stroke="#fff3d1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
     + '</svg>',
   )}`;
 
@@ -4940,10 +4940,10 @@
     const style = document.createElement('style');
     style.id = 'egeltools-hero-swap-style';
     style.textContent = `
-      .egeltools-hero-swap { white-space:nowrap; }
-      .egeltools-hero-swap .caption { padding:0 7px !important;min-width:0 !important; }
-      .egeltools-hero-swap-icon { display:inline-block;width:16px;height:16px;vertical-align:middle;
-        background:url("${COUNCIL_HERO_SWAP_ICON}") center/contain no-repeat; }
+      .egeltools-hero-swap-icon { position:absolute;left:50%;top:50%;width:14px;height:14px;
+        margin:-7px 0 0 -7px;pointer-events:none;z-index:2;
+        background:url("${COUNCIL_HERO_SWAP_ICON}") center/contain no-repeat;
+        filter:drop-shadow(0 1px 0 rgba(0,0,0,.8)); }
       .egeltools-hero-swap.disabled .egeltools-hero-swap-icon { opacity:.45; }
     `;
     document.head.append(style);
@@ -5014,14 +5014,15 @@
     return list;
   }
 
-  // Places the swap button beside the native button cluster in the row's .locations box: to its
-  // right when that space is free, otherwise to its left, so a Cancel control or a travel timer
-  // never ends up underneath it.
+  // Places the swap button beside the native controls in the row's .locations box (the
+  // Assign/Unassign button, or a travelling hero's arrival bar and square Cancel button): to their
+  // right when that space is free, otherwise to their left, so it never covers Cancel or the timer.
   function getCouncilHeroButtonPlacement(row, ownButton) {
     const isOwn = (element) => element === ownButton || Boolean(ownButton?.contains(element));
     const locations = row.querySelector('.locations');
     const cluster = locations
-      ? [...locations.querySelectorAll('.button_new')].filter((element) => !isOwn(element) && isCouncilElementVisible(element))
+      ? [...locations.querySelectorAll('.button_new, .single-progressbar')]
+        .filter((element) => !isOwn(element) && isCouncilElementVisible(element))
       : [];
     const rects = cluster.map((element) => getCouncilLocalRect(element, row)).filter(Boolean);
     let anchor = null;
@@ -5034,7 +5035,7 @@
       anchor = getCouncilLocalRect(locations, row);
     }
     if (!anchor) return null;
-    const width = ownButton?.offsetWidth || 42;
+    const width = ownButton?.offsetWidth || 29;
     const height = ownButton?.offsetHeight || 29;
     const top = Math.round(anchor.top + (anchor.bottom - anchor.top - height) / 2);
     const candidates = [anchor.right + 6, anchor.left - 6 - width].map((left) => ({ left: Math.round(left), top }));
@@ -5061,14 +5062,14 @@
         moveCouncilHero(hero.getId(), Number(window.Game?.townId));
       }
     });
-    // Match the double-bordered Assign/Unassign buttons beside it and show only the icon.
-    button.classList.add('double_border');
+    // Use the same square frame as the native Cancel travel button, with our own icon on top.
+    button.classList.add('square');
     const caption = button.querySelector('.caption') || button;
     for (const node of [...caption.childNodes]) if (node.nodeType === 3) node.remove();
     const icon = document.createElement('span');
     icon.className = 'egeltools-hero-swap-icon';
     icon.setAttribute('aria-hidden', 'true');
-    caption.prepend(icon);
+    button.append(icon);
     button.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
