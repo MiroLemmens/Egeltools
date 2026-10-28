@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.91
+// @version      1.2.92
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.91',
+    version: '1.2.92',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -4928,27 +4928,6 @@
       .find((hero) => String(getFirstMethodValue(hero, ['getId'], ['id', 'hero_id'])).toLowerCase() === 'orpheus');
   }
 
-  const COUNCIL_HERO_SWAP_ICON = `data:image/svg+xml,${encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
-    + '<path d="M8 1.4 1.8 7.1V14h12.4V7.1z" fill="none" stroke="#fff3d1" stroke-width="1.6" stroke-linejoin="round"/>'
-    + '<path d="M8 5.6v5.2M5.6 8.6 8 11l2.4-2.4" fill="none" stroke="#fff3d1" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'
-    + '</svg>',
-  )}`;
-
-  function ensureCouncilHeroSwapStyle() {
-    if (document.getElementById('egeltools-hero-swap-style')) return;
-    const style = document.createElement('style');
-    style.id = 'egeltools-hero-swap-style';
-    style.textContent = `
-      .egeltools-hero-swap-icon { position:absolute;left:50%;top:50%;width:14px;height:14px;
-        margin:-7px 0 0 -7px;pointer-events:none;z-index:2;
-        background:url("${COUNCIL_HERO_SWAP_ICON}") center/contain no-repeat;
-        filter:drop-shadow(0 1px 0 rgba(0,0,0,.8)); }
-      .egeltools-hero-swap.disabled .egeltools-hero-swap-icon { opacity:.45; }
-    `;
-    document.head.append(style);
-  }
-
   let orpheusTransferPending = false;
   let heroTransferUncertain = false;
 
@@ -5035,10 +5014,10 @@
       anchor = getCouncilLocalRect(locations, row);
     }
     if (!anchor) return null;
-    const width = ownButton?.offsetWidth || 29;
-    const height = ownButton?.offsetHeight || 29;
+    const width = ownButton?.offsetWidth || 22;
+    const height = ownButton?.offsetHeight || 23;
     const top = Math.round(anchor.top + (anchor.bottom - anchor.top - height) / 2);
-    const candidates = [anchor.right + 6, anchor.left - 6 - width].map((left) => ({ left: Math.round(left), top }));
+    const candidates = [anchor.right + 3, anchor.left - 3 - width].map((left) => ({ left: Math.round(left), top }));
     const rowRect = row.getBoundingClientRect();
     const scale = row.offsetWidth && rowRect.width ? rowRect.width / row.offsetWidth : 1;
     const skip = (element) => isOwn(element) || cluster.some((member) => member === element || member.contains(element));
@@ -5049,7 +5028,6 @@
   }
 
   function createCouncilHeroSwapButton(row, hero) {
-    ensureCouncilHeroSwapStyle();
     row.style.position = 'relative';
     const button = document.createElement('div');
     button.className = 'egeltools-hero-swap';
@@ -5062,14 +5040,9 @@
         moveCouncilHero(hero.getId(), Number(window.Game?.townId));
       }
     });
-    // Use the same square frame as the native Cancel travel button, with our own icon on top.
-    button.classList.add('square');
-    const caption = button.querySelector('.caption') || button;
-    for (const node of [...caption.childNodes]) if (node.nodeType === 3) node.remove();
-    const icon = document.createElement('span');
-    icon.className = 'egeltools-hero-swap-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    button.append(icon);
+    // The game's own square "transfer in" tile: same frame, hover and disabled states as the
+    // Cancel travel button (square remove), with a door-and-arrow icon instead of the X.
+    button.classList.add('square', 'transfer_in');
     button.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
