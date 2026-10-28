@@ -35,7 +35,7 @@ function setup(scale = 1) {
   vm.createContext(context); vm.runInContext(code, context);
   return context;
 }
-const own = () => element('egeltools-hero-swap button_new square', [0, 0, 29, 29]);
+const own = () => element('egeltools-hero-swap button_new square transfer_in', [0, 0, 22, 23]);
 const button = (cls, offset) => element(`${cls} button_new double_border`, offset, { children: [element('left', [0, 0, 6, 29])] });
 const infoColumn = () => element('info', [470, 20, 180, 50], { children: [
   element('pb_exp', [0, 5, 120, 20], { children: [element('indicator', [2, 2, 10, 16])] }),
@@ -58,18 +58,18 @@ function row(locationsChildren, extra = [], options = {}) {
 const place = (context, fixture) => { const r = context.getCouncilHeroButtonPlacement(fixture.node, fixture.mine); return r && { ...r }; };
 
 const context = setup();
-// Free space right of the 160px Unassign/Assign button: 215 + 160 + 6, centered on its 29px height.
-assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 160, 29])])), { left: 381, top: 30 });
+// Free space right of the 160px Unassign/Assign button: 215 + 160 + 3, the 23px tile centered on its 29px height.
+assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 160, 29])])), { left: 378, top: 33 });
 // Offsets inside a positioned .locations box and offsets flattened onto the row give the same answer.
-assert.deepEqual(place(context, row([button('btn_hero_not_assigned', [0, 0, 160, 29])], [], { flatLocations: true })), { left: 381, top: 30 });
+assert.deepEqual(place(context, row([button('btn_hero_not_assigned', [0, 0, 160, 29])], [], { flatLocations: true })), { left: 378, top: 33 });
 // A second native button in the cluster (Cancel) extends the anchor instead of being covered.
-assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 100, 29]), button('btn_hero_cancel', [106, 0, 80, 29])])), { left: 407, top: 30 });
+assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 100, 29]), button('btn_hero_cancel', [106, 0, 80, 29])])), { left: 404, top: 33 });
 // A travel timer text run right of the button blocks that side, so the button moves to the left side.
-assert.deepEqual(place(context, row([button('btn_hero_cancel', [0, 0, 160, 29]), text('00:12:34', [380, 35, 60, 18])])), { left: 180, top: 30 });
+assert.deepEqual(place(context, row([button('btn_hero_cancel', [0, 0, 160, 29]), text('00:12:34', [380, 35, 60, 18])])), { left: 190, top: 33 });
 // The same timer measured under 50% UI scaling still blocks the right side.
-assert.deepEqual(place(setup(0.5), row([button('btn_hero_cancel', [0, 0, 160, 29]), text('00:12:34', [380, 35, 60, 18])], [], { scale: 0.5 })), { left: 180, top: 30 });
+assert.deepEqual(place(setup(0.5), row([button('btn_hero_cancel', [0, 0, 160, 29]), text('00:12:34', [380, 35, 60, 18])], [], { scale: 0.5 })), { left: 190, top: 33 });
 // A leaf element placed right of the cluster blocks it too; the hero_type icon further right does not.
-assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 160, 29])], [element('spinner', [385, 34, 20, 20])])), { left: 180, top: 30 });
+assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 160, 29])], [element('spinner', [385, 34, 20, 20])])), { left: 190, top: 33 });
 // A travelling hero (live markup): arrival bar plus square Cancel button. The control sits right of
 // Cancel, centered on the group, and the timer text inside the bar is not treated as an obstacle.
 const travelling = () => element('on_the_way_town', [0, 0, 160, 29], { children: [
@@ -79,13 +79,13 @@ const travelling = () => element('on_the_way_town', [0, 0, 160, 29], { children:
   ] }),
   element('btn_cancel_town_travel ajax button_new square remove', [126, 3, 23, 23]),
 ] });
-assert.deepEqual(place(context, row([travelling()])), { left: 370, top: 30 });
+assert.deepEqual(place(context, row([travelling()])), { left: 367, top: 33 });
 // The same group when something occupies the right side: the control moves left of the arrival bar.
-assert.deepEqual(place(context, row([travelling()], [element('spinner', [372, 34, 20, 20])])), { left: 180, top: 30 });
+assert.deepEqual(place(context, row([travelling()], [element('spinner', [372, 34, 20, 20])])), { left: 190, top: 33 });
 // No native button: the .locations box itself anchors the control.
-assert.deepEqual(place(context, row([])), { left: 381, top: 30 });
+assert.deepEqual(place(context, row([])), { left: 378, top: 33 });
 // Hidden native buttons are ignored like missing ones.
-assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 0, 0])])), { left: 381, top: 30 });
+assert.deepEqual(place(context, row([button('btn_hero_unassign', [0, 0, 0, 0])])), { left: 378, top: 33 });
 // Without a .locations box there is nothing to anchor to.
 assert.equal(place(context, { node: element('hero_slot', [0, 0, 700, 90], { children: [own()] }), mine: own() }), null);
 console.log('Hero swap placement: cluster anchoring, offset chains, timer and obstacle avoidance, UI scaling and fallbacks passed');
