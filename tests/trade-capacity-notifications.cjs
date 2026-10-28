@@ -106,9 +106,55 @@ now = 600; towns[1].stock.wood = 9000;
 arrivals = new Map([['g', trade('g', 610, 1000)]]);
 tick();
 now = 610; arrivals.clear(); tick();
-now = 625; tick();
+now = 640; tick();
+assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), true, 'Stock that lags 30 seconds behind the arrival keeps the alarm');
+now = 671; tick();
 assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), false, 'Alarm for a town that never filled expires');
 vm.runInContext('tradeCapacityNotices.clear()', context);
+context.notifications.clear();
+
+// A single shipment that overfills by more than 2,000 has no predecessor:
+// alert when it lands instead of staying silent.
+now = 800; towns[1].stock.wood = 8000; sounds = 0;
+arrivals = new Map([['big', trade('big', 810, 5000)]]);
+tick();
+assert.equal(sounds, 0, 'No alert before the overfilling shipment lands');
+now = 810; arrivals.clear(); tick();
+assert.equal(sounds, 1, 'An overfilling first shipment alerts when it lands');
+assert.equal(context.notifications.has('warehouse:1'), true);
+
+// A line before the next delivery stays alarmed while the warehouse still has room.
+vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+now = 900; towns[1].stock.wood = 5000; sounds = 0;
+arrivals = new Map([['first', trade('first', 910, 1000)], ['second', trade('second', 950, 7000)]]);
+tick();
+now = 910; arrivals.delete('first'); towns[1].stock.wood = 6000; tick();
+assert.equal(sounds, 1, 'Predecessor of an overfilling shipment alerts');
+now = 940; tick();
+assert.equal(context.notifications.has('warehouse:1'), true, 'The alarm survives while the next shipment would overfill');
+now = 950; arrivals.clear(); towns[1].stock.wood = 10000; tick();
+assert.equal(sounds, 1, 'The overfilling shipment does not chime an already alarmed town again');
+assert.equal(context.notifications.has('warehouse:1'), true);
+
+// Grepolis can drop the trade model a moment before the arrival tick.
+vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+now = 1000; towns[1].stock.wood = 9000; sounds = 0;
+arrivals = new Map([['early', trade('early', 1010, 1000)], ['next', trade('next', 1100, 100)]]);
+tick();
+now = 1009; arrivals.delete('early'); tick();
+assert.equal(sounds, 0, 'Nothing before the arrival tick');
+now = 1010; tick();
+assert.equal(sounds, 1, 'A model removed just before arrival still counts as delivered');
+
+// Already full warehouses are left to the selection alert, not re-chimed per delivery.
+vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+now = 1200; towns[1].stock.wood = 10000; sounds = 0;
+arrivals = new Map([['full', trade('full', 1210, 1000)]]);
+tick(); now = 1210; arrivals.clear(); tick();
+assert.equal(sounds, 0, 'A delivery into an already full, dismissed warehouse does not re-alert');
+vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+console.log('Overfill, lagging stock and early-removal checks passed');
+
 const atLine = (trades, townId = '1') => context.isTradeCapacityTownAtLine(townId,
   new Map(trades.map(trade => [trade.id, trade])), 700);
 towns[1].stock = { wood: 9000, stone: 10000, iron: 0 };
