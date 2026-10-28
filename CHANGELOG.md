@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.96 — 2026-10-28
+
+- Fix Town distances staying on its loading message and Party trades misbehaving whenever a trade-locked town gained resources. A stray notification call from 1.2.83 replaced the trade lock bookkeeping, so updating a lock threw an error that stopped the distance list, Party trades donor checks, and the once-a-second refresh of trade markers and advisor tools. Raised lock peaks are saved again, so locks also release correctly after a major spend.
+
 ## 1.2.89 — 2026-10-27
 
 - Sending a party trade no longer raises a notification: the Trade button's Sent state and the Already in transit line confirm the shipment, while failed or unconfirmed sends still report in the Notifications inbox.
