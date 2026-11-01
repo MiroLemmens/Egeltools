@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.111 — 2026-11-01
+
+- The **Academy** overview is more compact: the town column no longer repeats the town's group under its name, and the free research points now sit at the top right of the town cell, next to the name.
+
 ## 1.2.110 — 2026-11-01
 
 - **Settings → Notifications** has a new **Browser notifications** option. Turn it off to stop the desktop pop-ups for farm villages ready to claim and recruitment resources delivered; the in-game alerts still show. It is on by default, so nothing changes until you turn it off, and EgelTools no longer asks for notification permission while it is off.
