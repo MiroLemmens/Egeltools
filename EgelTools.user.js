@@ -58,6 +58,38 @@
     repeatKey: 'm23_alarm_repeat',
   });
 
+  const EGEL_NOTIFICATION_SETTINGS = Object.freeze({
+    bdsKey: 'egeltools_bds_browser_notification_enabled',
+    bdsSoundKey: 'egeltools_bds_sound_enabled',
+    unitResourceKey: 'egeltools_unit_resource_notification_enabled',
+    incomingTradesPopupKey: 'egeltools_incoming_trades_popup_enabled',
+    incomingTradesSoundKey: 'egeltools_incoming_trades_sound_enabled',
+    bdsInputId: 'egeltools-bds-notification-enabled',
+    bdsSoundInputId: 'egeltools-bds-sound-enabled',
+    unitResourceInputId: 'egeltools-unit-resource-notification-enabled',
+    incomingTradesPopupInputId: 'egeltools-incoming-trades-popup-enabled',
+    incomingTradesSoundInputId: 'egeltools-incoming-trades-sound-enabled',
+  });
+  function getEgelNotificationSetting(key) { return localStorage.getItem(key) === 'on'; }
+  function setEgelNotificationSetting(key, enabled) { localStorage.setItem(key, enabled ? 'on' : 'off'); }
+  function isBdsNotificationEnabled() { return getEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsKey); }
+  function isBdsSoundEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.bdsSoundKey) !== 'off'; }
+  function isUnitResourceNotificationEnabled() { return getEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.unitResourceKey); }
+  function isIncomingTradesPopupEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupKey) !== 'off'; }
+  function isIncomingTradesSoundEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundKey) !== 'off'; }
+
+  function ensureEgelNotificationPermission() {
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    void Notification.requestPermission().catch(() => {});
+  }
+
+  window.EgelToolsNotificationSettings = Object.freeze({
+    isBdsEnabled: isBdsNotificationEnabled,
+    isBdsSoundEnabled,
+    isUnitResourceEnabled: isUnitResourceNotificationEnabled,
+    requestPermission: ensureEgelNotificationPermission,
+  });
+
   const ATTACK_ALARM = Object.freeze({
     defaultSoundUrl: 'https://cdn.grcrt.net/ui/s/alarm.mp3',
     soundKey: 'm23_alarm_sound_url',
@@ -88,6 +120,12 @@
     startupSilenceDuration: 5 * 1000,
     pollInterval: 1000,
     playerDataTtl: 6 * 60 * 60 * 1000,
+  });
+
+  const RECRUITMENT_TRADE_BRIDGE = Object.freeze({
+    enabledKey: 'egeltools_recruitment_trade_bridge_enabled',
+    settingId: 'egeltools-recruitment-trade-bridge-enabled',
+    changedEvent: 'egeltools:recruitment-trade-bridge-changed',
   });
 
   const CELEBRATION_FINDER = Object.freeze({
@@ -156,8 +194,12 @@
 
   const SILVER_STORE = Object.freeze({
     buttonId: 'egeltools-store-silver-button',
-    amount: 3000,
-    threshold: 28000,
+    amountKey: 'egeltools_silver_store_amount',
+    minimumKey: 'egeltools_silver_store_minimum',
+    amountSettingId: 'egeltools-silver-store-amount',
+    minimumSettingId: 'egeltools-silver-store-minimum',
+    defaultAmount: 3000,
+    defaultMinimum: 28000,
     gap: 6,
     absoluteRightShift: 6,
     requestCallbackTimeout: 3 * 1000,
@@ -654,6 +696,20 @@
         margin-top: 7px;
       }
 
+      #${APP.windowId} .egeltools-settings__field-pair {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+        margin-top: 7px;
+      }
+
+      #${APP.windowId} .egeltools-settings__button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 7px;
+      }
+
       #${APP.windowId} .egeltools-settings__field {
         display: flex;
         flex-direction: column;
@@ -747,7 +803,8 @@
           grid-column: 1 / -1;
         }
 
-        #${APP.windowId} .egeltools-settings__attack-grid {
+        #${APP.windowId} .egeltools-settings__attack-grid,
+        #${APP.windowId} .egeltools-settings__field-pair {
           grid-template-columns: 1fr;
         }
       }
@@ -2380,6 +2437,660 @@
     settingsWindow.style.top = `${Math.min(maxTop, Math.max(margin, bounds.top))}px`;
   }
 
+  const RECRUIT_OPTIMIZER_BACKUP = Object.freeze({
+    sectionId: 'egeltools-recruit-optimizer-backup',
+    exportButtonId: 'egeltools-recruit-optimizer-export',
+    importButtonId: 'egeltools-recruit-optimizer-import',
+    resetButtonId: 'egeltools-recruit-optimizer-reset',
+    fileInputId: 'egeltools-recruit-optimizer-import-file',
+    statusId: 'egeltools-recruit-optimizer-backup-status',
+    driveUrlKey: 'egeltools_recruit_drive_webapp_url',
+    driveSecretKey: 'egeltools_recruit_drive_secret',
+    debugKey: 'egeltools_debug_logging',
+    driveMetaKey: 'egeltools_recruit_drive_sync_meta_v1',
+    driveUrlId: 'egeltools-recruit-drive-url',
+    driveSecretId: 'egeltools-recruit-drive-secret',
+    driveSaveId: 'egeltools-recruit-drive-save',
+    targetKey: 'grepo_unit_targets_scoped_v2',
+    storageKeys: Object.freeze([
+      'grepo_unit_targets_scoped_v2',
+      'egeltools_recruit_final_totals_v1',
+    ]),
+  });
+
+  function getRecruitOptimizerBackupContext() {
+    const getFirst = (callbacks, fallback = '') => {
+      for (const callback of callbacks) {
+        try {
+          const value = callback();
+          if (value !== undefined && value !== null && String(value) !== '') return String(value);
+        } catch (_) {}
+      }
+      return fallback;
+    };
+    return {
+      worldId: getFirst([
+        () => window.Game?.world_id,
+        () => window.Game?.worldId,
+        () => location.hostname.split('.')[0],
+      ]),
+      playerId: getFirst([
+        () => window.Game?.player_id,
+        () => window.Game?.playerId,
+      ]),
+      playerName: getFirst([
+        () => window.Game?.player_name,
+        () => window.Game?.playerName,
+      ]),
+    };
+  }
+
+  const RECRUIT_OPTIMIZER_UNIT_ORDER = Object.freeze([
+    'sword', 'slinger', 'archer', 'hoplite', 'rider', 'chariot', 'catapult',
+    'minotaur', 'manticore', 'centaur', 'pegasus', 'harpy', 'medusa',
+    'cerberus', 'fury', 'griffin', 'calydonian_boar', 'satyr', 'siren',
+    'spartoi', 'ladon', 'godsent',
+    'big_transporter', 'bireme', 'attack_ship', 'demolition_ship',
+    'small_transporter', 'trireme', 'colonize_ship',
+  ]);
+
+  function normalizeRecruitOptimizerUnits(units) {
+    if (!units || typeof units !== 'object' || Array.isArray(units)) return units;
+    const normalized = {};
+    for (const unitId of RECRUIT_OPTIMIZER_UNIT_ORDER) {
+      if (Object.prototype.hasOwnProperty.call(units, unitId)) normalized[unitId] = units[unitId];
+    }
+    Object.keys(units)
+      .filter((unitId) => !Object.prototype.hasOwnProperty.call(normalized, unitId))
+      .sort((a, b) => a.localeCompare(b))
+      .forEach((unitId) => { normalized[unitId] = units[unitId]; });
+    return normalized;
+  }
+
+  function normalizeRecruitOptimizerTargets(targets) {
+    if (!targets || typeof targets !== 'object' || Array.isArray(targets)) return targets;
+    const normalized = { ...targets };
+    if (targets.all && typeof targets.all === 'object') normalized.all = normalizeRecruitOptimizerUnits(targets.all);
+    for (const scope of ['groups', 'cities']) {
+      if (!targets[scope] || typeof targets[scope] !== 'object') continue;
+      normalized[scope] = {};
+      Object.keys(targets[scope])
+        .sort((a, b) => a === 'default' ? -1 : b === 'default' ? 1 : Number(a) - Number(b))
+        .forEach((id) => { normalized[scope][id] = normalizeRecruitOptimizerUnits(targets[scope][id]); });
+    }
+    return normalized;
+  }
+
+  function formatRecruitTargetsForBackup(value) {
+    const source = normalizeRecruitOptimizerTargets(value || {});
+    const grepolisGroupNames = source.grepolisGroupNames || {};
+    const grepolisGroups = {};
+    const customGroups = {};
+    const cities = {};
+    const cityGroups = {};
+    const townNames = source.townNames || {};
+
+    Object.entries(source.groups || {}).forEach(([groupId, targets]) => {
+      grepolisGroups[groupId] = {
+        name: grepolisGroupNames[groupId] || groupId,
+        targets: normalizeRecruitOptimizerUnits(targets),
+      };
+    });
+
+    Object.entries(source.customGroups || {}).forEach(([customId, group]) => {
+      const name = String(group?.name || customId);
+      customGroups[name] = normalizeRecruitOptimizerUnits(group?.targets || {});
+    });
+
+    Object.entries(source.cityTargetGroups || {}).forEach(([townId, assignment]) => {
+      if (assignment === 'none') {
+        cities[townId] = {
+          name: townNames[townId] || townId,
+          targets: normalizeRecruitOptimizerUnits(source.cities?.[townId] || {}),
+        };
+        return;
+      }
+
+      if (String(assignment).startsWith('custom:')) {
+        const customId = String(assignment).slice(7);
+        const groupName = String(source.customGroups?.[customId]?.name || customId);
+        cityGroups[groupName] ||= { type: 'custom', cities: {} };
+        cityGroups[groupName].cities[townId] = townNames[townId] || townId;
+        return;
+      }
+
+      const groupId = String(assignment).startsWith('grepo:')
+        ? String(assignment).slice(6)
+        : String(assignment);
+      const groupName = String(
+        grepolisGroupNames[groupId]
+        || grepolisGroups[groupId]?.name
+        || groupId
+      );
+      cityGroups[groupName] ||= { type: 'grepolis', id: groupId, cities: {} };
+      cityGroups[groupName].cities[townId] = townNames[townId] || townId;
+    });
+
+    // Preserve legacy city entries that do not yet have an explicit assignment.
+    Object.entries(source.cities || {}).forEach(([townId, targets]) => {
+      if (!Object.prototype.hasOwnProperty.call(source.cityTargetGroups || {}, townId)) {
+        cities[townId] = { name: townNames[townId] || townId, targets: normalizeRecruitOptimizerUnits(targets) };
+      }
+    });
+
+    return { grepolisGroups, customGroups, cities, cityGroups };
+  }
+
+  function restoreRecruitTargetsFromBackup(value) {
+    if (!value || typeof value !== 'object') return value;
+    if (!value.grepolisGroups && !value.customGroups && !value.cityGroups) {
+      return normalizeRecruitOptimizerTargets(value);
+    }
+
+    const restored = {
+      all: {}, groups: {}, cities: {}, customGroups: {}, cityCustomGroups: {},
+      cityTargetGroups: {}, grepolisGroupNames: {}, townNames: {},
+    };
+
+    Object.entries(value.grepolisGroups || {}).forEach(([groupId, group]) => {
+      restored.groups[groupId] = normalizeRecruitOptimizerUnits(group?.targets || group || {});
+      restored.grepolisGroupNames[groupId] = String(group?.name || groupId);
+    });
+    Object.entries(value.customGroups || {}).forEach(([name, targets], index) => {
+      const id = `custom_imported_${index + 1}`;
+      restored.customGroups[id] = { name, targets: normalizeRecruitOptimizerUnits(targets || {}) };
+    });
+    const customIdByName = Object.fromEntries(
+      Object.entries(restored.customGroups).map(([id, group]) => [group.name, id]),
+    );
+    Object.entries(value.cities || {}).forEach(([townId, targets]) => {
+      const cityTargets = targets?.targets || targets || {};
+      restored.cities[townId] = normalizeRecruitOptimizerUnits(cityTargets);
+      restored.townNames[townId] = String(targets?.name || townId);
+      restored.cityTargetGroups[townId] = 'none';
+    });
+    Object.entries(value.cityGroups || {}).forEach(([key, group]) => {
+      if (group?.cities && typeof group.cities === 'object') {
+        Object.entries(group.cities).forEach(([townId, townName]) => {
+          restored.townNames[townId] = String(townName || townId);
+          if (group.type === 'custom') {
+            const id = customIdByName[String(key)];
+            restored.cityTargetGroups[townId] = id ? `custom:${id}` : 'none';
+          } else {
+            const id = String(group.id || '');
+            if (id) {
+              restored.cityTargetGroups[townId] = `grepo:${id}`;
+              restored.grepolisGroupNames[id] = String(key);
+            }
+          }
+        });
+        return;
+      }
+
+      // Legacy structure: town ID was the key.
+      const townId = key;
+      restored.townNames[townId] = String(group?.cityName || townId);
+      if (group?.type === 'custom') {
+        const id = customIdByName[String(group.name || '')];
+        restored.cityTargetGroups[townId] = id ? `custom:${id}` : 'none';
+      } else {
+        const id = String(group?.id || '');
+        if (id) {
+          restored.cityTargetGroups[townId] = `grepo:${id}`;
+          if (group?.name) restored.grepolisGroupNames[id] = String(group.name);
+        }
+      }
+    });
+    return normalizeRecruitOptimizerTargets(restored);
+  }
+
+  function normalizeRecruitOptimizerBackupValue(key, value) {
+    return key === 'grepo_unit_targets_scoped_v2' ? restoreRecruitTargetsFromBackup(value) : value;
+  }
+
+  function buildRecruitOptimizerBackup() {
+    const data = {};
+    for (const key of RECRUIT_OPTIMIZER_BACKUP.storageKeys) {
+      const raw = localStorage.getItem(key);
+      if (raw === null) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        data[key] = key === 'grepo_unit_targets_scoped_v2'
+          ? formatRecruitTargetsForBackup(parsed)
+          : normalizeRecruitOptimizerBackupValue(key, parsed);
+      } catch (_) { data[key] = raw; }
+    }
+    return {
+      type: 'egeltools-recruit-optimizer-backup',
+      formatVersion: 1,
+      egelToolsVersion: APP.version,
+      exportedAt: new Date().toISOString(),
+      context: getRecruitOptimizerBackupContext(),
+      data,
+    };
+  }
+
+  function safeBackupFilePart(value, fallback) {
+    const cleaned = String(value || '').trim().replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '');
+    return cleaned || fallback;
+  }
+
+  function exportRecruitOptimizerBackup(statusElement) {
+    try {
+      const backup = buildRecruitOptimizerBackup();
+      const json = JSON.stringify(backup, null, 2);
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const date = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `egeltools-recruitoptimizer-${safeBackupFilePart(backup.context.worldId, 'world')}-${date}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (statusElement) {
+        statusElement.textContent = 'Backup exported.';
+        statusElement.dataset.error = 'false';
+      }
+    } catch (error) {
+      if (statusElement) {
+        statusElement.textContent = 'Export failed.';
+        statusElement.dataset.error = 'true';
+      }
+      console.error('[EgelTools] Recruit Optimizer export failed:', error);
+    }
+  }
+
+  async function importRecruitOptimizerBackup(file, statusElement) {
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!parsed || parsed.type !== 'egeltools-recruit-optimizer-backup' || !parsed.data || typeof parsed.data !== 'object') {
+        throw new Error('Invalid Recruit Optimizer backup');
+      }
+      const entries = RECRUIT_OPTIMIZER_BACKUP.storageKeys
+        .filter((key) => Object.prototype.hasOwnProperty.call(parsed.data, key))
+        .map((key) => [key, parsed.data[key]]);
+      if (!entries.length) throw new Error('Backup contains no supported Recruit Optimizer data');
+
+      const current = getRecruitOptimizerBackupContext();
+      const sourceWorld = String(parsed.context?.worldId || '');
+      const differentWorld = sourceWorld && current.worldId && sourceWorld !== current.worldId;
+      const question = differentWorld
+        ? (`The backup is from world ${sourceWorld}, but ${current.worldId} is currently open. Import anyway?`)
+        : ('Existing Recruit Optimizer data will be replaced by this backup. Import?');
+      if (!window.confirm(question)) {
+        if (statusElement) statusElement.textContent = 'Import cancelled.';
+        return;
+      }
+
+      for (const [key, value] of entries) {
+        localStorage.setItem(key, JSON.stringify(normalizeRecruitOptimizerBackupValue(key, value)));
+      }
+      window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-updated'));
+      window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-population-updated'));
+      if (statusElement) {
+        statusElement.textContent = `${entries.length} Recruit Optimizer data sets imported. Please reopen the window.`;
+        statusElement.dataset.error = 'false';
+      }
+    } catch (error) {
+      if (statusElement) {
+        statusElement.textContent = 'Import failed: invalid backup file.';
+        statusElement.dataset.error = 'true';
+      }
+      console.error('[EgelTools] Recruit Optimizer import failed:', error);
+    }
+  }
+
+  let recruitDriveSyncStarted = false;
+  let recruitDriveSyncBusy = false;
+  let recruitDriveSyncTimer = null;
+  let recruitDriveLastObservedHash = '';
+
+  function normalizeRecruitDriveUrl(value) {
+    const raw = String(value || '').trim();
+    const hrefMatch = raw.match(/href=["'](https:\/\/script\.google\.com\/macros\/s\/[^"']+\/exec)["']/i);
+    if (hrefMatch) return hrefMatch[1].replace(/&amp;/g, '&');
+    const urlMatch = raw.match(/https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/i);
+    return urlMatch ? urlMatch[0] : raw;
+  }
+
+  function getRecruitDriveSettings() {
+    const storedUrl = normalizeRecruitDriveUrl(localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveUrlKey));
+    if (storedUrl) localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveUrlKey, storedUrl);
+    return {
+      url: storedUrl,
+      secret: localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveSecretKey) || '',
+      enabled: Boolean(storedUrl && localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveSecretKey)),
+    };
+  }
+
+  function getRecruitDriveScope() {
+    const context = getRecruitOptimizerBackupContext();
+    return `${context.worldId || 'world'}_${context.playerId || 'player'}`.replace(/[^a-z0-9_-]/gi, '_');
+  }
+
+  function getRecruitTargetRaw() {
+    return localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.targetKey) || '';
+  }
+
+  function getRecruitTargetHash() {
+    const text = getRecruitTargetRaw();
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${text.length}:${hash >>> 0}`;
+  }
+
+  function getRecruitDriveMeta() {
+    try { return JSON.parse(localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveMetaKey) || '{}'); }
+    catch (_) { return {}; }
+  }
+
+  function setRecruitDriveMeta(meta) {
+    localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveMetaKey, JSON.stringify(meta));
+  }
+
+  function isValidRecruitDriveUrl(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' && /(^|\.)script\.google\.com$/.test(url.hostname) && /\/exec$/.test(url.pathname);
+    } catch (_) { return false; }
+  }
+
+  function recruitDriveJsonp(settings, action = 'load') {
+    return new Promise((resolve, reject) => {
+      if (!isValidRecruitDriveUrl(settings.url)) return reject(new Error('Invalid Google web app URL'));
+      const callbackName = `__egelRecruitDrive_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const script = document.createElement('script');
+      const timeout = window.setTimeout(() => finish(new Error('Request timed out')), 20000);
+      const finish = (error, value) => {
+        window.clearTimeout(timeout);
+        script.remove();
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+        if (error) reject(error); else resolve(value);
+      };
+      window[callbackName] = (result) => {
+        if (!result?.ok) finish(new Error(result?.error || 'Google Drive error'));
+        else finish(null, result);
+      };
+      const url = new URL(settings.url);
+      url.searchParams.set('action', action);
+      url.searchParams.set('secret', settings.secret);
+      url.searchParams.set('scope', getRecruitDriveScope());
+      url.searchParams.set('callback', callbackName);
+      script.onerror = () => finish(new Error('Google web app is unreachable'));
+      script.src = url.toString();
+      document.head.append(script);
+    });
+  }
+
+  function recruitDrivePost(settings, payload) {
+    if (!isValidRecruitDriveUrl(settings.url)) {
+      return Promise.reject(new Error('Invalid Google web app URL'));
+    }
+
+    const body = new URLSearchParams();
+    body.set('secret', settings.secret);
+    body.set('scope', getRecruitDriveScope());
+    body.set('payload', JSON.stringify(payload));
+
+    return fetch(settings.url, {
+      method: 'POST',
+      mode: 'no-cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      },
+      body: body.toString(),
+    });
+  }
+
+  async function pullRecruitTargetsFromDrive({ force = false } = {}) {
+    const settings = getRecruitDriveSettings();
+    if ((!settings.enabled && !force) || !settings.url || !settings.secret || recruitDriveSyncBusy) return false;
+    recruitDriveSyncBusy = true;
+    try {
+      const result = await recruitDriveJsonp(settings, 'load');
+      const cloud = result.record;
+      const cloudTargets = cloud?.data?.[RECRUIT_OPTIMIZER_BACKUP.targetKey] || cloud?.targets;
+      if (!cloudTargets || typeof cloudTargets !== 'object') return true;
+
+      const normalized = restoreRecruitTargetsFromBackup(cloudTargets);
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.targetKey, JSON.stringify(normalized));
+      const cloudRecruitCache = cloud?.data?.egeltools_recruit_final_totals_v1;
+      if (cloudRecruitCache && typeof cloudRecruitCache === 'object') {
+        localStorage.setItem('egeltools_recruit_final_totals_v1', JSON.stringify(cloudRecruitCache));
+      }
+      if (typeof window.EgelToolsAssignMissingCitiesNow === 'function') {
+        window.EgelToolsAssignMissingCitiesNow();
+      }
+      const localHash = getRecruitTargetHash();
+      recruitDriveLastObservedHash = localHash;
+      setRecruitDriveMeta({
+        cloudUpdatedAt: Number(cloud.updatedAt) || 0,
+        localHash,
+      });
+      window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-updated'));
+      window.dispatchEvent(new CustomEvent('egeltools:recruit-cloud-loaded'));
+      return true;
+    } finally {
+      recruitDriveSyncBusy = false;
+    }
+  }
+
+  function isEgelToolsDebugEnabled() {
+    return localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.debugKey) === 'on';
+  }
+  function egelDebug(method, ...args) {
+    if (!isEgelToolsDebugEnabled()) return;
+    const fn = console[method] || console.log;
+    fn.call(console, ...args);
+  }
+  window.EgelToolsDebug = Object.freeze({
+    enable() {
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.debugKey, 'on');
+      console.info('[EgelTools] Debug logging enabled.');
+    },
+    disable() {
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.debugKey, 'off');
+      console.info('[EgelTools] Debug logging disabled.');
+    },
+    status() {
+      return isEgelToolsDebugEnabled();
+    },
+  });
+
+  async function uploadEmptyRecruitTargetsToDrive() {
+    const settings = getRecruitDriveSettings();
+    if (!settings.enabled) return false;
+    const updatedAt = Date.now();
+    const context = getRecruitOptimizerBackupContext();
+    const backup = {
+      type: 'egeltools-recruit-optimizer-backup',
+      formatVersion: 1,
+      egelToolsVersion: APP.version,
+      exportedAt: new Date(updatedAt).toISOString(),
+      context,
+      data: {
+        [RECRUIT_OPTIMIZER_BACKUP.targetKey]: {
+          grepolisGroups: {},
+          customGroups: {},
+          cities: {},
+          cityGroups: {},
+        },
+        egeltools_recruit_final_totals_v1: { towns: {} },
+      },
+    };
+    await recruitDrivePost(settings, { updatedAt, backup });
+    setRecruitDriveMeta({ cloudUpdatedAt: updatedAt, localHash: '' });
+    return true;
+  }
+
+  async function uploadCompleteRecruitTargetsToDriveOnSave() {
+    const settings = getRecruitDriveSettings();
+    if (!settings.enabled || !settings.url || !settings.secret) {
+      egelDebug('warn', '[EgelTools] Google Drive upload skipped: synchronization settings are incomplete.');
+      return false;
+    }
+    const raw = getRecruitTargetRaw();
+    if (!raw) {
+      egelDebug('warn', '[EgelTools] Google Drive upload skipped: no target data found.');
+      return false;
+    }
+
+    const updatedAt = Date.now();
+    const localHash = getRecruitTargetHash();
+    const backup = buildRecruitOptimizerBackup();
+    backup.exportedAt = new Date(updatedAt).toISOString();
+    await recruitDrivePost(settings, {
+      updatedAt,
+      backup,
+    });
+    recruitDriveLastObservedHash = localHash;
+    setRecruitDriveMeta({ cloudUpdatedAt: updatedAt, localHash });
+    egelDebug('info', '[EgelTools] Complete Recruit Optimizer backup POST was sent.', {
+      scope: getRecruitDriveScope(),
+      updatedAt,
+    });
+    return true;
+  }
+
+
+  window.EgelToolsRecruitDriveUpload = uploadCompleteRecruitTargetsToDriveOnSave;
+
+
+  function initRecruitDriveAutoSync() {
+    if (recruitDriveSyncStarted) return;
+    recruitDriveSyncStarted = true;
+    window.setTimeout(() => { void pullRecruitTargetsFromDrive(); }, 2500);
+    const completeAssignmentsWhenReady = (attempt = 0) => {
+      const townsObject = window.ITowns?.getTowns?.() || {};
+      const townCount = Array.isArray(townsObject) ? townsObject.length : Object.keys(townsObject).length;
+      // The assignment helpers live inside the Recruit Optimizer module. Use only
+      // its public function here so this outer startup scope cannot reference
+      // module-private helpers such as getOrderedGrepolisGroups.
+      if (townCount > 0 && typeof window.EgelToolsAssignMissingCitiesNow === 'function') {
+        window.EgelToolsAssignMissingCitiesNow();
+        return;
+      }
+      if (attempt < 8) window.setTimeout(() => completeAssignmentsWhenReady(attempt + 1), 2000);
+    };
+    window.setTimeout(() => completeAssignmentsWhenReady(), 6000);
+  }
+
+  function wireNotificationSettings(settingsWindow) {
+    const input = (id) => settingsWindow.querySelector(`#${id}`);
+    const bds = input(EGEL_NOTIFICATION_SETTINGS.bdsInputId);
+    const bdsSound = input(EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId);
+    const unitResource = input(EGEL_NOTIFICATION_SETTINGS.unitResourceInputId);
+    const tradesPopup = input(EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId);
+    const tradesSound = input(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId);
+    bds.checked = isBdsNotificationEnabled();
+    bdsSound.checked = isBdsSoundEnabled();
+    unitResource.checked = isUnitResourceNotificationEnabled();
+    tradesPopup.checked = isIncomingTradesPopupEnabled();
+    tradesSound.checked = isIncomingTradesSoundEnabled();
+    bds.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsKey, bds.checked);
+      if (bds.checked) ensureEgelNotificationPermission();
+      window.EgelToolsRefreshBdsGrepoAlert?.();
+    });
+    bdsSound.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsSoundKey, bdsSound.checked);
+      window.dispatchEvent(new CustomEvent('egeltools:bds-sound-changed', { detail: { enabled: bdsSound.checked } }));
+    });
+    unitResource.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.unitResourceKey, unitResource.checked);
+      if (unitResource.checked) ensureEgelNotificationPermission();
+      window.EgelToolsRecruitmentDeliveryMonitor?.checkArrivals?.();
+    });
+    tradesPopup.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupKey, tradesPopup.checked);
+      if (tradesPopup.checked) return;
+      tradeCapacityPending.clear();
+      tradeCapacityNotices.clear();
+      renderTradeCapacityNotices();
+    });
+    tradesSound.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundKey, tradesSound.checked);
+    });
+  }
+
+  function wireSilverStoreSettings(settingsWindow) {
+    const fields = [
+      [SILVER_STORE.amountSettingId, SILVER_STORE.amountKey, getSilverStoreAmount, 1],
+      [SILVER_STORE.minimumSettingId, SILVER_STORE.minimumKey, getSilverStoreMinimum, 0],
+    ];
+    for (const [id, key, read, minimum] of fields) {
+      const input = settingsWindow.querySelector(`#${id}`);
+      input.value = String(read());
+      input.addEventListener('change', () => {
+        const value = Number(input.value);
+        if (!Number.isSafeInteger(value) || value < minimum) {
+          input.value = String(read());
+          return;
+        }
+        localStorage.setItem(key, String(value));
+        paintSilverStoreButton();
+      });
+    }
+  }
+
+  function wireRecruitOptimizerBackupSettings(settingsWindow) {
+    const section = settingsWindow.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.sectionId}`);
+    const status = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.statusId}`);
+    const fileInput = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.fileInputId}`);
+    const setStatus = (message, error = false) => {
+      status.textContent = message;
+      status.dataset.error = String(error);
+    };
+    section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.exportButtonId}`)
+      .addEventListener('click', () => exportRecruitOptimizerBackup(status));
+    section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.importButtonId}`).addEventListener('click', () => {
+      fileInput.value = '';
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', async () => {
+      const [file] = fileInput.files || [];
+      if (file) await importRecruitOptimizerBackup(file, status);
+      fileInput.value = '';
+    });
+    const resetButton = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.resetButtonId}`);
+    resetButton.addEventListener('click', async () => {
+      if (!window.confirm('Reset all target troops, groups and city assignments locally and in Google Drive?')) return;
+      resetButton.disabled = true;
+      try {
+        if (getRecruitDriveSettings().enabled) await uploadEmptyRecruitTargetsToDrive();
+        RECRUIT_OPTIMIZER_BACKUP.storageKeys.forEach((key) => localStorage.removeItem(key));
+        localStorage.removeItem(RECRUIT_OPTIMIZER_BACKUP.driveMetaKey);
+        window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-updated'));
+        setStatus('Recruit Optimizer was reset locally and in Google Drive.');
+      } catch (error) {
+        setStatus(`Google Drive reset failed: ${error.message}`, true);
+        egelDebug('error', '[EgelTools] Google Drive reset failed:', error);
+      } finally {
+        resetButton.disabled = false;
+      }
+    });
+    const driveUrl = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.driveUrlId}`);
+    const driveSecret = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.driveSecretId}`);
+    const storedDrive = getRecruitDriveSettings();
+    driveUrl.value = storedDrive.url;
+    driveSecret.value = storedDrive.secret;
+    section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.driveSaveId}`).addEventListener('click', () => {
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveUrlKey, normalizeRecruitDriveUrl(driveUrl.value));
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveSecretKey, driveSecret.value);
+      driveUrl.value = normalizeRecruitDriveUrl(driveUrl.value);
+      setStatus('Google Drive access saved.');
+      if (driveUrl.value.trim() && driveSecret.value) void pullRecruitTargetsFromDrive({ force: true });
+    });
+  }
+
   function createSettingsWindow() {
     let settingsWindow = document.getElementById(APP.windowId);
     if (settingsWindow) return settingsWindow;
@@ -2508,6 +3219,81 @@
                   </label>
                   <p class="egeltools-settings__feature-copy">Leave theater costs out of trade recommendations and donor reserves.</p>
                 </div>
+                <div class="egeltools-settings__feature egeltools-settings__feature--notifications">
+                  <p class="egeltools-settings__feature-title">Notifications</p>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}" type="checkbox"> FV claim browser notification
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}" type="checkbox"> FV claim alarm sound
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}" type="checkbox"> Recruitment resources delivered
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}" type="checkbox"> Incoming trades warehouse alarms
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}" type="checkbox"> Incoming trades alarm sound
+                  </label>
+                  <p class="egeltools-settings__feature-copy">Browser notifications ask for permission the first time they are enabled.</p>
+                </div>
+                <div class="egeltools-settings__feature egeltools-settings__feature--silver">
+                  <p class="egeltools-settings__feature-title">Store silver</p>
+                  <div class="egeltools-settings__field-pair">
+                    <label class="egeltools-settings__field" for="${SILVER_STORE.amountSettingId}">
+                      <span class="egeltools-settings__field-label">Amount per town</span>
+                      <input id="${SILVER_STORE.amountSettingId}" type="number" inputmode="numeric" min="1" step="500">
+                    </label>
+                    <label class="egeltools-settings__field" for="${SILVER_STORE.minimumSettingId}">
+                      <span class="egeltools-settings__field-label">Minimum to keep</span>
+                      <input id="${SILVER_STORE.minimumSettingId}" type="number" inputmode="numeric" min="0" step="1000">
+                    </label>
+                  </div>
+                  <p class="egeltools-settings__feature-copy">The Store button keeps the minimum in every town with a Cave and stores up to the amount above it.</p>
+                </div>
+                <div class="egeltools-settings__feature egeltools-settings__feature--recruitment-trade">
+                  <div class="egeltools-settings__feature-heading">
+                    <div>
+                      <p class="egeltools-settings__feature-title">Trade window: recruitment needs</p>
+                      <p class="egeltools-settings__feature-copy">Show and fill the resources the recruitment plan still needs. Turn off to use GRCRT instead.</p>
+                    </div>
+                    <label class="egeltools-settings__option egeltools-settings__option--inline"
+                      for="${RECRUITMENT_TRADE_BRIDGE.settingId}">
+                      <input id="${RECRUITMENT_TRADE_BRIDGE.settingId}" type="checkbox">
+                      Enabled
+                    </label>
+                  </div>
+                </div>
+                <div class="egeltools-settings__feature" id="${RECRUIT_OPTIMIZER_BACKUP.sectionId}">
+                  <p class="egeltools-settings__feature-title">Recruit Optimizer backup</p>
+                  <p class="egeltools-settings__feature-copy">Back up or restore target troops as a JSON file.</p>
+                  <div class="egeltools-settings__button-row">
+                    <button class="egeltools-settings__sound-button" id="${RECRUIT_OPTIMIZER_BACKUP.exportButtonId}" type="button">Export</button>
+                    <button class="egeltools-settings__sound-button egeltools-settings__sound-button--secondary"
+                      id="${RECRUIT_OPTIMIZER_BACKUP.importButtonId}" type="button">Import</button>
+                    <button class="egeltools-settings__sound-button egeltools-settings__sound-button--secondary"
+                      id="${RECRUIT_OPTIMIZER_BACKUP.resetButtonId}" type="button">Reset</button>
+                    <input id="${RECRUIT_OPTIMIZER_BACKUP.fileInputId}" type="file" accept="application/json,.json" hidden>
+                  </div>
+                  <div class="egeltools-settings__field-pair">
+                    <label class="egeltools-settings__field" for="${RECRUIT_OPTIMIZER_BACKUP.driveUrlId}">
+                      <span class="egeltools-settings__field-label">Google Drive web app URL</span>
+                      <input id="${RECRUIT_OPTIMIZER_BACKUP.driveUrlId}" type="url" autocomplete="off" spellcheck="false"
+                        placeholder="https://script.google.com/macros/s/…/exec">
+                    </label>
+                    <label class="egeltools-settings__field" for="${RECRUIT_OPTIMIZER_BACKUP.driveSecretId}">
+                      <span class="egeltools-settings__field-label">Access key</span>
+                      <input id="${RECRUIT_OPTIMIZER_BACKUP.driveSecretId}" type="password" autocomplete="off">
+                    </label>
+                  </div>
+                  <div class="egeltools-settings__button-row">
+                    <button class="egeltools-settings__sound-button" id="${RECRUIT_OPTIMIZER_BACKUP.driveSaveId}" type="button">Save sync</button>
+                  </div>
+                  <p class="egeltools-settings__feature-copy">Automatic sync covers target troops only. The most recently saved state replaces older ones.</p>
+                  <p class="egeltools-settings__sound-status" id="${RECRUIT_OPTIMIZER_BACKUP.statusId}"
+                    role="status" aria-live="polite"></p>
+                </div>
       </div>`;
 
     settingsWindow.querySelector('.egeltools-window__close').addEventListener('click', closeSettings);
@@ -2544,6 +3330,16 @@
     movementFilter.addEventListener('change', () => {
       localStorage.setItem('egeltools_hide_noncancellable', movementFilter.checked ? 'on' : 'off');
       document.dispatchEvent(new Event('egeltools-movement-filter-change'));
+    });
+
+    wireNotificationSettings(settingsWindow);
+    wireSilverStoreSettings(settingsWindow);
+    wireRecruitOptimizerBackupSettings(settingsWindow);
+    const recruitmentTradeBridgeSetting = settingsWindow.querySelector(`#${RECRUITMENT_TRADE_BRIDGE.settingId}`);
+    recruitmentTradeBridgeSetting.checked = localStorage.getItem(RECRUITMENT_TRADE_BRIDGE.enabledKey) !== 'off';
+    recruitmentTradeBridgeSetting.addEventListener('change', () => {
+      localStorage.setItem(RECRUITMENT_TRADE_BRIDGE.enabledKey, recruitmentTradeBridgeSetting.checked ? 'on' : 'off');
+      window.dispatchEvent(new CustomEvent(RECRUITMENT_TRADE_BRIDGE.changedEvent));
     });
 
     const farmTradesSetting = settingsWindow.querySelector('#egeltools-party-farm-trades');
@@ -3520,7 +4316,7 @@
   }
 
   function playTradeCapacitySound() {
-    if (tradeCapacityAudio?.state !== 'running') return;
+    if (!isIncomingTradesSoundEnabled() || tradeCapacityAudio?.state !== 'running') return;
     const oscillator = tradeCapacityAudio.createOscillator();
     const gain = tradeCapacityAudio.createGain();
     const now = tradeCapacityAudio.currentTime;
@@ -3575,6 +4371,14 @@
   function checkTradeCapacityArrivals() {
     const now = getResourceCheckerServerTime();
     const arrivals = getTradeCapacityArrivals();
+    window.EgelToolsRecruitmentDeliveryMonitor?.checkArrivals?.();
+    if (!isIncomingTradesPopupEnabled()) {
+      tradeCapacityPending.clear();
+      tradeCapacityNotices.clear();
+      renderTradeCapacityNotices();
+      renderTradeOverview(arrivals, now);
+      return;
+    }
     let alarmed = false;
     for (const [townId, pending] of tradeCapacityPending) {
       if (pending.arrivalAt <= now) {
@@ -4171,6 +4975,28 @@
     return panel;
   }
 
+  function readSilverStoreSetting(key, fallback) {
+    const value = Number(localStorage.getItem(key));
+    return Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+  }
+
+  function getSilverStoreAmount() {
+    return Math.max(1, readSilverStoreSetting(SILVER_STORE.amountKey, SILVER_STORE.defaultAmount));
+  }
+
+  // Each town keeps this much silver; only towns above it are eligible.
+  function getSilverStoreMinimum() {
+    return readSilverStoreSetting(SILVER_STORE.minimumKey, SILVER_STORE.defaultMinimum);
+  }
+
+  function getSilverStoreButtonLabel() {
+    const amount = getSilverStoreAmount();
+    const short = amount >= 1000 && amount % 100 === 0
+      ? `${(amount / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k`
+      : amount.toLocaleString();
+    return `Store ${short}`;
+  }
+
   function getSilverStoreTowns() {
     if (typeof window.ITowns?.getTowns !== 'function') return null;
 
@@ -4192,7 +5018,7 @@
       if (!buildings || Number(buildings.hide) < 1) return [];
 
       const iron = Number(resources.iron);
-      return Number.isFinite(iron) && iron > SILVER_STORE.threshold
+      return Number.isFinite(iron) && iron > getSilverStoreMinimum()
         ? [{ town, id: townId, iron }]
         : [];
     });
@@ -4311,14 +5137,14 @@
       button,
       silverStoreInFlight || !administratorActive || eligibleCount === 0,
     );
-    if (!silverStoreInFlight) setSilverStoreButtonText(button, 'Store 3k');
+    if (!silverStoreInFlight) setSilverStoreButtonText(button, getSilverStoreButtonLabel());
     button.title = silverStoreInFlight
       ? button.querySelector('.caption, .js-caption')?.textContent || button.textContent
       : !administratorActive
         ? 'Administrator must be active to store silver across towns'
         : eligibleCount
-          ? `Store ${SILVER_STORE.amount.toLocaleString()} silver in ${eligibleCount} town${eligibleCount === 1 ? '' : 's'} above ${SILVER_STORE.threshold.toLocaleString()}`
-          : `No towns with a Cave are above ${SILVER_STORE.threshold.toLocaleString()} silver`;
+          ? `Store ${getSilverStoreAmount().toLocaleString()} silver in ${eligibleCount} town${eligibleCount === 1 ? '' : 's'} above ${getSilverStoreMinimum().toLocaleString()}`
+          : `No towns with a Cave are above ${getSilverStoreMinimum().toLocaleString()} silver`;
     button.setAttribute('aria-label', button.title);
   }
 
@@ -4344,7 +5170,7 @@
         button.setAttribute('role', 'button');
         button.removeAttribute('href');
       }
-      setSilverStoreButtonText(button, 'Store 3k');
+      setSilverStoreButtonText(button, getSilverStoreButtonLabel());
       button.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -4384,8 +5210,8 @@
           'town_overviews',
           'store_iron_in_all_towns',
           {
-            iron_to_keep: SILVER_STORE.threshold,
-            iron_to_store: SILVER_STORE.amount,
+            iron_to_keep: getSilverStoreMinimum(),
+            iron_to_store: getSilverStoreAmount(),
             town_group_id: -1,
           },
           true,
@@ -4423,7 +5249,7 @@
 
     const towns = getSilverStoreTowns();
     if (!towns?.length) {
-      showCelebrationMessage(`No towns with a Cave are above ${SILVER_STORE.threshold.toLocaleString()} silver.`, true);
+      showCelebrationMessage(`No towns with a Cave are above ${getSilverStoreMinimum().toLocaleString()} silver.`, true);
       paintSilverStoreButton(button);
       return;
     }
@@ -4432,7 +5258,7 @@
     try {
       setSilverStoreButtonDisabled(button, true);
       setSilverStoreButtonText(button, 'Storing…');
-      button.title = `Keeping ${SILVER_STORE.threshold.toLocaleString()} silver and storing ${SILVER_STORE.amount.toLocaleString()} in all towns`;
+      button.title = `Keeping ${getSilverStoreMinimum().toLocaleString()} silver and storing ${getSilverStoreAmount().toLocaleString()} in all towns`;
       const result = await postSilverAcrossTowns();
       if (result.success === true) {
         showCelebrationMessage(result.message || 'Silver stored.');
@@ -9664,6 +10490,7 @@
     initTradeCapacityNotifications();
     initCollectAlarm();
     initAttackAlarm();
+    initRecruitDriveAutoSync();
     refreshUnitQueue();
     window.setInterval(refreshUnitQueue, UNIT_QUEUE.refreshInterval);
 
