@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.107
+// @version      1.2.108
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,12 +19,13 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.107',
+    version: '1.2.108',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
     toolDockSettingsButtonId: 'egeltools-tool-dock-settings',
     windowId: 'egeltools-settings-window',
+    settingsTabKey: 'egeltools_settings_tab',
     styleId: 'egeltools-styles',
     maintenanceDelay: 50,
     maintenanceFallbackInterval: 5 * 1000,
@@ -556,16 +557,79 @@
         text-align: left !important;
       }
 
+      #${APP.windowId} .egeltools-settings__tabs {
+        display: flex;
+        flex: 0 0 auto;
+        gap: 2px;
+        padding: 5px 5px 0;
+        border-bottom: 1px solid rgba(92, 65, 29, .45);
+      }
+
+      #${APP.windowId} .egeltools-settings__tab {
+        margin: 0 0 -1px;
+        padding: 3px 10px;
+        border: 1px solid rgba(92, 65, 29, .45);
+        border-radius: 3px 3px 0 0;
+        color: #5c482c;
+        background: rgba(255, 250, 226, .4);
+        font: bold 11px Arial, Helvetica, sans-serif;
+        cursor: pointer;
+      }
+
+      #${APP.windowId} .egeltools-settings__tab[aria-selected='true'] {
+        color: #2c1c0e;
+        background: rgba(255, 250, 226, .9);
+        border-bottom-color: rgba(255, 250, 226, .9);
+      }
+
+      #${APP.windowId} .egeltools-settings__tab:focus-visible {
+        outline: 2px solid rgba(49, 87, 124, .55);
+        outline-offset: -2px;
+      }
+
+      #${APP.windowId} .egeltools-settings__panel {
+        display: grid;
+        align-content: start;
+        gap: 4px;
+      }
+
+      #${APP.windowId} .egeltools-settings__panel[hidden] {
+        display: none;
+      }
+
       #${APP.windowId} .egeltools-settings__feature-heading {
         display: flex;
         gap: 10px;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
       }
 
-      #${APP.windowId} .egeltools-settings__feature--olympics {
-        padding-top: 8px;
-        padding-bottom: 8px;
+      #${APP.windowId} .egeltools-settings__feature-heading > .egeltools-settings__feature-title {
+        margin: 0;
+      }
+
+      #${APP.windowId} .egeltools-settings__feature > .egeltools-settings__field-label {
+        margin-top: 5px;
+        color: #49371f;
+        font-size: 10px;
+      }
+
+      #${APP.windowId} .egeltools-settings__option-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 3px 10px;
+        margin-top: 4px;
+      }
+
+      #${APP.windowId} .egeltools-settings__option-grid .egeltools-settings__option {
+        margin-top: 0;
+      }
+
+      #${APP.windowId} .egeltools-settings__field-trio {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 7px;
+        margin-top: 6px;
       }
 
       #${APP.windowId} .egeltools-settings__feature-heading > div {
@@ -676,6 +740,11 @@
         font-size: 10px;
         line-height: 11px;
         text-align: left !important;
+      }
+
+      #${APP.windowId} .egeltools-settings__sound-status:empty {
+        min-height: 0;
+        margin: 0;
       }
 
       #${APP.windowId} .egeltools-settings__sound-status[data-error='true'] {
@@ -797,7 +866,9 @@
         }
 
         #${APP.windowId} .egeltools-settings__attack-grid,
-        #${APP.windowId} .egeltools-settings__field-pair {
+        #${APP.windowId} .egeltools-settings__field-pair,
+        #${APP.windowId} .egeltools-settings__field-trio,
+        #${APP.windowId} .egeltools-settings__option-grid {
           grid-template-columns: 1fr;
         }
       }
@@ -3061,39 +3132,20 @@
     });
   }
 
-  function createSettingsWindow() {
-    let settingsWindow = document.getElementById(APP.windowId);
-    if (settingsWindow) return settingsWindow;
+  // Each tab renders one settings panel; the tab strip only appears once there are two or more.
+  const SETTINGS_TABS = Object.freeze([
+    Object.freeze({ id: 'general', label: 'General', render: renderGeneralSettingsPanel }),
+  ]);
 
-    settingsWindow = document.createElement('div');
-    settingsWindow.id = APP.windowId;
-    settingsWindow.className = 'ui-dialog ui-corner-all ui-widget ui-widget-content ui-front ui-draggable js-window-main-container';
-    settingsWindow.tabIndex = -1;
-    settingsWindow.setAttribute('role', 'dialog');
-    settingsWindow.setAttribute('aria-modal', 'false');
-    settingsWindow.setAttribute('aria-labelledby', 'egeltools-window-title');
-    settingsWindow.hidden = true;
-    settingsWindow.innerHTML = `
-      <div class="ui-dialog-titlebar ui-draggable-handle">
-        ${hedgehogSvg({ className: 'egeltools-settings__logo' })}
-        <span class="ui-dialog-title" id="egeltools-window-title">
-          <span class="egeltools-settings__brand-name">${APP.name}</span>
-          <span class="egeltools-settings__brand-context">Settings</span>
-        </span>
-        <span class="egeltools-settings__version">v${APP.version}</span>
-        <button class="egeltools-window__close" type="button" aria-label="Close settings">&times;</button>
-      </div>
-      <div class="egeltools-settings__body">
-                <div class="egeltools-settings__feature egeltools-settings__feature--attack">
+  function renderGeneralSettingsPanel() {
+    return `
+                <section class="egeltools-settings__feature egeltools-settings__feature--attack">
                   <div class="egeltools-settings__feature-heading">
-                    <div>
-                      <p class="egeltools-settings__feature-title">Incoming-attack alarm</p>
-                      <p class="egeltools-settings__feature-copy">Choose which attacks should trigger an alert.</p>
-                    </div>
+                    <p class="egeltools-settings__feature-title">Attacks</p>
                     <label class="egeltools-settings__option egeltools-settings__option--inline"
                       for="${ATTACK_ALARM.enabledInputId}">
                       <input id="${ATTACK_ALARM.enabledInputId}" type="checkbox">
-                      Enabled
+                      Incoming-attack alarm
                     </label>
                   </div>
                   <div class="egeltools-settings__attack-grid">
@@ -3121,12 +3173,9 @@
                   </div>
                   <p class="egeltools-settings__sound-status" id="${ATTACK_ALARM.statusId}"
                     role="status" aria-live="polite"></p>
-                </div>
-                <div class="egeltools-settings__feature egeltools-settings__feature--alarm">
-                  <p class="egeltools-settings__feature-title">Alarm sound</p>
-                  <p class="egeltools-settings__feature-copy">
-                    Use GRCRT or a YouTube link. FV claims keep their own sound.
-                  </p>
+                  <span class="egeltools-settings__field-label">
+                    Alarm sound <span class="egeltools-settings__option-note">· GRCRT or a YouTube link; FV claims keep their own sound</span>
+                  </span>
                   <div class="egeltools-settings__sound-row">
                     <input class="egeltools-settings__sound-input" id="${ATTACK_ALARM.soundInputId}"
                       type="url" inputmode="url" autocomplete="off" spellcheck="false"
@@ -3142,100 +3191,86 @@
                   </div>
                   <p class="egeltools-settings__sound-status" id="${ATTACK_ALARM.soundStatusId}"
                     role="status" aria-live="polite"></p>
-                </div>
-                <div class="egeltools-settings__feature egeltools-settings__feature--olympics">
-                  <div class="egeltools-settings__feature-heading">
-                    <div>
-                      <p class="egeltools-settings__feature-title">Celebrations</p>
-                      <p class="egeltools-settings__feature-copy">Optional premium action for PartyTracker.</p>
-                    </div>
-                    <label class="egeltools-settings__option egeltools-settings__option--inline"
-                      for="${CELEBRATION_FINDER.olympicsSettingId}">
+                  <label class="egeltools-settings__option" for="egeltools-hide-noncancellable"
+                    title="Zapper controls remain available when this is off.">
+                    <input id="egeltools-hide-noncancellable" type="checkbox"> Hide non-cancellable movements
+                  </label>
+                </section>
+                <section class="egeltools-settings__feature egeltools-settings__feature--culture">
+                  <p class="egeltools-settings__feature-title">Culture</p>
+                  <div class="egeltools-settings__option-grid">
+                    <label class="egeltools-settings__option" for="${CELEBRATION_FINDER.olympicsSettingId}"
+                      title="Optional premium action for PartyTracker.">
                       <input id="${CELEBRATION_FINDER.olympicsSettingId}" type="checkbox">
                       Olympic Games <span class="egeltools-settings__option-note">${CELEBRATION_FINDER.olympicsGoldCost} gold</span>
                     </label>
+                    <label class="egeltools-settings__option" for="egeltools-show-orpheus"
+                      title="Show Orpheus status and transfer controls while Administrator is active.">
+                      <input id="egeltools-show-orpheus" type="checkbox"> Show Orpheus
+                    </label>
+                    <label class="egeltools-settings__option" for="${RESOURCE_CHECKER.excludeTheatersSettingId}"
+                      title="Leave theater costs out of trade recommendations and donor reserves.">
+                      <input id="${RESOURCE_CHECKER.excludeTheatersSettingId}" type="checkbox">
+                      Party trades: exclude theaters
+                    </label>
+                    <label class="egeltools-settings__option" for="egeltools-party-farm-trades"
+                      title="Use farm villages with a ratio above 1 in two-step trade chains.">
+                      <input id="egeltools-party-farm-trades" type="checkbox"> Party trades: farm villages
+                    </label>
                   </div>
-                </div>
-                <div class="egeltools-settings__feature">
-                  <p class="egeltools-settings__feature-title">Culture overview</p>
-                  <label class="egeltools-settings__option">
-                    <input id="egeltools-show-orpheus" type="checkbox"> Show Orpheus
-                  </label>
-                  <p class="egeltools-settings__feature-copy">Show Orpheus status and transfer controls while Administrator is active.</p>
-                </div>
-                <div class="egeltools-settings__feature">
-                  <p class="egeltools-settings__feature-title">Attack movements</p>
-                  <label class="egeltools-settings__option">
-                    <input id="egeltools-hide-noncancellable" type="checkbox"> Hide non-cancellable movements
-                  </label>
-                  <p class="egeltools-settings__feature-copy">Remove these rows from the list. Zapper controls remain available when this is off.</p>
-                </div>
-                <div class="egeltools-settings__feature">
-                  <p class="egeltools-settings__feature-title">Trade times</p>
-                  <label class="egeltools-settings__field">
-                    <span class="egeltools-settings__field-label">Available trade capacity above</span>
-                    <input id="egeltools-distance-capacity-limit" type="number" min="1" step="1">
-                  </label>
-                  <p class="egeltools-settings__feature-copy">Enable the title-bar toggle to show towns strictly above this capacity.</p>
-                </div>
-                <div class="egeltools-settings__feature">
-                  <p class="egeltools-settings__feature-title">Party trades</p>
-                  <label class="egeltools-settings__option" for="${RESOURCE_CHECKER.excludeTheatersSettingId}">
-                    <input id="${RESOURCE_CHECKER.excludeTheatersSettingId}" type="checkbox">
-                    Exclude theaters
-                  </label>
-                  <label class="egeltools-settings__option">
-                    <input id="egeltools-party-farm-trades" type="checkbox"> Include farm village trades (ratio &gt; 1, two-step chains)
-                  </label>
-                  <p class="egeltools-settings__feature-copy">Leave theater costs out of trade recommendations and donor reserves.</p>
-                </div>
-                <div class="egeltools-settings__feature egeltools-settings__feature--notifications">
-                  <p class="egeltools-settings__feature-title">Notifications</p>
-                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}">
-                    <input id="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}" type="checkbox"> FV claim browser notification
-                  </label>
-                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}">
-                    <input id="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}" type="checkbox"> FV claim alarm sound
-                  </label>
-                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}">
-                    <input id="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}" type="checkbox"> Recruitment resources delivered
-                  </label>
-                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}">
-                    <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}" type="checkbox"> Incoming trades warehouse alarms
-                  </label>
-                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}">
-                    <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}" type="checkbox"> Incoming trades alarm sound
-                  </label>
-                  <p class="egeltools-settings__feature-copy">Browser notifications ask for permission the first time they are enabled.</p>
-                </div>
-                <div class="egeltools-settings__feature egeltools-settings__feature--silver">
-                  <p class="egeltools-settings__feature-title">Store silver</p>
-                  <div class="egeltools-settings__field-pair">
-                    <label class="egeltools-settings__field" for="${SILVER_STORE.amountSettingId}">
-                      <span class="egeltools-settings__field-label">Amount per town</span>
+                </section>
+                <section class="egeltools-settings__feature egeltools-settings__feature--trade">
+                  <div class="egeltools-settings__feature-heading">
+                    <p class="egeltools-settings__feature-title">Trade &amp; resources</p>
+                    <label class="egeltools-settings__option egeltools-settings__option--inline"
+                      for="${RECRUITMENT_TRADE_BRIDGE.settingId}"
+                      title="Show and fill the resources the recruitment plan still needs. Turn off to use GRCRT instead.">
+                      <input id="${RECRUITMENT_TRADE_BRIDGE.settingId}" type="checkbox">
+                      Recruitment needs in trade window
+                    </label>
+                  </div>
+                  <div class="egeltools-settings__field-trio">
+                    <label class="egeltools-settings__field" for="egeltools-distance-capacity-limit"
+                      title="Enable the Trade times title-bar toggle to show towns strictly above this capacity.">
+                      <span class="egeltools-settings__field-label">Trade times: capacity above</span>
+                      <input id="egeltools-distance-capacity-limit" type="number" min="1" step="1">
+                    </label>
+                    <label class="egeltools-settings__field" for="${SILVER_STORE.amountSettingId}"
+                      title="The Store button stores up to this amount above the minimum in every town with a Cave.">
+                      <span class="egeltools-settings__field-label">Silver per town</span>
                       <input id="${SILVER_STORE.amountSettingId}" type="number" inputmode="numeric" min="1" step="500">
                     </label>
-                    <label class="egeltools-settings__field" for="${SILVER_STORE.minimumSettingId}">
-                      <span class="egeltools-settings__field-label">Minimum to keep</span>
+                    <label class="egeltools-settings__field" for="${SILVER_STORE.minimumSettingId}"
+                      title="The Store button always keeps this much silver in every town.">
+                      <span class="egeltools-settings__field-label">Silver to keep</span>
                       <input id="${SILVER_STORE.minimumSettingId}" type="number" inputmode="numeric" min="0" step="1000">
                     </label>
                   </div>
-                  <p class="egeltools-settings__feature-copy">The Store button keeps the minimum in every town with a Cave and stores up to the amount above it.</p>
-                </div>
-                <div class="egeltools-settings__feature egeltools-settings__feature--recruitment-trade">
+                </section>
+                <section class="egeltools-settings__feature egeltools-settings__feature--notifications">
                   <div class="egeltools-settings__feature-heading">
-                    <div>
-                      <p class="egeltools-settings__feature-title">Trade window: recruitment needs</p>
-                      <p class="egeltools-settings__feature-copy">Show and fill the resources the recruitment plan still needs. Turn off to use GRCRT instead.</p>
-                    </div>
-                    <label class="egeltools-settings__option egeltools-settings__option--inline"
-                      for="${RECRUITMENT_TRADE_BRIDGE.settingId}">
-                      <input id="${RECRUITMENT_TRADE_BRIDGE.settingId}" type="checkbox">
-                      Enabled
+                    <p class="egeltools-settings__feature-title">Notifications</p>
+                    <span class="egeltools-settings__option-note">Browser notifications ask for permission once.</span>
+                  </div>
+                  <div class="egeltools-settings__option-grid">
+                    <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}">
+                      <input id="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}" type="checkbox"> FV claim notification
+                    </label>
+                    <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}">
+                      <input id="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}" type="checkbox"> FV claim sound
+                    </label>
+                    <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}">
+                      <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}" type="checkbox"> Warehouse alarms
+                    </label>
+                    <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}">
+                      <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}" type="checkbox"> Warehouse alarm sound
+                    </label>
+                    <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}">
+                      <input id="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}" type="checkbox"> Recruitment resources delivered
                     </label>
                   </div>
-                </div>
-                <div class="egeltools-settings__feature" id="${RECRUIT_OPTIMIZER_BACKUP.sectionId}">
+                </section>
+                <section class="egeltools-settings__feature" id="${RECRUIT_OPTIMIZER_BACKUP.sectionId}">
                   <p class="egeltools-settings__feature-title">Recruit Optimizer backup</p>
                   <p class="egeltools-settings__feature-copy">Back up or restore target troops as a JSON file.</p>
                   <div class="egeltools-settings__button-row">
@@ -3263,10 +3298,97 @@
                   <p class="egeltools-settings__feature-copy">Automatic sync covers target troops only. The most recently saved state replaces older ones.</p>
                   <p class="egeltools-settings__sound-status" id="${RECRUIT_OPTIMIZER_BACKUP.statusId}"
                     role="status" aria-live="polite"></p>
-                </div>
+                </section>
+`;
+  }
+
+  function renderSettingsTabs() {
+    const tabbed = SETTINGS_TABS.length > 1;
+    const tabList = tabbed ? `
+      <div class="egeltools-settings__tabs" role="tablist" aria-label="Settings sections">
+        ${SETTINGS_TABS.map((tab) => `
+          <button class="egeltools-settings__tab" id="egeltools-settings-tab-${tab.id}" type="button"
+            role="tab" data-settings-tab="${tab.id}" aria-controls="egeltools-settings-panel-${tab.id}"
+            aria-selected="false" tabindex="-1">${tab.label}</button>`).join('')}
+      </div>` : '';
+    const panels = SETTINGS_TABS.map((tab) => `
+      <div class="egeltools-settings__panel" id="egeltools-settings-panel-${tab.id}" data-settings-panel="${tab.id}"
+        ${tabbed ? `role="tabpanel" aria-labelledby="egeltools-settings-tab-${tab.id}"` : ''}>
+        ${tab.render()}
+      </div>`).join('');
+    return { tabList, panels };
+  }
+
+  function selectSettingsTab(settingsWindow, tabId) {
+    const tab = SETTINGS_TABS.find((candidate) => candidate.id === tabId) || SETTINGS_TABS[0];
+    settingsWindow.querySelectorAll('[data-settings-panel]').forEach((panel) => {
+      panel.hidden = panel.dataset.settingsPanel !== tab.id;
+    });
+    settingsWindow.querySelectorAll('.egeltools-settings__tab').forEach((button) => {
+      const selected = button.dataset.settingsTab === tab.id;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    settingsWindow.dataset.settingsTab = tab.id;
+    localStorage.setItem(APP.settingsTabKey, tab.id);
+    return tab.id;
+  }
+
+  function wireSettingsTabs(settingsWindow) {
+    const tabList = settingsWindow.querySelector('.egeltools-settings__tabs');
+    const settingsBody = settingsWindow.querySelector('.egeltools-settings__body');
+    const openTab = (tabId, focus = false) => {
+      const selectedId = selectSettingsTab(settingsWindow, tabId);
+      settingsBody.scrollTop = 0;
+      keepSettingsWindowInViewport(settingsWindow);
+      if (focus) settingsWindow.querySelector(`#egeltools-settings-tab-${selectedId}`)?.focus();
+    };
+    tabList?.addEventListener('click', (event) => {
+      const button = event.target.closest('.egeltools-settings__tab');
+      if (button) openTab(button.dataset.settingsTab);
+    });
+    tabList?.addEventListener('keydown', (event) => {
+      const index = SETTINGS_TABS.findIndex((tab) => tab.id === settingsWindow.dataset.settingsTab);
+      const last = SETTINGS_TABS.length - 1;
+      const next = { ArrowRight: index + 1, ArrowLeft: index - 1, Home: 0, End: last }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      openTab(SETTINGS_TABS[(next + SETTINGS_TABS.length) % SETTINGS_TABS.length].id, true);
+    });
+    selectSettingsTab(settingsWindow, localStorage.getItem(APP.settingsTabKey));
+  }
+
+  function createSettingsWindow() {
+    let settingsWindow = document.getElementById(APP.windowId);
+    if (settingsWindow) return settingsWindow;
+
+    const settingsTabs = renderSettingsTabs();
+
+    settingsWindow = document.createElement('div');
+    settingsWindow.id = APP.windowId;
+    settingsWindow.className = 'ui-dialog ui-corner-all ui-widget ui-widget-content ui-front ui-draggable js-window-main-container';
+    settingsWindow.tabIndex = -1;
+    settingsWindow.setAttribute('role', 'dialog');
+    settingsWindow.setAttribute('aria-modal', 'false');
+    settingsWindow.setAttribute('aria-labelledby', 'egeltools-window-title');
+    settingsWindow.hidden = true;
+    settingsWindow.innerHTML = `
+      <div class="ui-dialog-titlebar ui-draggable-handle">
+        ${hedgehogSvg({ className: 'egeltools-settings__logo' })}
+        <span class="ui-dialog-title" id="egeltools-window-title">
+          <span class="egeltools-settings__brand-name">${APP.name}</span>
+          <span class="egeltools-settings__brand-context">Settings</span>
+        </span>
+        <span class="egeltools-settings__version">v${APP.version}</span>
+        <button class="egeltools-window__close" type="button" aria-label="Close settings">&times;</button>
+      </div>
+      ${settingsTabs.tabList}
+      <div class="egeltools-settings__body">
+        ${settingsTabs.panels}
       </div>`;
 
     settingsWindow.querySelector('.egeltools-window__close').addEventListener('click', closeSettings);
+    wireSettingsTabs(settingsWindow);
     makeDraggable(settingsWindow);
     document.body.append(settingsWindow);
     window.addEventListener('resize', () => keepSettingsWindowInViewport(settingsWindow));
