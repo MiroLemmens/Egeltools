@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.103
+// @version      1.2.104
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.103',
+    version: '1.2.104',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -152,9 +152,6 @@
     floatingButtonId: 'egeltools-town-distance-sorter-button',
     refreshButtonId: 'egeltools-town-distance-sorter-refresh',
     closeButtonId: 'egeltools-town-distance-sorter-close',
-    marketFilterButtonId: 'egeltools-town-distance-market-filter',
-    marketFilterEnabledKey: 'egeltools_trade_times_market_5_filter',
-    minimumMarketplaceLevel: 5,
     tradeLockStoragePrefix: 'egeltools_trade_locks',
     tradeLockSpendRatio: 0.5,
     mapTileSize: 128,
@@ -1210,22 +1207,6 @@
       }
       #${TOWN_DISTANCE_SORTER.panelId} .egeltools-capacity-toggle[aria-checked="true"] span { transform: translateX(18px); }
       #${TOWN_DISTANCE_SORTER.panelId} .egeltools-capacity-toggle:focus-visible { outline: 2px solid #fff0bd; outline-offset: 2px; }
-      #${TOWN_DISTANCE_SORTER.marketFilterButtonId} {
-        width: auto !important;
-        min-width: 52px;
-        height: 19px !important;
-        margin-right: 3px;
-        padding: 0 6px !important;
-        border: 1px solid #8ecb61 !important;
-        border-radius: 10px;
-        color: #fff4cd !important;
-        background: linear-gradient(#5f9b3a, #356520) !important;
-        font: bold 8px/17px Arial, Helvetica, sans-serif !important;
-        line-height: 17px !important;
-        text-shadow: 0 1px rgba(0, 0, 0, .55) !important;
-        white-space: nowrap;
-      }
-      #${TOWN_DISTANCE_SORTER.marketFilterButtonId}:hover { filter: brightness(1.1); }
       #${TOWN_DISTANCE_SORTER.bodyId} {
         box-sizing: border-box;
         max-height: min(430px, calc(100vh - 150px));
@@ -6474,8 +6455,6 @@
           Trade times
         </span>
         <button type="button" class="egeltools-capacity-toggle" data-distance-capacity-filter role="switch" aria-checked="false"><span></span></button>
-        <button id="${TOWN_DISTANCE_SORTER.marketFilterButtonId}" type="button"
-          aria-pressed="true">MARKET ON</button>
         <button id="${TOWN_DISTANCE_SORTER.refreshButtonId}" type="button"
           title="Recalculate from the current town" aria-label="Recalculate from the current town">&#8635;</button>
         <button id="${TOWN_DISTANCE_SORTER.closeButtonId}" type="button"
@@ -6491,7 +6470,6 @@
     });
     makeTownDistanceSorterDraggable(panel);
     document.body.append(panel);
-    paintTradeTimesMarketFilter(panel.querySelector(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`));
     return panel;
   }
 
@@ -6670,30 +6648,6 @@
     };
   }
 
-  function getTradeTimesMarketFilterEnabled() {
-    return localStorage.getItem(TOWN_DISTANCE_SORTER.marketFilterEnabledKey) !== 'off';
-  }
-
-  function setTradeTimesMarketFilterEnabled(enabled) {
-    localStorage.setItem(TOWN_DISTANCE_SORTER.marketFilterEnabledKey, enabled ? 'on' : 'off');
-  }
-
-  function paintTradeTimesMarketFilter(button = document.getElementById(TOWN_DISTANCE_SORTER.marketFilterButtonId)) {
-    if (!button) return;
-    const enabled = getTradeTimesMarketFilterEnabled();
-    button.textContent = enabled ? 'MARKET ON' : 'MARKET OFF';
-    button.setAttribute('aria-pressed', String(enabled));
-    button.style.setProperty(
-      'background',
-      enabled ? 'linear-gradient(#5f9b3a, #356520)' : '#8c3e2f',
-      'important',
-    );
-    button.style.setProperty('border-color', enabled ? '#8ecb61' : '#b99b58', 'important');
-    button.title = enabled
-      ? 'Hiding towns below Marketplace level 5. Click to show all towns.'
-      : 'Showing towns regardless of Marketplace level. Click to hide towns below level 5.';
-  }
-
   function getTradeWorldSpeed() {
     const speed = Number(window.Game?.game_speed);
     return Number.isFinite(speed) && speed >= 1 && speed <= 6 ? speed : null;
@@ -6771,10 +6725,8 @@
     });
     const capacityFilterEnabled = localStorage.getItem('egeltools_distance_capacity_filter') === 'on';
     const capacityLimit = getTownDistanceCapacityLimit();
-    const marketFilterEnabled = getTradeTimesMarketFilterEnabled();
     const distances = allDistances.filter((town) => {
       if (tradeLocks[String(town.id)]) return false;
-      if (marketFilterEnabled && !(town.marketplaceLevel >= TOWN_DISTANCE_SORTER.minimumMarketplaceLevel)) return false;
       if (!capacityFilterEnabled) return true;
       const capacity = getTownAvailableTradeCapacity(findTown(town.id));
       return capacity !== null && capacity > capacityLimit;
@@ -6864,7 +6816,6 @@
     toggle.setAttribute('aria-checked', String(localStorage.getItem('egeltools_distance_capacity_filter') === 'on'));
     toggle.title = `Only towns with available trade capacity above ${getTownDistanceCapacityLimit().toLocaleString()}`;
     toggle.setAttribute('aria-label', toggle.title);
-    paintTradeTimesMarketFilter(panel.querySelector(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`));
     const result = getTownDistanceSorterData(townDistanceReferenceTownId);
     body.replaceChildren();
     if (!result) {
@@ -6929,7 +6880,7 @@
     if (!result.distances.length) {
       const empty = document.createElement('p');
       empty.className = 'egeltools-town-distance__state';
-      empty.textContent = 'No towns match the current filters. Towns with unknown trade capacity or Marketplace level are excluded while their filter is on.';
+      empty.textContent = 'No towns match the current filters. Towns with unknown trade capacity are excluded while the capacity filter is on.';
       body.append(empty);
     }
 
@@ -7035,10 +6986,6 @@
       }
       if (event.target.closest(`#${TOWN_DISTANCE_SORTER.floatingButtonId}`)) {
         setTownDistanceSorterOpen(!townDistanceSorterOpen);
-      } else if (event.target.closest(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`)) {
-        setTradeTimesMarketFilterEnabled(!getTradeTimesMarketFilterEnabled());
-        paintTradeTimesMarketFilter();
-        renderTownDistanceSorter();
       } else if (event.target.closest(`#${TOWN_DISTANCE_SORTER.refreshButtonId}`)) {
         townDistanceReferenceTownId = getCurrentTownId() ?? townDistanceSelectedTownId;
         townDistanceSelectedTownId = townDistanceReferenceTownId;
@@ -7078,9 +7025,6 @@
     window.addEventListener('storage', (event) => {
       if (event.key === getTradeLockStorageKey()) {
         monitoredTownTradeLockIds = Object.keys(loadTownTradeLocks()).sort().join(',');
-        if (townDistanceSorterOpen) renderTownDistanceSorter();
-      } else if (event.key === TOWN_DISTANCE_SORTER.marketFilterEnabledKey) {
-        paintTradeTimesMarketFilter();
         if (townDistanceSorterOpen) renderTownDistanceSorter();
       }
     });
