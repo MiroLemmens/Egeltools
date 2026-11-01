@@ -8658,6 +8658,10 @@
     };
 
     const startCollectionSound = () => {
+      if (!isBdsSoundEnabled()) {
+        stopCollectionSound();
+        return;
+      }
       if (getCaptainState() !== 'active' || getState() !== 'ringing') return;
       const alarmAudio = getCollectionAudio();
       alarmAudio.loop = getRepeat();
@@ -8942,21 +8946,105 @@
         : COLLECT_ALARM.fallbackDuration;
     };
 
+    const openBdsOverviewFromNotification = () => {
+      try { window.focus(); } catch (_) {}
+      const overviewLink = document.querySelector('a[name="farm_town_overview"][type="overview"]');
+      if (!overviewLink) {
+        console.warn(`[${APP.name}] the farming-village overview menu entry was not found`);
+        return false;
+      }
+      overviewLink.click();
+      return true;
+    };
+    // Mirror the FV timer into the separate GrepoAlerts userscript when it is installed.
+    const bdsGrepoAlertId = () => `egel_bds_${Number(getTarget()) || 0}`;
+    const getBdsGrepoAlert = (status) => ({
+      id: bdsGrepoAlertId(),
+      type: 'farm',
+      icon: '',
+      label: 'Farm villages ready',
+      townId: String(window.Game?.townId || ''),
+      tsMs: Number(getTarget()),
+      status,
+      trackedAt: Date.now(),
+      source: 'EgelToolsBDS',
+      egelBds: true,
+    });
+    const renderGrepoAlerts = (grepoAlerts) => {
+      grepoAlerts.ui?._render?.();
+      grepoAlerts.ui?.updateBadge?.();
+    };
+    const syncBdsGrepoAlert = (status = 'pending') => {
+      const grepoAlerts = window.GrepoAlerts;
+      if (!grepoAlerts?.storage || !Number(getTarget()) || !isBdsNotificationEnabled()) return;
+      const alert = getBdsGrepoAlert(status);
+      const data = grepoAlerts.storage._read();
+      data.alerts = data.alerts || [];
+      const index = data.alerts.findIndex((item) => item.id === alert.id);
+      if (index >= 0) data.alerts[index] = { ...data.alerts[index], ...alert };
+      else data.alerts.push(alert);
+      grepoAlerts.storage._write(data);
+      renderGrepoAlerts(grepoAlerts);
+    };
+    const refreshBdsGrepoAlert = () => {
+      const grepoAlerts = window.GrepoAlerts;
+      if (!grepoAlerts?.storage) return;
+      const state = getState();
+      const data = grepoAlerts.storage._read();
+      data.alerts = (data.alerts || []).filter((item) => !item.egelBds);
+      if (isBdsNotificationEnabled() && Number(getTarget()) > 0 && (state === 'running' || state === 'ringing')) {
+        data.alerts.push(getBdsGrepoAlert(state === 'ringing' ? 'notified' : 'pending'));
+      }
+      grepoAlerts.storage._write(data);
+      renderGrepoAlerts(grepoAlerts);
+    };
+    window.EgelToolsRefreshBdsGrepoAlert = refreshBdsGrepoAlert;
+
+    const notifyBdsReady = () => {
+      if (!isBdsNotificationEnabled()) return;
+      syncBdsGrepoAlert('notified');
+      const body = 'Click to open the farming-village overview.';
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          const notification = new Notification('Farm villages ready', {
+            body,
+            tag: bdsGrepoAlertId(),
+            renotify: false,
+            requireInteraction: true,
+          });
+          notification.onclick = (event) => {
+            event?.preventDefault?.();
+            openBdsOverviewFromNotification();
+            notification.close();
+          };
+        } catch (error) {
+          console.warn(`[${APP.name}] could not show the FV browser notification`, error);
+        }
+      }
+    };
+
     const startTimer = () => {
       setTarget(Date.now() + getSelectedDuration());
       setState('running');
       stopCollectionSound();
+      window.setTimeout(() => syncBdsGrepoAlert('pending'), 0);
     };
 
     const fireAlarm = () => {
       setState('ringing');
       startCollectionSound();
+      notifyBdsReady();
     };
 
     const stopAlarm = () => {
+      const id = bdsGrepoAlertId();
+      const grepoAlerts = window.GrepoAlerts;
       setTarget(0);
       setState('idle');
       stopCollectionSound();
+      const alert = grepoAlerts?.storage?.getAlerts?.().find((item) => item.id === id);
+      if (alert?.status === 'pending') grepoAlerts.storage.removeAlert(id);
+      if (grepoAlerts) renderGrepoAlerts(grepoAlerts);
     };
 
     const tick = () => {
@@ -9015,10 +9103,18 @@
       if (!document.hidden) tick();
     });
 
+    window.addEventListener('egeltools:bds-sound-changed', (event) => {
+      if (event.detail?.enabled === false) stopCollectionSound();
+      else if (getState() === 'ringing') startCollectionSound();
+    });
+
     window.addEventListener('storage', (event) => {
       if (event.key === COLLECT_ALARM.stateKey || event.key === COLLECT_ALARM.targetKey) {
         if (getState() !== 'ringing') stopCollectionSound();
         tick();
+      } else if (event.key === EGEL_NOTIFICATION_SETTINGS.bdsSoundKey) {
+        if (!isBdsSoundEnabled()) stopCollectionSound();
+        else if (getState() === 'ringing') startCollectionSound();
       } else if (event.key === COLLECT_ALARM.repeatKey) {
         applyRepeat();
         paintRepeatButton(document.getElementById(COLLECT_ALARM.repeatButtonId));
@@ -9963,7 +10059,9 @@
     button.setAttribute('aria-expanded', String(unitQueueOpen));
     button.style.top = '140px';
     button.style.right = '110px';
-    button.style.zIndex = '10000';
+    // Same stacking level as the GrepoData settings button, so native
+    // Grepolis windows can cover it when moved over it.
+    button.style.zIndex = '101';
     button.innerHTML = `
       <svg width="22" height="22" viewBox="0 0 20 21" aria-hidden="true"
         style="display:block;margin:6px 0 0 5px;pointer-events:none">
