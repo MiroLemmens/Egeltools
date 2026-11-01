@@ -6,6 +6,10 @@ All published EgelTools releases are preserved at <https://files.miro23.uk/egelt
 
 - **Settings** is more compact: its eleven sections are merged into five. **Attacks** holds the incoming-attack alarm, its alarm sound and the non-cancellable movements filter. **Culture** holds Olympic Games, Show Orpheus and both Party trades options. **Trade & resources** holds recruitment needs in the trade window, the Trade times capacity and the Store silver amounts. **Notifications** and **Recruit Optimizer backup** stay as they were. Every option keeps its saved value, and hovering an option shows its longer explanation.
 
+## 1.2.106 — 2026-11-01
+
+- Fix the dock buttons changing order: **Incoming trades**, **Show CFs**, **Trade times**, **Party trades** and **Academy** now always appear in that order. Since 1.2.98, **Show CFs**, **Trade times** and **Party trades** moved behind **Academy** when Administrator was renewed during play or became active after the game loaded.
+
 ## 1.2.105 — 2026-11-01
 
 - **Trade times** now show twice the previous travel time, and **Party trades** use the same doubled times when judging whether a suggested trade arrives in time.

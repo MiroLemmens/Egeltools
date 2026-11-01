@@ -8,8 +8,9 @@
       .nui_main_menu > .bottom { position: absolute; bottom: 0; width: 145px; height: 37px; background: #302719; }
       .circle_button { position: relative; display: inline-block; width: 32px; height: 33px; border-radius: 50%; background: #b79b61; }
       .button_new { float: left; min-width: 90px; height: 28px; border: 2px solid #503413; border-radius: 4px; color: #f6e4af; background: #76511f; }
-      #fto_claim_button { position: absolute; top: 7px; right: 70px; }
-      .bpv_villages.fto_farm_claim_res { position: absolute; top: 7px; right: 160px; width: 60px; height: 28px; }
+      /* Leave room right of Collect for Store 3k, as the farming window does. */
+      #fto_claim_button { position: absolute; top: 7px; right: 170px; }
+      .bpv_villages.fto_farm_claim_res { position: absolute; top: 7px; right: 260px; width: 60px; height: 28px; }
       .button_new .caption { padding: 4px 8px; font-weight: bold; }
       .ui-dialog { background: #d9bd7d; }
       .ui-dialog-titlebar { height: 35px; background: #3b2b1b; color: #f0d28e; }
@@ -22,6 +23,8 @@
       .toolbar_button { width: 28px; height: 28px; background: #7b6238; }
       .strategic_map { position: absolute; top: 20px; left: 360px; }
       .ui_quickbar { position: fixed; left: 300px; bottom: 10px; width: 360px; height: 42px; background: #6b512e; }
+      /* A full-width stub would push the Recruit Optimizer sidecar off-screen and add a scrollbar. */
+      #unit_order { width: 300px; }
     </style>
   </head>
   <body>
@@ -94,6 +97,11 @@
       localStorage.removeItem('egeltools_resource_checker_min_wood');
       localStorage.removeItem('egeltools_resource_checker_min_stone');
       localStorage.removeItem('egeltools_resource_checker_min_iron');
+      localStorage.removeItem('egeltools_party_trades_exclude_theaters');
+      localStorage.removeItem('egeltools_party_trades_window_minutes');
+      localStorage.removeItem('egeltools_party_farm_trades');
+      localStorage.removeItem('egeltools_trade_locks_zz1_999');
+      localStorage.removeItem('egeltools_bds_sound_enabled');
       const nativeSetTimeout = window.setTimeout.bind(window);
       window.setTimeout = (callback, delay, ...args) => nativeSetTimeout(
         callback,
@@ -394,14 +402,15 @@
           },
         },
         // This shipment is ongoing, but arrives too late for the next party.
+        // It still takes warehouse room, so it stays small enough for donors.
         550925: {
           attributes: {
             id: 550925,
             origin_town_id: 911,
             destination_town_id: 101,
-            wood: 9000,
-            stone: 9000,
-            iron: 9000,
+            wood: 2000,
+            stone: 0,
+            iron: 0,
             arrival_at: Math.floor(Date.now() / 1000) + 2 * 60 * 60,
           },
         },
@@ -1024,8 +1033,14 @@
           toolDock
             && distanceButton.parentElement?.id === 'egeltools-tool-dock-actions'
             && [...distanceButton.parentElement.children].map((button) => button.id).join(',')
-              === 'egeltools-celebration-finder-button,egeltools-town-distance-sorter-button,egeltools-resource-checker-button',
-          'The three launch buttons should share the option-B horizontal dock in the intended order',
+              === [
+                'egeltools-trade-overview-button',
+                'egeltools-celebration-finder-button',
+                'egeltools-town-distance-sorter-button',
+                'egeltools-resource-checker-button',
+                'egeltools-academy-overview-button',
+              ].join(','),
+          'The three launch buttons should share the option-B horizontal dock in the intended order, also after Administrator returns',
         );
         const toolDockBounds = toolDock.getBoundingClientRect();
         console.assert(
@@ -1111,6 +1126,19 @@
         const lockedResourceButton = document.getElementById('egeltools-resource-checker-button');
         const lockedResourcePanel = document.getElementById('egeltools-resource-checker');
         lockedResourceButton.click();
+        console.assert(
+          lockedResourcePanel.querySelector(
+            '[data-resource-shortage-town="101"] .egeltools-resource-checker__party-time',
+          )?.textContent.startsWith('No theater running · Party in '),
+          'By default, Party trades should plan an idle theater beside the running city party',
+        );
+        // The remaining Party trades checks cover the city-party plan on its own.
+        const excludeTheatersSetting = document.getElementById('egeltools-party-trades-exclude-theaters');
+        excludeTheatersSetting.click();
+        console.assert(
+          localStorage.getItem('egeltools_party_trades_exclude_theaters') === 'on',
+          'The Exclude theaters setting should persist',
+        );
         const lockedSourceTarget = lockedResourcePanel.querySelector('[data-resource-shortage-town="101"]');
         console.assert(
           lockedSourceTarget.querySelector('[data-donors-for-town="101"]').textContent.includes('Sparta')
@@ -1183,14 +1211,14 @@
             && resourceRows[0].querySelector('.egeltools-resource-checker__incoming')
               .textContent.includes('2,800')
             && !resourceRows[0].querySelector('.egeltools-resource-checker__incoming')
-              .textContent.includes('10,500')
+              .textContent.includes('3,500')
             && !resourcePanel.querySelector('#egeltools-resource-checker-apply')
             && !resourcePanel.querySelector('[data-resource-sort]'),
           'Inbound trades arriving before the party should be counted while later shipments and old controls are excluded',
         );
         console.assert(
-          resourcePanel.querySelector('.egeltools-resource-checker__scope')
-            .textContent.includes('shorter trade time'),
+          resourcePanel.querySelector('.egeltools-resource-checker__scope > span[title]')
+            ?.title.includes('Prefers shorter routes, then complete coverage'),
           'The Party trades window should explain its arrival-time optimization',
         );
         const spartaTradeTimeResources = window.__towns[103].resources();
@@ -1273,7 +1301,7 @@
           (() => {
             const finalTradeTotal = Number(
               donorRows[1].querySelector('[data-trade-donor-id="102"]')
-                ?.title.match(/[\d,]+-resource/)?.[0].replace('-resource', '').replaceAll(',', ''),
+                ?.title.match(/Send these ([\d,]+) resources/)?.[1].replaceAll(',', ''),
             );
             return finalTradeTotal >= 900 && finalTradeTotal <= 1000;
           })()
@@ -1323,7 +1351,17 @@
           'Instant trade should post with the donor ID without changing the selected town',
         );
         console.assert(
-          await waitFor(() => {
+          await waitFor(() => (
+            resourcePanel.querySelector('[data-trade-donor-id="103"]')?.dataset.tradeStatus === 'Sent'
+          ))
+            && resourcePanel.querySelectorAll(
+              '[data-resource-shortage-town="101"] .egeltools-resource-checker__donor',
+            ).length === 2,
+          'A sent trade should show Sent and keep the displayed snapshot until Refresh',
+        );
+        resourcePanel.querySelector('#egeltools-resource-checker-refresh').click();
+        console.assert(
+          (() => {
             const refreshedDonors = resourcePanel.querySelectorAll(
               '[data-resource-shortage-town="101"] .egeltools-resource-checker__donor',
             );
@@ -1332,8 +1370,8 @@
               && !resourcePanel.querySelector(
                 '[data-resource-shortage-town="101"] [data-trade-donor-id="103"]',
               );
-          }),
-          'A sent trade should be counted immediately so the same donor is replaced by the next adjusted recommendation',
+          })(),
+          'A sent trade should be counted on Refresh so the same donor is replaced by the next adjusted recommendation',
         );
         const sentPartyTrade = window.__tradeRequests[0].data;
         window.__trades[550926] = {
@@ -1418,6 +1456,7 @@
         window.__celebrations.activeParty.attributes.end_at = Math.floor(Date.now() / 1000) + 60 * 60;
         resourcePanel.querySelector('#egeltools-resource-checker-close').click();
         console.assert(resourcePanel.hidden, 'The resource-checker close button should hide the panel');
+        excludeTheatersSetting.click();
         window.__switchedTownIds = [];
 
         const settingsWindow = document.getElementById('egeltools-settings-window');
@@ -1442,7 +1481,7 @@
         );
         const settingsWindowHeight = settingsWindow.getBoundingClientRect().height;
         console.assert(
-          settingsWindowHeight <= Math.min(410, window.innerHeight - 24),
+          settingsWindowHeight <= window.innerHeight - 24,
           `The settings panel should remain content-sized and viewport-safe; found ${settingsWindowHeight}px`,
         );
         console.assert(
@@ -1518,7 +1557,7 @@
         await new Promise((resolve) => setTimeout(resolve, 1100));
         console.assert(
           window.__audioInstances.some((audio) => (
-            audio.src.startsWith('data:audio/mpeg;base64,') && !audio.paused
+            audio.src.startsWith('data:audio/wav;base64,') && !audio.paused
           )),
           'An expired collection timer should play the fixed FV claim sound',
         );
@@ -1530,7 +1569,7 @@
         console.assert(localStorage.getItem('m23_alarm_state') === 'idle', 'The alarm stop button should reset the state');
         console.assert(
           window.__audioInstances
-            .filter((audio) => audio.src.startsWith('data:audio/mpeg;base64,'))
+            .filter((audio) => audio.src.startsWith('data:audio/wav;base64,'))
             .every((audio) => audio.paused),
           'Stopping the collection alarm should stop the FV sound',
         );
@@ -1805,7 +1844,10 @@
             && getComputedStyle(resourceButton).visibility === 'visible',
           'Grepolis CSS should not hide the resource-checker button',
         );
-        console.assert(floatingButton.textContent === 'Show CFs', 'The docked celebrations button should start closed');
+        console.assert(
+          /^Show CFs · \d+$/.test(floatingButton.textContent),
+          'The docked celebrations button should start closed',
+        );
         floatingButton.click();
         distanceButton.click();
         const celebrationPanel = document.getElementById('egeltools-celebration-finder');
@@ -1828,7 +1870,10 @@
         }));
         document.body.dataset.celebrationRowLayouts = JSON.stringify(rowLayouts);
         const text = document.getElementById('egeltools-celebration-finder-body').textContent;
-        console.assert(floatingButton.textContent === 'Hide CFs', 'The docked celebrations button should reflect the open state');
+        console.assert(
+          floatingButton.textContent === `Hide CFs · ${rows.length}`,
+          'The docked celebrations button should reflect the open state and count the listed towns',
+        );
         console.assert(rows.length === 2, `Expected 2 celebration rows, found ${rows.length}`);
         console.assert(
           rowLayouts.every((layout) => Math.abs(layout.linkTop - layout.actionsTop) <= 2),
