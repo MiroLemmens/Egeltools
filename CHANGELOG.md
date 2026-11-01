@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.106 — 2026-11-01
+
+- Fix the dock buttons changing order: **Incoming trades**, **Show CFs**, **Trade times**, **Party trades** and **Academy** now always appear in that order. Since 1.2.98, **Show CFs**, **Trade times** and **Party trades** moved behind **Academy** when Administrator was renewed during play or became active after the game loaded.
+
 ## 1.2.99 — 2026-11-01
 
 - The **Academy** overview now opens in a regular Grepolis window, like the **Recruitment Simulator**: native frame and title bar, with **↻** (refresh) and close buttons at the top right. Drag it by the title bar and resize it from the bottom-right corner, and it comes to the front over other game windows when clicked. The group and sort pickers sit above the colour legend.

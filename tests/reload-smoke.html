@@ -45,7 +45,7 @@
     <script>
       window.setTimeout(() => {
         const bdAudio = window.__audioInstances.find(
-          (audio) => audio.src.startsWith('data:audio/mpeg;base64,'),
+          (audio) => audio.src.startsWith('data:audio/wav;base64,'),
         );
         console.assert(
           localStorage.getItem('m23_alarm_state') === 'ringing',
