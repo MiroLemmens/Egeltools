@@ -178,6 +178,7 @@
     tradeModelSyncGraceSeconds: 2 * 60,
     tradeDonorCooldownSeconds: 10,
     minimumTradeAmount: 500,
+    minimumRelativeTradeSaving: 0.1,
     loyaltyClaimInterval: 13 * 60,
     loyaltyClaimByFarmLevel: Object.freeze([0, 28, 34, 40, 45, 51, 57]),
   });
@@ -3203,7 +3204,7 @@
                     Exclude theaters
                   </label>
                   <label class="egeltools-settings__option">
-                    <input id="egeltools-party-farm-trades" type="checkbox"> Include farm village trades (ratio &gt; 0.8)
+                    <input id="egeltools-party-farm-trades" type="checkbox"> Include farm village trades (ratio &gt; 1, two-step chains)
                   </label>
                   <p class="egeltools-settings__feature-copy">Leave theater costs out of trade recommendations and donor reserves.</p>
                 </div>
@@ -7482,6 +7483,81 @@
     }
   }
 
+  function getFarmingVillageTradeDurationSeconds() {
+    const speed = getTradeWorldSpeed();
+    // Requested fixed planning duration: speed 6 = 2 minutes, speed 3 = 4 minutes.
+    // The same inverse-speed rule also provides a safe value on other speeds.
+    return Number.isFinite(speed) && speed > 0 ? Math.round(720 / speed) : 240;
+  }
+
+  // Seconds until a town covers its shortfall: the shortfall applies when the
+  // current celebration ends, after which production and farm village claims
+  // keep filling it. Planned shipments count once all of them have arrived.
+  function estimatePartyTradeReadySeconds(town, claimIncome, covered = {}, arrivalSeconds = 0) {
+    const start = Math.max(0, Number(town.partyForecast?.secondsRemaining) || 0);
+    const production = getTownProductionPerHour(town.model)
+      || Object.fromEntries(RESOURCE_CHECKER.resources.map((resource) => [resource, 0]));
+    const interval = RESOURCE_CHECKER.loyaltyClaimInterval;
+    const enoughAt = (seconds) => RESOURCE_CHECKER.resources.every((resource) => {
+      const missing = Number(town.deficits?.[resource]) || 0;
+      if (missing <= 0) return true;
+      const produced = (production[resource] || 0) * (seconds - start) / 3600;
+      const claimed = claimIncome * (Math.floor(seconds / interval) - Math.floor(start / interval));
+      const shipped = seconds >= arrivalSeconds ? covered[resource] || 0 : 0;
+      return produced + claimed + shipped >= missing;
+    });
+    if (enoughAt(start)) return start;
+    const limit = start + 365 * 24 * 60 * 60;
+    let high = start + interval;
+    while (high < limit && !enoughAt(high)) high = start + (high - start) * 2;
+    if (!enoughAt(Math.min(high, limit))) return Number.POSITIVE_INFINITY;
+    high = Math.min(high, limit);
+    let low = start;
+    while (high - low > 1) {
+      const middle = Math.floor((low + high) / 2);
+      if (enoughAt(middle)) high = middle;
+      else low = middle;
+    }
+    return high;
+  }
+
+  // Suggested trades must have the town ready when its celebration ends, or
+  // cut the wait after that end by at least the minimum relative saving.
+  function evaluatePartyTradeSaving(town, plan, farmTrades, claimIncome) {
+    const donors = plan?.donors || [];
+    if (!donors.length && !farmTrades.length) return { meaningful: false };
+    const covered = {};
+    const add = (resource, amount) => {
+      if (amount > 0) covered[resource] = (covered[resource] || 0) + amount;
+    };
+    for (const trade of farmTrades) {
+      add(trade.receive, trade.received);
+      if (trade.steps) add(trade.steps[0].receive, trade.steps[0].received - trade.steps[1].amount);
+    }
+    let arrivalSeconds = farmTrades.length ? getFarmingVillageTradeDurationSeconds() : 0;
+    for (const donor of donors) {
+      for (const [resource, amount] of Object.entries(donor.contributions || {})) add(resource, amount);
+      const sameIsland = Number.isFinite(donor.islandX) && Number.isFinite(donor.islandY)
+        && donor.islandX === town.islandX && donor.islandY === town.islandY;
+      const duration = calculateTownTradeDuration(donor.distance, sameIsland);
+      // Without a world speed the arrival is unknown, so keep the trades visible.
+      if (!Number.isFinite(duration)) return { meaningful: true };
+      arrivalSeconds = Math.max(arrivalSeconds, duration);
+    }
+    const start = Math.max(0, Number(town.partyForecast?.secondsRemaining) || 0);
+    const currentReady = estimatePartyTradeReadySeconds(town, claimIncome);
+    const proposedReady = estimatePartyTradeReadySeconds(town, claimIncome, covered, arrivalSeconds);
+    const result = { currentReady, proposedReady };
+    // Trades that make the celebration start on time are always shown.
+    if (proposedReady <= start || !Number.isFinite(currentReady)) return { ...result, meaningful: true };
+    const savedSeconds = currentReady - proposedReady;
+    return {
+      ...result,
+      meaningful: savedSeconds > 0
+        && savedSeconds / (currentReady - start) >= RESOURCE_CHECKER.minimumRelativeTradeSaving,
+    };
+  }
+
   function compareResourceTradeTargets(left, right, plans) {
     const idleDifference = Number(left.partyForecast.active) - Number(right.partyForecast.active);
     const routeDistance = (town) => {
@@ -7597,7 +7673,8 @@
       Math.max(0, town.resources[resource] - Math.max(minimums[resource] || 0,
         forecast?.reserveNow?.[resource] || 0) - (reserved.resources[resource] || 0))]));
     const remaining = { ...(town.transferDeficits || town.deficits) };
-    const offers = [];
+    // Only positive exchanges: the farm village must return more than it receives.
+    const routes = [];
     for (const [farmId, farm] of context.farmTownById) {
       const relation = context.relationByFarmTownId.get(farmId);
       if (partyFarmTradesPending.has(`fv:${farmId}`) || !relation || Number(getFirstMethodValue(relation, ['getRelationStatus'], ['relation_status'])) !== 1) continue;
@@ -7608,26 +7685,109 @@
       const receive = getFirstMethodValue(farm, ['getResourceOffer'], ['resource_offer']);
       const ratio = Number(getFirstMethodValue(relation, ['getTradeRatio'], ['trade_ratio']));
       const relationId = getFirstMethodValue(relation, ['getId'], ['id']);
-      if (!Number.isFinite(ratio) || ratio <= 0.8 || !available[give] || !remaining[receive] || relationId == null || give === receive) continue;
-      offers.push({ farmId, relationId, give, receive, ratio });
+      if (!(ratio > 1) || relationId == null || give === receive
+        || !RESOURCE_CHECKER.resources.includes(give) || !RESOURCE_CHECKER.resources.includes(receive)) continue;
+      routes.push({ farmId, relationId, give, receive, ratio });
     }
-    offers.sort((a, b) => b.ratio - a.ratio);
+    routes.sort((a, b) => b.ratio - a.ratio);
+    const storage = getTownStorageCapacity(town.model);
     const trades = [];
     const receivedTotals = {};
-    for (const offer of offers) {
-      const room = getTownStorageCapacity(town.model) - town.resources[offer.receive]
-        - (town.incomingResources?.[offer.receive] || 0) - (receivedTotals[offer.receive] || 0);
-      const amount = Math.floor(Math.min(available[offer.give], capacity,
-        ISLAND_UTILITIES.maximumTradeAmount, Math.ceil((remaining[offer.receive] || 0) / offer.ratio), room / offer.ratio));
+    const sentTotals = {};
+    const usedFarmIds = new Set();
+    const firstTradeByExchange = new Map();
+    for (const route of routes) {
+      // Use one farm village per exchange. A second one only tops up a
+      // remainder after the first trade used the full 3,000 resources.
+      const exchange = `${route.give}:${route.receive}`;
+      const first = firstTradeByExchange.get(exchange);
+      if (first && first.amount < ISLAND_UTILITIES.maximumTradeAmount) continue;
+      if (!available[route.give] || !(remaining[route.receive] > 0)) continue;
+      const room = storage - town.resources[route.receive]
+        - (town.incomingResources?.[route.receive] || 0) - (receivedTotals[route.receive] || 0);
+      const amount = Math.floor(Math.min(available[route.give], capacity,
+        ISLAND_UTILITIES.maximumTradeAmount, Math.ceil(remaining[route.receive] / route.ratio), room / route.ratio));
       if (!Number.isFinite(amount) || amount < ISLAND_UTILITIES.minimumTradeAmount) continue;
-      const received = Math.floor(amount * offer.ratio);
-      trades.push({ ...offer, amount, received });
-      receivedTotals[offer.receive] = (receivedTotals[offer.receive] || 0) + received;
-      available[offer.give] -= amount;
+      const received = Math.floor(amount * route.ratio);
+      if (received <= amount) continue;
+      const trade = { ...route, amount, received };
+      trades.push(trade);
+      if (!first) firstTradeByExchange.set(exchange, trade);
+      usedFarmIds.add(route.farmId);
+      receivedTotals[route.receive] = (receivedTotals[route.receive] || 0) + received;
+      sentTotals[route.give] = (sentTotals[route.give] || 0) + amount;
+      available[route.give] -= amount;
       capacity -= amount;
-      remaining[offer.receive] = Math.max(0, remaining[offer.receive] - received);
+      remaining[route.receive] = Math.max(0, remaining[route.receive] - received);
+    }
+    // When no direct exchange closes a deficit, chain two positive exchanges
+    // (for example wood -> stone -> iron). Both steps start at once: the second
+    // step spends stock that the first step replaces, and each chain stops at
+    // the exact missing amount instead of creating surplus.
+    for (const finalResource of RESOURCE_CHECKER.resources) {
+      for (const second of routes) {
+        if (second.receive !== finalResource || usedFarmIds.has(second.farmId)) continue;
+        for (const first of routes) {
+          if (!(remaining[finalResource] > 0)
+            || capacity < 2 * ISLAND_UTILITIES.minimumTradeAmount) break;
+          if (first.receive !== second.give || first.give === finalResource
+            || first.farmId === second.farmId || usedFarmIds.has(first.farmId)) continue;
+          const intermediateResource = second.give;
+          const secondNeeded = Math.ceil(remaining[finalResource] / second.ratio);
+          const firstAmount = Math.floor(Math.min(ISLAND_UTILITIES.maximumTradeAmount,
+            available[first.give], Math.ceil(secondNeeded / first.ratio),
+            capacity - ISLAND_UTILITIES.minimumTradeAmount));
+          if (!Number.isFinite(firstAmount) || firstAmount < ISLAND_UTILITIES.minimumTradeAmount) continue;
+          const intermediate = Math.floor(firstAmount * first.ratio);
+          const finalRoom = storage - town.resources[finalResource]
+            - (town.incomingResources?.[finalResource] || 0) - (receivedTotals[finalResource] || 0);
+          const secondAmount = Math.floor(Math.min(ISLAND_UTILITIES.maximumTradeAmount, intermediate,
+            secondNeeded, capacity - firstAmount, finalRoom / second.ratio,
+            town.resources[intermediateResource] - (sentTotals[intermediateResource] || 0)
+              - (reserved.resources[intermediateResource] || 0)));
+          if (!Number.isFinite(secondAmount) || secondAmount < ISLAND_UTILITIES.minimumTradeAmount) continue;
+          const intermediateRoom = storage - town.resources[intermediateResource]
+            - (town.incomingResources?.[intermediateResource] || 0)
+            - (receivedTotals[intermediateResource] || 0) + (sentTotals[intermediateResource] || 0);
+          if (intermediate - secondAmount > intermediateRoom) continue;
+          const received = Math.floor(secondAmount * second.ratio);
+          if (received <= secondAmount) continue;
+          trades.push({
+            give: first.give,
+            receive: finalResource,
+            amount: firstAmount,
+            received,
+            steps: [
+              { ...first, amount: firstAmount, received: intermediate },
+              { ...second, amount: secondAmount, received },
+            ],
+          });
+          usedFarmIds.add(first.farmId);
+          usedFarmIds.add(second.farmId);
+          receivedTotals[intermediateResource] = (receivedTotals[intermediateResource] || 0) + intermediate;
+          receivedTotals[finalResource] = (receivedTotals[finalResource] || 0) + received;
+          sentTotals[first.give] = (sentTotals[first.give] || 0) + firstAmount;
+          sentTotals[intermediateResource] = (sentTotals[intermediateResource] || 0) + secondAmount;
+          available[first.give] -= firstAmount;
+          capacity -= firstAmount + secondAmount;
+          remaining[finalResource] = Math.max(0, remaining[finalResource] - received);
+          break;
+        }
+      }
     }
     return trades;
+  }
+
+  function isSamePartyFarmTrade(planned, fresh) {
+    const plannedSteps = planned.steps || [planned];
+    const freshSteps = fresh.steps || [fresh];
+    return plannedSteps.length === freshSteps.length && plannedSteps.every((step, index) => (
+      freshSteps[index].farmId === step.farmId
+      && freshSteps[index].give === step.give
+      && freshSteps[index].receive === step.receive
+      && freshSteps[index].ratio === step.ratio
+      && freshSteps[index].amount >= step.amount
+    ));
   }
 
   function makePartyFarmTradeList(town, trades) {
@@ -7637,31 +7797,55 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'egeltools-resource-checker__trade-button';
-      button.textContent = 'Trade with FV';
-      row.append(`FV ${trade.farmId}: ${trade.amount} ${trade.give} → ${trade.received} ${trade.receive} (ratio ${trade.ratio}) `, button);
+      const steps = trade.steps || [trade];
+      button.textContent = trade.steps ? 'Trade chain with FVs' : 'Trade with FV';
+      row.append(trade.steps
+        ? `FV ${steps[0].farmId} → FV ${steps[1].farmId}: ${steps.map((step) => `${step.amount} ${step.give} → ${step.received} ${step.receive}`).join(', then ')} (ratios ${steps.map((step) => step.ratio).join(' · ')}) `
+        : `FV ${trade.farmId}: ${trade.amount} ${trade.give} → ${trade.received} ${trade.receive} (ratio ${trade.ratio}) `, button);
       button.addEventListener('click', () => {
         const data = getResourceCheckerData();
         const current = data?.shortages.find(entry => String(entry.id) === String(town.id));
-        const fresh = current && buildPartyFarmTrades(current, data.minimums).find(entry => entry.farmId === trade.farmId);
-        if (!fresh || fresh.give !== trade.give || fresh.receive !== trade.receive || fresh.ratio !== trade.ratio || fresh.amount < trade.amount) {
+        const fresh = current && buildPartyFarmTrades(current, data.minimums).find(entry => (
+          Boolean(entry.steps) === Boolean(trade.steps) && (entry.steps || [entry])[0].farmId === steps[0].farmId
+        ));
+        if (!fresh || !isSamePartyFarmTrade(trade, fresh)) {
           button.disabled = true;
           button.textContent = 'Changed — refresh';
           return;
         }
+        const release = () => {
+          partyFarmTradesPending.delete(String(town.id));
+          for (const step of steps) partyFarmTradesPending.delete(`fv:${step.farmId}`);
+        };
         partyFarmTradesPending.add(String(town.id));
-        partyFarmTradesPending.add(`fv:${trade.farmId}`);
+        for (const step of steps) partyFarmTradesPending.add(`fv:${step.farmId}`);
         button.disabled = true;
         button.textContent = 'Sending…';
         const timeout = window.setTimeout(() => { button.textContent = 'Unconfirmed — check outgoing trades'; }, 30000);
         const done = (label) => { window.clearTimeout(timeout); button.textContent = label; };
-        try {
-          const sent = postIslandUtilityAction('trade', town.id, trade.farmId, trade.relationId,
-            { amount: trade.amount }, () => {
-              // Keep this town blocked until reload: the callback can precede model synchronization.
-              done('Sent — reload to plan more FV trades');
-            }, () => { partyFarmTradesPending.delete(String(town.id)); partyFarmTradesPending.delete(`fv:${trade.farmId}`); done('Failed — refresh'); });
-          if (!sent) { partyFarmTradesPending.delete(String(town.id)); partyFarmTradesPending.delete(`fv:${trade.farmId}`); done('Unavailable'); }
-        } catch (error) { done('Unconfirmed — check outgoing trades'); }
+        // A chain sends its second step only after the first one is confirmed.
+        const sendStep = (index) => {
+          const step = steps[index];
+          try {
+            const sent = postIslandUtilityAction('trade', town.id, step.farmId, step.relationId,
+              { amount: step.amount }, () => {
+                if (index + 1 < steps.length) {
+                  sendStep(index + 1);
+                  return;
+                }
+                // Keep this town blocked until reload: the callback can precede model synchronization.
+                done('Sent — reload to plan more FV trades');
+              }, () => {
+                if (index === 0) release();
+                done(index === 0 ? 'Failed — refresh' : 'Second step failed — refresh');
+              });
+            if (!sent) {
+              if (index === 0) release();
+              done(index === 0 ? 'Unavailable' : 'Second step unavailable — refresh');
+            }
+          } catch (error) { done('Unconfirmed — check outgoing trades'); }
+        };
+        sendStep(0);
       });
       list.append(row);
     }
@@ -8360,24 +8544,55 @@
     }
 
     panel.dataset.snapshotReady = 'true';
-    const reservations = new Map();
+    // Farm village trades spend the target town's own stock, so they reserve
+    // it before city donors are chosen.
+    const reserveFarmTrades = (reservations, town, trades) => {
+      for (const step of trades.flatMap((trade) => trade.steps || [trade])) {
+        const reserved = reservations.get(String(town.id)) || { total: 0, resources: {} };
+        reserved.total += step.amount;
+        reserved.resources[step.give] = (reserved.resources[step.give] || 0) + step.amount;
+        reservations.set(String(town.id), reserved);
+      }
+    };
+    let reservations = new Map();
     const farmPlans = new Map();
     for (const town of data.shortages) {
       const trades = buildPartyFarmTrades(town, data.minimums, reservations);
       farmPlans.set(String(town.id), trades);
+      reserveFarmTrades(reservations, town, trades);
       for (const trade of trades) {
-        const reserved = reservations.get(String(town.id)) || { total: 0, resources: {} };
-        reserved.total += trade.amount;
-        reserved.resources[trade.give] = (reserved.resources[trade.give] || 0) + trade.amount;
-        reservations.set(String(town.id), reserved);
         town.transferDeficits[trade.receive] = Math.max(0, town.transferDeficits[trade.receive] - trade.received);
       }
     }
-    const plans = new Map(data.shortages.map((town) => (
+    let plans = new Map(data.shortages.map((town) => (
       [String(town.id), buildResourceDonorPlan(town, data.towns, data.minimums, reservations)]
     )));
+    // Hide trades that do not shorten the wait enough, then rebuild the city
+    // allocations so the hidden trades do not hold donor stock.
+    const marginalTrades = new Map();
+    if (data.shortages.length) {
+      const claimIncomeByTown = getLoyaltyClaimIncomePerTown(data.towns);
+      for (const town of data.shortages) {
+        const townId = String(town.id);
+        const farmTrades = farmPlans.get(townId) || [];
+        if (!farmTrades.length && !plans.get(townId)?.donors.length) continue;
+        const saving = evaluatePartyTradeSaving(town, plans.get(townId), farmTrades,
+          claimIncomeByTown.get(townId) || 0);
+        if (!saving.meaningful) marginalTrades.set(townId, saving);
+      }
+    }
+    if (marginalTrades.size) {
+      reservations = new Map();
+      for (const town of data.shortages) {
+        if (marginalTrades.has(String(town.id))) farmPlans.set(String(town.id), []);
+        else reserveFarmTrades(reservations, town, farmPlans.get(String(town.id)) || []);
+      }
+      plans = new Map(data.shortages.map((town) => [String(town.id), marginalTrades.has(String(town.id))
+        ? { donors: [], remaining: {} }
+        : buildResourceDonorPlan(town, data.towns, data.minimums, reservations)]));
+    }
     data.shortages.sort((left, right) => compareResourceTradeTargets(left, right, plans));
-    const tradeCount = [...plans.values()].reduce((total, plan) => total + plan.donors.length, [...farmPlans.values()].reduce((sum, trades) => sum + trades.length, 0));
+    const tradeCount = [...plans.values()].reduce((total, plan) => total + plan.donors.length, [...farmPlans.values()].flat().reduce((sum, trade) => sum + (trade.steps?.length || 1), 0));
     count.textContent = `${tradeCount} ${tradeCount === 1 ? 'trade' : 'trades'}`;
     updateResourceCheckerButton(tradeCount);
 
@@ -8427,8 +8642,17 @@
         }
         townSection.append(incoming);
       }
-      townSection.append(makePartyFarmTradeList(town, farmPlans.get(String(town.id)) || []));
-      townSection.append(makeResourceDonorList(town, data, plans.get(String(town.id))));
+      const marginal = marginalTrades.get(String(town.id));
+      if (marginal) {
+        const note = document.createElement('p');
+        note.className = 'egeltools-resource-checker__donor-note';
+        note.textContent = `No trade shortens the wait by ${Math.round(RESOURCE_CHECKER.minimumRelativeTradeSaving * 100)}% or more. Ready without trades in ${formatPartyLockTime(marginal.currentReady)}.`;
+        note.title = 'Trades are only suggested when they make the town ready by the end of its celebration, or cut the wait after that end by at least this share.';
+        townSection.append(note);
+      } else {
+        townSection.append(makePartyFarmTradeList(town, farmPlans.get(String(town.id)) || []));
+        townSection.append(makeResourceDonorList(town, data, plans.get(String(town.id))));
+      }
       body.append(townSection);
     }
     restoreView();
