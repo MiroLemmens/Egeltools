@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.103 — 2026-11-01
+
+- Remove the **MARKET** toggle from **Trade times**; the list no longer hides towns below Marketplace level 5. Use the trade-capacity switch to filter towns instead.
+
 ## 1.2.102 — 2026-11-01
 
 - The **Academy** overview opens and refreshes much faster, especially with many towns: it no longer stalls the game for several seconds while it fills in the research grid. Research tooltips are now built when you hover a cell, so they always show current resources and research points.
