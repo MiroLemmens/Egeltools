@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.109 — 2026-11-01
+
+- The **Academy** overview's research buttons fill their whole cell, and every other column is shaded so the columns are easy to follow. Cells are green once researched (or queued), red when not researched, and yellow when the town's template needs that research but the town cannot start it yet: too few resources or research points, or an academy level that is too low. The legend shows these three colours.
+
 ## 1.2.107 — 2026-11-01
 
 - The **Academy** overview's **+** buttons are green when the town has the resources and research points to start that research, and grey when it lacks either. This applies to every research you could start, whether or not it is in the town's template. Researched cells keep their green or red **−**, and the legend explains each colour.
