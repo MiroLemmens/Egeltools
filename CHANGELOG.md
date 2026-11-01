@@ -6,6 +6,10 @@ All published EgelTools releases are preserved at <https://files.miro23.uk/egelt
 
 - The **Academy** overview's research icons now fit their header cells: each icon is a framed square centred above its column, instead of a shrunken icon that could sit off-centre or be cut off at the edges.
 
+## 1.2.112 — 2026-11-01
+
+- The **Academy** overview no longer shades every other column. Instead, a research cell is shaded darker when the town does not have enough resources or research points to start it, so you can see at a glance what each town can research right now. The legend explains the darker shade.
+
 ## 1.2.111 — 2026-11-01
 
 - The **Academy** overview is more compact: the town column no longer repeats the town's group under its name, and the free research points now sit at the top right of the town cell, next to the name.
