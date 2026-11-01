@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.105 — 2026-11-01
+
+- **Trade times** now show twice the previous travel time, and **Party trades** use the same doubled times when judging whether a suggested trade arrives in time.
+
 ## 1.2.104 — 2026-11-01
 
 - The **Academy** overview scrolls inside its window in both directions, so every town and research column is reachable at any window size. The group and sort pickers, the colour legend and each town's resources wrap onto extra lines instead of being cut off when the window is narrow.

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.104
+// @version      1.2.105
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.104',
+    version: '1.2.105',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -6657,9 +6657,9 @@
     const speed = getTradeWorldSpeed();
     if (!Number.isFinite(distance) || distance < 0 || speed === null) return null;
     // An active Captain doubles trade speed; apply it before rounding.
-    const duration = sameIsland
+    const duration = 2 * (sameIsland
       ? distance * 5 / (3 * speed)
-      : 2700 / (speed ** 3) + distance * 5 / (speed ** 2);
+      : 2700 / (speed ** 3) + distance * 5 / (speed ** 2));
     return Math.floor(duration / (isCaptainActive() ? 2 : 1));
   }
 
