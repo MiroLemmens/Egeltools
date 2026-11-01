@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.109 — 2026-11-01
+
+- The **Academy** overview's research buttons fill their whole cell, and every other column is shaded so the columns are easy to follow. Cells are green once researched (or queued), red when not researched, and yellow when the town's template needs that research but the town cannot start it yet: too few resources or research points, or an academy level that is too low. The legend shows these three colours.
+
 ## 1.2.108 — 2026-11-01
 
 - **Settings** is more compact: its eleven sections are merged into five. **Attacks** holds the incoming-attack alarm, its alarm sound and the non-cancellable movements filter. **Culture** holds Olympic Games, Show Orpheus and both Party trades options. **Trade & resources** holds recruitment needs in the trade window, the Trade times capacity and the Store silver amounts. **Notifications** and **Recruit Optimizer backup** stay as they were. Every option keeps its saved value, and hovering an option shows its longer explanation.
