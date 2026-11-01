@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.109
+// @version      1.2.110
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.109',
+    version: '1.2.110',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -60,11 +60,13 @@
   });
 
   const EGEL_NOTIFICATION_SETTINGS = Object.freeze({
+    browserKey: 'egeltools_browser_notifications_enabled',
     bdsKey: 'egeltools_bds_browser_notification_enabled',
     bdsSoundKey: 'egeltools_bds_sound_enabled',
     unitResourceKey: 'egeltools_unit_resource_notification_enabled',
     incomingTradesPopupKey: 'egeltools_incoming_trades_popup_enabled',
     incomingTradesSoundKey: 'egeltools_incoming_trades_sound_enabled',
+    browserInputId: 'egeltools-browser-notifications-enabled',
     bdsInputId: 'egeltools-bds-notification-enabled',
     bdsSoundInputId: 'egeltools-bds-sound-enabled',
     unitResourceInputId: 'egeltools-unit-resource-notification-enabled',
@@ -73,6 +75,7 @@
   });
   function getEgelNotificationSetting(key) { return localStorage.getItem(key) === 'on'; }
   function setEgelNotificationSetting(key, enabled) { localStorage.setItem(key, enabled ? 'on' : 'off'); }
+  function isBrowserNotificationEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.browserKey) !== 'off'; }
   function isBdsNotificationEnabled() { return getEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsKey); }
   function isBdsSoundEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.bdsSoundKey) !== 'off'; }
   function isUnitResourceNotificationEnabled() { return getEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.unitResourceKey); }
@@ -80,11 +83,12 @@
   function isIncomingTradesSoundEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundKey) !== 'off'; }
 
   function ensureEgelNotificationPermission() {
-    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    if (!isBrowserNotificationEnabled() || !('Notification' in window) || Notification.permission !== 'default') return;
     void Notification.requestPermission().catch(() => {});
   }
 
   window.EgelToolsNotificationSettings = Object.freeze({
+    isBrowserEnabled: isBrowserNotificationEnabled,
     isBdsEnabled: isBdsNotificationEnabled,
     isBdsSoundEnabled,
     isUnitResourceEnabled: isUnitResourceNotificationEnabled,
@@ -3026,16 +3030,22 @@
 
   function wireNotificationSettings(settingsWindow) {
     const input = (id) => settingsWindow.querySelector(`#${id}`);
+    const browser = input(EGEL_NOTIFICATION_SETTINGS.browserInputId);
     const bds = input(EGEL_NOTIFICATION_SETTINGS.bdsInputId);
     const bdsSound = input(EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId);
     const unitResource = input(EGEL_NOTIFICATION_SETTINGS.unitResourceInputId);
     const tradesPopup = input(EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId);
     const tradesSound = input(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId);
+    browser.checked = isBrowserNotificationEnabled();
     bds.checked = isBdsNotificationEnabled();
     bdsSound.checked = isBdsSoundEnabled();
     unitResource.checked = isUnitResourceNotificationEnabled();
     tradesPopup.checked = isIncomingTradesPopupEnabled();
     tradesSound.checked = isIncomingTradesSoundEnabled();
+    browser.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.browserKey, browser.checked);
+      if (browser.checked && (bds.checked || unitResource.checked)) ensureEgelNotificationPermission();
+    });
     bds.addEventListener('change', () => {
       setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsKey, bds.checked);
       if (bds.checked) ensureEgelNotificationPermission();
@@ -3253,6 +3263,10 @@
                     <span class="egeltools-settings__option-note">Browser notifications ask for permission once.</span>
                   </div>
                   <div class="egeltools-settings__option-grid">
+                    <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.browserInputId}"
+                      title="Show FV claims and recruitment deliveries as desktop notifications outside the game tab. The in-game alerts stay on either way.">
+                      <input id="${EGEL_NOTIFICATION_SETTINGS.browserInputId}" type="checkbox"> Browser notifications
+                    </label>
                     <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}">
                       <input id="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}" type="checkbox"> FV claim notification
                     </label>
@@ -9374,7 +9388,7 @@
       if (!isBdsNotificationEnabled()) return;
       syncBdsGrepoAlert('notified');
       const body = 'Click to open the farming-village overview.';
-      if ('Notification' in window && Notification.permission === 'granted') {
+      if (isBrowserNotificationEnabled() && 'Notification' in window && Notification.permission === 'granted') {
         try {
           const notification = new Notification('Farm villages ready', {
             body,
@@ -16047,7 +16061,8 @@
     await selectDeliveryRecruitmentUnit(delivery);
     return true;
   }
-  function requestRecruitmentNotificationPermission(){if('Notification'in window&&Notification.permission==='default')void Notification.requestPermission().catch(()=>{});}
+  function isRecruitmentBrowserNotificationEnabled(){return window.EgelToolsNotificationSettings?.isBrowserEnabled?.()!==false;}
+  function requestRecruitmentNotificationPermission(){if(isRecruitmentBrowserNotificationEnabled()&&'Notification'in window&&Notification.permission==='default')void Notification.requestPermission().catch(()=>{});}
   let deliveryBellRefresh=null;
   function escapeDeliveryHtml(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function formatDeliveryCountdown(arrivalAt){
@@ -16083,7 +16098,9 @@
   function renderPersistentDeliveryAlerts(){syncAllDeliveriesToGrepoAlerts();}
   function fireRecruitmentDeliveryNotification(delivery){
     syncAllDeliveriesToGrepoAlerts();const buildingLabel=delivery.isNaval?'Harbor':'Barracks',body=`${('Resources for')} ${delivery.unitLabel} ${('arrived in')} ${delivery.targetTownName}. ${('Click to open')} ${buildingLabel}.`;
-    if('Notification'in window&&Notification.permission==='granted'){
+    if(!isRecruitmentBrowserNotificationEnabled()){
+      // Browser notifications are turned off in Settings; the in-game alert below still shows.
+    }else if('Notification'in window&&Notification.permission==='granted'){
       try{const notification=new Notification('Delivery arrived',{body,tag:`egeltools_delivery_${delivery.id}`,renotify:false,requireInteraction:true});notification.onclick=event=>{event?.preventDefault?.();try{window.focus();}catch(_){}void openDeliveryRecruitmentBuilding(delivery);notification.close();};}catch(error){console.warn('[EgelTools] Could not show the browser notification.',error);}
     }else{
       console.warn('[EgelTools] Browser notifications are not allowed:',('Notification'in window)?Notification.permission:'not supported');
