@@ -2,9 +2,18 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
-## 1.2.101 — 2026-11-01
+## 1.2.104 — 2026-11-01
 
 - **Settings** is more compact: its eleven sections are merged into five. **Attacks** holds the incoming-attack alarm, its alarm sound and the non-cancellable movements filter. **Culture** holds Olympic Games, Show Orpheus and both Party trades options. **Trade & resources** holds recruitment needs in the trade window, the Trade times capacity and the Store silver amounts. **Notifications** and **Recruit Optimizer backup** stay as they were. Every option keeps its saved value, and hovering an option shows its longer explanation.
+
+## 1.2.103 — 2026-11-01
+
+- Remove the **MARKET** toggle from **Trade times**; the list no longer hides towns below Marketplace level 5. Use the trade-capacity switch to filter towns instead.
+
+## 1.2.102 — 2026-11-01
+
+- The **Academy** overview opens and refreshes much faster, especially with many towns: it no longer stalls the game for several seconds while it fills in the research grid. Research tooltips are now built when you hover a cell, so they always show current resources and research points.
+- Opening an academy, saving a research template or changing the city group no longer makes the game stutter while EgelTools colours the research icons.
 
 ## 1.2.99 — 2026-11-01
 
