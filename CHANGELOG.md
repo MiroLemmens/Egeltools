@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.116 — 2026-11-01
+
+- Fix the **Academy** overview showing only the top-left corner of each research icon in its header. The icons are now scaled from the game's own icon size, so the whole picture fits inside its frame.
+
 ## 1.2.115 — 2026-11-01
 
 - Fix the **Academy** overview cutting off the edges of the research icons in its header. Each icon is now shown whole, slightly smaller, with a thin frame around it, and the research columns are a little wider to make room.
