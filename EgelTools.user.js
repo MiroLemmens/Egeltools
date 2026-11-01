@@ -6673,9 +6673,9 @@
     const speed = getTradeWorldSpeed();
     if (!Number.isFinite(distance) || distance < 0 || speed === null) return null;
     // An active Captain doubles trade speed; apply it before rounding.
-    const duration = sameIsland
+    const duration = 2 * (sameIsland
       ? distance * 5 / (3 * speed)
-      : 2700 / (speed ** 3) + distance * 5 / (speed ** 2);
+      : 2700 / (speed ** 3) + distance * 5 / (speed ** 2));
     return Math.floor(duration / (isCaptainActive() ? 2 : 1));
   }
 
