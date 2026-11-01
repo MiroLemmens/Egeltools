@@ -16,6 +16,7 @@ jobs:
       - run: |
           python3 -m venv /tmp/publisher-tests
           /tmp/publisher-tests/bin/pip install 'PyJWT[crypto]==2.10.1'
-          /tmp/publisher-tests/bin/python -m unittest discover -s tests -p test_publisher.py
+          /tmp/publisher-tests/bin/python -m unittest discover -s tests -p 'test_*.py'
+          python3 scripts/changelog-webhook.py --dry-run > /dev/null
           bash -n scripts/deploy.sh scripts/setup-publisher.sh
           if [ -f EgelTools.user.js ]; then node --check EgelTools.user.js; else node --check egeltools.user.js; fi
