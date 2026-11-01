@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.110 — 2026-11-01
+
+- **Settings → Notifications** has a new **Browser notifications** option. Turn it off to stop the desktop pop-ups for farm villages ready to claim and recruitment resources delivered; the in-game alerts still show. It is on by default, so nothing changes until you turn it off, and EgelTools no longer asks for notification permission while it is off.
+
 ## 1.2.109 — 2026-11-01
 
 - The **Academy** overview's research buttons fill their whole cell, and every other column is shaded so the columns are easy to follow. Cells are green once researched (or queued), red when not researched, and yellow when the town's template needs that research but the town cannot start it yet: too few resources or research points, or an academy level that is too low. The legend shows these three colours.
