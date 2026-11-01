@@ -152,6 +152,9 @@
     floatingButtonId: 'egeltools-town-distance-sorter-button',
     refreshButtonId: 'egeltools-town-distance-sorter-refresh',
     closeButtonId: 'egeltools-town-distance-sorter-close',
+    marketFilterButtonId: 'egeltools-town-distance-market-filter',
+    marketFilterEnabledKey: 'egeltools_trade_times_market_5_filter',
+    minimumMarketplaceLevel: 5,
     tradeLockStoragePrefix: 'egeltools_trade_locks',
     tradeLockSpendRatio: 0.5,
     mapTileSize: 128,
@@ -1214,6 +1217,22 @@
       }
       #${TOWN_DISTANCE_SORTER.panelId} .egeltools-capacity-toggle[aria-checked="true"] span { transform: translateX(18px); }
       #${TOWN_DISTANCE_SORTER.panelId} .egeltools-capacity-toggle:focus-visible { outline: 2px solid #fff0bd; outline-offset: 2px; }
+      #${TOWN_DISTANCE_SORTER.marketFilterButtonId} {
+        width: auto !important;
+        min-width: 52px;
+        height: 19px !important;
+        margin-right: 3px;
+        padding: 0 6px !important;
+        border: 1px solid #8ecb61 !important;
+        border-radius: 10px;
+        color: #fff4cd !important;
+        background: linear-gradient(#5f9b3a, #356520) !important;
+        font: bold 8px/17px Arial, Helvetica, sans-serif !important;
+        line-height: 17px !important;
+        text-shadow: 0 1px rgba(0, 0, 0, .55) !important;
+        white-space: nowrap;
+      }
+      #${TOWN_DISTANCE_SORTER.marketFilterButtonId}:hover { filter: brightness(1.1); }
       #${TOWN_DISTANCE_SORTER.bodyId} {
         box-sizing: border-box;
         max-height: min(430px, calc(100vh - 150px));
@@ -1407,10 +1426,19 @@
       #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(5)::before,
       #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(6)::before { display: block; font-size: 10px; font-weight: bold; color: #705a39; margin-bottom: 3px; }
       #egeltools-trade-overview .egeltools-trade-overview__town.is-selected { background: #f1e7ca; }
+      #egeltools-trade-overview .egeltools-trade-overview__town.is-resource-full {
+        background: #ffe58a; border-color: #c69a22; box-shadow: inset 0 0 0 1px #fff1ad;
+      }
+      #egeltools-trade-overview .egeltools-trade-overview__town.is-resource-full.is-selected { background: #f6d96f; }
       #egeltools-trade-overview .egeltools-trade-overview__town.is-at-line { border-left-color: #b5392e; }
       #egeltools-trade-overview .egeltools-trade-overview__town button { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; background: none; border: 0; color: #70451e; font: inherit; font-weight: bold; cursor: pointer; text-align: left; }
       #egeltools-trade-overview.has-alarms .egeltools-trade-overview__header { background: linear-gradient(#973c31, #602720); color: #fff1d6; }
       #egeltools-trade-overview .egeltools-trade-overview__town.has-alarm { background: #ffebe2; border-color: #d07969; border-left: 4px solid #b52923; }
+      #egeltools-trade-overview .egeltools-trade-overview__town.are-all-resources-full,
+      #egeltools-trade-overview .egeltools-trade-overview__town.are-all-resources-full.is-selected,
+      #egeltools-trade-overview .egeltools-trade-overview__town.are-all-resources-full.has-alarm {
+        background: #ffb3a7; border-color: #b52923; box-shadow: inset 0 0 0 1px #ffd8d1;
+      }
       #egeltools-trade-overview .egeltools-trade-overview__alarm { display: inline-block; color: #a0221e; font-size: 11px; font-weight: bold; margin-top: 3px; }
       #egeltools-trade-overview .egeltools-trade-overview__town button.egeltools-trade-overview__acknowledge { display: inline-block; margin-left: 7px; color: #81483d; font-size: 10px; text-decoration: underline; font-weight: normal; }
       #egeltools-trade-overview [hidden] { display: none !important; }
@@ -3201,7 +3229,7 @@
                   <p class="egeltools-settings__feature-copy">Remove these rows from the list. Zapper controls remain available when this is off.</p>
                 </div>
                 <div class="egeltools-settings__feature">
-                  <p class="egeltools-settings__feature-title">Town distances</p>
+                  <p class="egeltools-settings__feature-title">Trade times</p>
                   <label class="egeltools-settings__field">
                     <span class="egeltools-settings__field-label">Available trade capacity above</span>
                     <input id="egeltools-distance-capacity-limit" type="number" min="1" step="1">
@@ -4668,6 +4696,16 @@
       row.classList.toggle('is-selected', String(getCurrentTownId()) === data.townId);
       const hasAlarm = tradeCapacityNotices.has(data.townId);
       const atLine = isTradeCapacityTownAtLine(data.townId, arrivals, now);
+      // Highlight towns whose stock plus everything on the way reaches the warehouse.
+      const fullResources = data.stock && data.capacity > 0
+        ? [...TRADE_CAPACITY_MARKER.resources].filter((resource) =>
+          Number(data.stock[resource] || 0) + Number(data.incoming[resource] || 0) >= data.capacity)
+        : [];
+      row.classList.toggle('is-resource-full', fullResources.length > 0 && fullResources.length < TRADE_CAPACITY_MARKER.resources.size);
+      row.classList.toggle('are-all-resources-full', fullResources.length === TRADE_CAPACITY_MARKER.resources.size);
+      row.title = fullResources.length > 0
+        ? `Warehouse full on arrival: ${fullResources.map((resource) => RESOURCE_NAMES[resource]).join(', ')}`
+        : '';
       row.classList.toggle('is-at-line', atLine);
       row.classList.toggle('has-alarm', hasAlarm);
       cells[0].children[1].hidden = !atLine;
@@ -6441,7 +6479,7 @@
       button.type = 'button';
       button.setAttribute('aria-controls', TOWN_DISTANCE_SORTER.panelId);
       button.setAttribute('aria-expanded', String(townDistanceSorterOpen));
-      button.textContent = townDistanceSorterOpen ? 'Hide distances' : 'Town distances';
+      button.textContent = townDistanceSorterOpen ? 'Hide trade times' : 'Trade times';
     }
 
     return mountToolDockButton(button);
@@ -6462,13 +6500,15 @@
     panel.innerHTML = `
       <div class="egeltools-town-distance__header">
         <span class="egeltools-town-distance__title" id="egeltools-town-distance-sorter-title">
-          Town distances
+          Trade times
         </span>
         <button type="button" class="egeltools-capacity-toggle" data-distance-capacity-filter role="switch" aria-checked="false"><span></span></button>
+        <button id="${TOWN_DISTANCE_SORTER.marketFilterButtonId}" type="button"
+          aria-pressed="true">MARKET ON</button>
         <button id="${TOWN_DISTANCE_SORTER.refreshButtonId}" type="button"
           title="Recalculate from the current town" aria-label="Recalculate from the current town">&#8635;</button>
         <button id="${TOWN_DISTANCE_SORTER.closeButtonId}" type="button"
-          title="Close" aria-label="Close town distances">&times;</button>
+          title="Close" aria-label="Close trade times">&times;</button>
       </div>
       <div id="${TOWN_DISTANCE_SORTER.bodyId}" aria-live="polite">
         <p class="egeltools-town-distance__state">Loading town data…</p>
@@ -6480,6 +6520,7 @@
     });
     makeTownDistanceSorterDraggable(panel);
     document.body.append(panel);
+    paintTradeTimesMarketFilter(panel.querySelector(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`));
     return panel;
   }
 
@@ -6604,6 +6645,67 @@
     };
   }
 
+  function getTradeTimesMarketFilterEnabled() {
+    return localStorage.getItem(TOWN_DISTANCE_SORTER.marketFilterEnabledKey) !== 'off';
+  }
+
+  function setTradeTimesMarketFilterEnabled(enabled) {
+    localStorage.setItem(TOWN_DISTANCE_SORTER.marketFilterEnabledKey, enabled ? 'on' : 'off');
+  }
+
+  function paintTradeTimesMarketFilter(button = document.getElementById(TOWN_DISTANCE_SORTER.marketFilterButtonId)) {
+    if (!button) return;
+    const enabled = getTradeTimesMarketFilterEnabled();
+    button.textContent = enabled ? `MARKET ON` : `MARKET OFF`;
+    button.setAttribute('aria-pressed', String(enabled));
+    button.style.setProperty(
+      'background',
+      enabled ? 'linear-gradient(#5f9b3a, #356520)' : '#8c3e2f',
+      'important',
+    );
+    button.style.setProperty('border-color', enabled ? '#8ecb61' : '#b99b58', 'important');
+    button.title = enabled
+      ? `Hide towns below Marketplace level 5.`
+      : `Show towns regardless of Marketplace level.`;
+  }
+
+  function getTradeWorldSpeed() {
+    const speed = Number(window.Game?.game_speed);
+    return Number.isFinite(speed) && speed >= 1 && speed <= 6 ? speed : null;
+  }
+
+  function calculateTownTradeDuration(distance, sameIsland) {
+    const speed = getTradeWorldSpeed();
+    if (!Number.isFinite(distance) || distance < 0 || speed === null) return null;
+    // An active Captain doubles trade speed; apply it before rounding.
+    const duration = sameIsland
+      ? distance * 5 / (3 * speed)
+      : 2700 / (speed ** 3) + distance * 5 / (speed ** 2);
+    return Math.floor(duration / (isCaptainActive() ? 2 : 1));
+  }
+
+  function formatTownTradeDuration(seconds) {
+    if (!Number.isFinite(seconds)) return 'Unavailable';
+    const total = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor(total / 60) % 60;
+    const remainingSeconds = total % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  }
+
+  function getTownMarketplaceLevel(town) {
+    if (!town) return null;
+    try {
+      const buildings = typeof town.buildings === 'function'
+        ? getModelAttributes(town.buildings())
+        : getModelAttributes(town).buildings;
+      const level = Number(buildings?.market ?? buildings?.marketplace);
+      return Number.isFinite(level) ? Math.max(0, Math.floor(level)) : null;
+    } catch (error) {
+      console.debug(`[${APP.name}] could not read Marketplace level`, error);
+      return null;
+    }
+  }
   function getTownDistanceSorterData(referenceTownId) {
     if (!isAdministratorActive()) return null;
     if (typeof window.ITowns?.getTowns !== 'function') return null;
@@ -6618,21 +6720,36 @@
     const referenceName = String(
       getFirstMethodValue(referenceTown, ['getName'], ['name']) || referenceTownId,
     );
+    const getIsland = (town, id) => {
+      const sources = getTownCoordinateSources(town, id);
+      const x = getTownCoordinateValue(sources, ['getIslandCoordinateX', 'getIslandX'], ['island_x', 'islandX', 'ix']);
+      const y = getTownCoordinateValue(sources, ['getIslandCoordinateY', 'getIslandY'], ['island_y', 'islandY', 'iy']);
+      return Number.isFinite(x) && Number.isFinite(y) ? `${x}:${y}` : null;
+    };
+    const referenceIsland = getIsland(referenceTown, referenceTownId);
     const allDistances = towns.flatMap((town) => {
       const id = getFirstMethodValue(town, ['getId'], ['id']);
       const position = getTownMapPosition(town, id);
       if (id == null || !position) return [];
 
+      const distance = Math.hypot(position.x - referencePosition.x, position.y - referencePosition.y);
+      const island = getIsland(town, id);
+      const sameIsland = island !== null && island === referenceIsland;
       return [{
         id,
         name: String(getFirstMethodValue(town, ['getName'], ['name']) || id),
-        distance: Math.hypot(position.x - referencePosition.x, position.y - referencePosition.y),
+        marketplaceLevel: getTownMarketplaceLevel(town),
+        distance,
+        sameIsland,
+        tradeDuration: calculateTownTradeDuration(distance, sameIsland),
       }];
     });
     const capacityFilterEnabled = localStorage.getItem('egeltools_distance_capacity_filter') === 'on';
     const capacityLimit = getTownDistanceCapacityLimit();
+    const marketFilterEnabled = getTradeTimesMarketFilterEnabled();
     const distances = allDistances.filter((town) => {
       if (tradeLocks[String(town.id)]) return false;
+      if (marketFilterEnabled && !(town.marketplaceLevel >= TOWN_DISTANCE_SORTER.minimumMarketplaceLevel)) return false;
       if (!capacityFilterEnabled) return true;
       const capacity = getTownAvailableTradeCapacity(findTown(town.id));
       return capacity !== null && capacity > capacityLimit;
@@ -6722,10 +6839,11 @@
     toggle.setAttribute('aria-checked', String(localStorage.getItem('egeltools_distance_capacity_filter') === 'on'));
     toggle.title = `Only towns with available trade capacity above ${getTownDistanceCapacityLimit().toLocaleString()}`;
     toggle.setAttribute('aria-label', toggle.title);
+    paintTradeTimesMarketFilter(panel.querySelector(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`));
     const result = getTownDistanceSorterData(townDistanceReferenceTownId);
     body.replaceChildren();
     if (!result) {
-      title.textContent = 'Town distances';
+      title.textContent = 'Trade times';
       const state = document.createElement('p');
       state.className = 'egeltools-town-distance__state';
       state.textContent = 'Grepolis is still loading town positions. EgelTools will retry automatically.';
@@ -6740,10 +6858,11 @@
     }
     if (!result.complete) scheduleTownDistanceRetry();
 
-    title.textContent = `Distances from ${result.referenceName}`;
+    title.textContent = `Trade times from ${result.referenceName}`;
+    title.title = 'Use Arrow Up and Arrow Down to move through towns.';
     const table = document.createElement('table');
     table.className = 'egeltools-town-distance__table';
-    table.innerHTML = '<thead><tr><th>Town</th><th>Distance</th><th>Trade</th><th aria-label="Trade lock"></th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Town</th><th>Trade time</th><th>Trade</th><th aria-label="Trade lock"></th></tr></thead>';
     const tbody = document.createElement('tbody');
     for (const town of result.distances) {
       const row = document.createElement('tr');
@@ -6755,7 +6874,8 @@
       name.textContent = town.name;
       name.title = town.name;
       const distance = document.createElement('td');
-      distance.textContent = town.distance.toFixed(1);
+      distance.textContent = formatTownTradeDuration(town.tradeDuration);
+      distance.title = `${town.sameIsland ? 'Same island' : 'Different island'}; distance ${town.distance.toFixed(1)}; world speed ${getTradeWorldSpeed() ?? 'unavailable'}; Marketplace level ${town.marketplaceLevel ?? 'unknown'}`;
       const tradeCell = document.createElement('td');
       tradeCell.className = 'egeltools-town-distance__trade-cell';
       const tradeButton = document.createElement('button');
@@ -6784,7 +6904,7 @@
     if (!result.distances.length) {
       const empty = document.createElement('p');
       empty.className = 'egeltools-town-distance__state';
-      empty.textContent = 'No towns match the current filters. Unknown trade capacity is excluded while the capacity filter is enabled.';
+      empty.textContent = 'No towns match the current filters. Towns with unknown trade capacity or Marketplace level are excluded while their filter is on.';
       body.append(empty);
     }
 
@@ -6826,7 +6946,7 @@
     const button = createTownDistanceSorterButton();
     if (!button) return;
     button.setAttribute('aria-expanded', String(open));
-    button.textContent = open ? 'Hide distances' : 'Town distances';
+    button.textContent = open ? 'Hide trade times' : 'Trade times';
     if (!open) {
       if (townDistanceRetryTimer !== null) window.clearTimeout(townDistanceRetryTimer);
       townDistanceRetryTimer = null;
@@ -6890,6 +7010,10 @@
       }
       if (event.target.closest(`#${TOWN_DISTANCE_SORTER.floatingButtonId}`)) {
         setTownDistanceSorterOpen(!townDistanceSorterOpen);
+      } else if (event.target.closest(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`)) {
+        setTradeTimesMarketFilterEnabled(!getTradeTimesMarketFilterEnabled());
+        paintTradeTimesMarketFilter();
+        renderTownDistanceSorter();
       } else if (event.target.closest(`#${TOWN_DISTANCE_SORTER.refreshButtonId}`)) {
         townDistanceReferenceTownId = getCurrentTownId() ?? townDistanceSelectedTownId;
         townDistanceSelectedTownId = townDistanceReferenceTownId;
@@ -6901,7 +7025,10 @@
 
     document.addEventListener('keydown', (event) => {
       const key = event.key.toLowerCase();
-      if (!townDistanceSorterOpen || !isAdministratorActive() || (key !== 'w' && key !== 's')) return;
+      const direction = key === 'arrowup' || key === 'w'
+        ? -1
+        : key === 'arrowdown' || key === 's' ? 1 : 0;
+      if (!townDistanceSorterOpen || !isAdministratorActive() || direction === 0) return;
       const target = event.target;
       if (target instanceof HTMLElement && (
         ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
@@ -6912,8 +7039,8 @@
       if (!rows.length) return;
       const current = rows.findIndex((row) => row.getAttribute('aria-current') === 'true');
       const next = current === -1
-        ? 0
-        : key === 'w'
+        ? direction < 0 ? rows.length - 1 : 0
+        : direction < 0
           ? Math.max(0, current - 1)
           : Math.min(rows.length - 1, current + 1);
       event.preventDefault();
@@ -6924,9 +7051,13 @@
       rows[next].scrollIntoView({ block: 'nearest' });
     }, true);
     window.addEventListener('storage', (event) => {
-      if (event.key !== getTradeLockStorageKey()) return;
-      monitoredTownTradeLockIds = Object.keys(loadTownTradeLocks()).sort().join(',');
-      if (townDistanceSorterOpen) renderTownDistanceSorter();
+      if (event.key === getTradeLockStorageKey()) {
+        monitoredTownTradeLockIds = Object.keys(loadTownTradeLocks()).sort().join(',');
+        if (townDistanceSorterOpen) renderTownDistanceSorter();
+      } else if (event.key === TOWN_DISTANCE_SORTER.marketFilterEnabledKey) {
+        paintTradeTimesMarketFilter();
+        if (townDistanceSorterOpen) renderTownDistanceSorter();
+      }
     });
   }
 
@@ -10464,7 +10595,95 @@
     refresh();
   }
 
+  // Exact travel-time coordinates, as the Grepolis travel calculator uses them:
+  //   X = island X * 128 + slot offset X
+  //   Y = island Y * 128 + slot offset Y + (odd island X ? 64 : 0)
+  // Once towns.txt and islands.txt are loaded, every caller of
+  // getTownMapPosition() (Trade times, Party trades) uses these positions.
+  // Towns on an unknown island type keep the Grepolis model position.
+  function installCorrectedTravelDistanceCalculation() {
+    const slotOffsets = Object.freeze({"1":{"0":[461,143],"1":[361,181],"2":[271,243],"3":[203,281],"4":[211,330],"5":[230,409],"6":[300,406],"7":[374,414],"8":[463,472],"9":[529,511],"10":[611,476],"11":[692,475],"12":[762,454],"13":[837,423],"14":[896,360],"15":[867,302],"16":[822,215],"17":[738,239],"18":[790,296],"19":[761,332]},"2":{"0":[331,196],"1":[336,116],"2":[417,111],"3":[520,81],"4":[629,88],"5":[697,113],"6":[760,143],"7":[804,178],"8":[784,242],"9":[750,310],"10":[744,379],"11":[691,400],"12":[560,423],"13":[490,421],"14":[324,406],"15":[226,400],"16":[205,336],"17":[132,313],"18":[125,229],"19":[200,191]},"3":{"0":[495,92],"1":[410,76],"2":[350,101],"3":[293,121],"4":[248,157],"5":[162,221],"6":[151,323],"7":[224,366],"8":[308,404],"9":[369,421],"10":[413,445],"11":[491,467],"12":[578,448],"13":[617,390],"14":[747,398],"15":[719,355],"16":[868,260],"17":[857,198],"18":[786,158],"19":[703,109]},"4":{"0":[470,123],"1":[594,144],"2":[700,163],"3":[748,198],"4":[790,220],"5":[692,257],"6":[633,286],"7":[535,295],"8":[498,253],"9":[416,215],"10":[334,216],"11":[253,243],"12":[272,290],"13":[283,331],"14":[214,364],"15":[121,349],"16":[110,275],"17":[150,213],"18":[254,176],"19":[342,143]},"5":{"0":[224,217],"1":[245,140],"2":[335,92],"3":[414,67],"4":[528,83],"5":[546,135],"6":[648,138],"7":[741,138],"8":[756,189],"9":[848,213],"10":[858,265],"11":[799,339],"12":[749,376],"13":[660,406],"14":[569,431],"15":[444,478],"16":[330,430],"17":[285,386],"18":[635,321],"19":[630,253]},"6":{"0":[477,386],"1":[561,437],"2":[686,470],"3":[780,476],"4":[836,447],"5":[836,367],"6":[780,333],"7":[718,312],"8":[650,221],"9":[599,194],"10":[514,156],"11":[426,158],"12":[353,176],"13":[281,188],"14":[184,244],"15":[105,306],"16":[159,340],"17":[198,378],"18":[177,430],"19":[277,455]},"7":{"0":[163,250],"1":[138,227],"2":[122,173],"3":[129,127],"4":[183,106],"5":[236,128],"6":[333,161],"7":[390,184],"8":[518,200],"9":[457,226],"10":[485,278],"11":[517,323],"12":[512,372],"13":[448,402],"14":[443,469],"15":[380,459],"16":[301,440],"17":[230,463],"18":[184,432],"19":[134,407]},"8":{"0":[588,258],"1":[648,283],"2":[710,303],"3":[745,348],"4":[703,376],"5":[658,403],"6":[594,425],"7":[479,453],"8":[412,453],"9":[294,430],"10":[234,402],"11":[186,345],"12":[144,319],"13":[144,274],"14":[110,226],"15":[137,179],"16":[186,156],"17":[244,137],"18":[313,136],"19":[348,172]},"9":{"0":[188,334],"1":[116,295],"2":[141,233],"3":[192,176],"4":[368,85],"5":[426,59],"6":[523,72],"7":[597,129],"8":[830,202],"9":[867,243],"10":[843,332],"11":[723,403],"12":[662,438],"13":[623,375],"14":[537,410],"15":[534,462],"16":[433,460],"17":[372,455],"18":[358,408],"19":[337,379]},"10":{"0":[563,150],"1":[616,116],"2":[710,123],"3":[758,166],"4":[824,234],"5":[809,332],"6":[757,370],"7":[686,404],"8":[502,434],"9":[421,453],"10":[324,428],"11":[259,391],"12":[204,368],"13":[138,301],"14":[165,192],"15":[243,131],"16":[342,119],"17":[379,158],"18":[358,205],"19":[269,213]},"11":{"0":[134,132],"1":[205,89],"2":[288,92],"3":[410,158],"4":[440,246],"5":[327,185],"6":[274,139]},"12":{"0":[200,80],"1":[289,102],"2":[336,205],"3":[278,220],"4":[207,239],"5":[134,218],"6":[168,159]},"13":{"0":[398,13],"1":[389,159],"2":[560,298],"3":[481,310],"4":[435,290],"5":[351,308],"6":[246,277],"7":[199,248],"8":[221,151],"9":[221,59],"10":[307,44]},"14":{"0":[225,82],"1":[316,94],"2":[318,143],"3":[270,172],"4":[263,245],"5":[161,247],"6":[90,216]},"15":{"0":[134,100],"1":[259,108],"2":[280,142],"3":[392,145],"4":[446,176],"5":[505,219],"6":[412,273],"7":[340,286]},"16":{"0":[138,124],"1":[224,119],"2":[316,131],"3":[363,184],"4":[461,216],"5":[567,231],"6":[621,257],"7":[602,315],"8":[518,329],"9":[358,310],"10":[241,280],"11":[190,225],"12":[134,194]},"37":{"0":[495,133],"1":[410,143],"2":[442,203],"3":[595,305],"4":[560,363],"5":[380,233],"6":[298,206],"7":[202,253],"8":[151,313],"9":[185,366],"10":[253,424],"11":[385,458],"12":[540,503],"13":[650,513],"14":[700,483],"15":[785,463],"16":[868,380],"17":[857,258],"18":[786,213],"19":[703,172]},"38":{"0":[360,88],"1":[260,63],"2":[180,97],"3":[118,155],"4":[91,202],"5":[99,251],"6":[115,301],"7":[227,326],"8":[311,378],"9":[385,391],"10":[455,393],"11":[535,389],"12":[598,388],"13":[673,357],"14":[767,318],"15":[689,231],"16":[808,208],"17":[750,118],"18":[665,81],"19":[540,58]},"39":{"0":[527,66],"1":[440,93],"2":[276,128],"3":[197,198],"4":[121,261],"5":[117,323],"6":[199,376],"7":[263,418],"8":[354,432],"9":[434,400],"10":[512,400],"11":[660,424],"12":[721,393],"13":[826,356],"14":[884,269],"15":[701,253],"16":[646,224],"17":[711,207],"18":[662,115],"19":[595,75]},"40":{"0":[399,107],"1":[354,164],"2":[349,223],"3":[173,248],"4":[104,297],"5":[143,352],"6":[201,377],"7":[274,408],"8":[335,441],"9":[440,419],"10":[658,446],"11":[737,407],"12":[802,363],"13":[873,316],"14":[876,276],"15":[751,257],"16":[691,235],"17":[666,155],"18":[554,140],"19":[494,97]},"41":{"0":[454,108],"1":[367,123],"2":[258,163],"3":[176,212],"4":[158,246],"5":[153,289],"6":[168,340],"7":[204,388],"8":[274,426],"9":[325,446],"10":[458,475],"11":[594,466],"12":[748,393],"13":[808,361],"14":[877,336],"15":[891,273],"16":[782,257],"17":[667,322],"18":[633,141],"19":[535,108]},"42":{"0":[467,98],"1":[401,108],"2":[331,143],"3":[254,167],"4":[182,223],"5":[127,315],"6":[115,351],"7":[177,380],"8":[220,484],"9":[323,499],"10":[329,388],"11":[499,420],"12":[501,466],"13":[618,459],"14":[671,426],"15":[779,380],"16":[859,278],"17":[710,169],"18":[647,136],"19":[562,109]},"43":{"0":[315,14],"1":[260,33],"2":[201,88],"3":[95,117],"4":[101,176],"5":[131,230],"6":[111,272],"7":[190,169],"8":[666,210],"9":[313,318],"10":[371,344],"11":[452,329],"12":[561,330],"13":[656,311],"14":[716,280],"15":[778,246],"16":[751,104],"17":[699,52],"18":[538,59],"19":[458,59]},"44":{"0":[546,24],"1":[518,66],"2":[429,55],"3":[320,49],"4":[352,114],"5":[182,142],"6":[191,217],"7":[248,290],"8":[362,314],"9":[418,367],"10":[477,270],"11":[561,262],"12":[610,377],"13":[705,344],"14":[790,312],"15":[799,231],"16":[875,188],"17":[821,129],"18":[688,98],"19":[706,42]},"45":{"0":[362,145],"1":[311,199],"2":[179,212],"3":[201,256],"4":[280,327],"5":[198,340],"6":[125,368],"7":[111,406],"8":[173,441],"9":[286,441],"10":[431,401],"11":[468,456],"12":[613,454],"13":[685,403],"14":[746,354],"15":[760,259],"16":[660,148],"17":[593,152],"18":[509,163],"19":[441,126]},"46":{"0":[506,91],"1":[349,122],"2":[297,171],"3":[225,186],"4":[171,214],"5":[105,265],"6":[51,320],"7":[106,342],"8":[161,437],"9":[274,427],"10":[315,481],"11":[539,475],"12":[595,444],"13":[684,426],"14":[743,392],"15":[743,316],"16":[742,249],"17":[718,215],"18":[660,179],"19":[578,103]},"47":{"0":[170,148],"1":[263,119],"2":[356,161],"3":[453,163],"4":[531,293],"5":[503,322],"6":[275,227],"7":[97,201],"8":[495,240]},"48":{"0":[160,218],"1":[215,245],"2":[281,228],"3":[340,198],"4":[411,146],"5":[460,108],"6":[410,91],"7":[380,14]},"49":{"0":[113,113],"1":[249,119],"2":[346,108],"3":[499,128],"4":[720,91],"5":[680,141],"6":[478,266],"7":[305,283],"8":[235,259]},"50":{"0":[168,124],"1":[228,108],"2":[300,131],"3":[363,146],"4":[430,183],"5":[487,371],"6":[427,413],"7":[347,438],"8":[270,458],"9":[185,448]},"51":{"0":[170,104],"1":[244,98],"2":[346,119],"3":[413,241],"4":[390,266],"5":[235,264],"6":[255,193],"7":[185,161]},"52":{"0":[138,124],"1":[224,81],"2":[705,206],"3":[625,245],"4":[525,266],"5":[445,261],"6":[325,235],"7":[337,201],"8":[267,183],"9":[165,183]},"53":{"0":[48,19],"1":[113,16],"2":[247,52],"3":[587,182],"4":[415,195],"5":[325,225],"6":[225,229],"7":[155,193],"8":[75,173],"9":[93,123],"10":[74,69]},"54":{"0":[402,82],"1":[337,79],"2":[290,117],"3":[138,165],"4":[129,236],"5":[136,273],"6":[214,317],"7":[305,313],"8":[385,285],"9":[230,246]},"55":{"0":[192,73],"1":[130,122],"2":[69,130],"3":[215,210],"4":[236,241],"5":[361,265],"6":[414,286],"7":[469,264],"8":[465,133]},"56":{"0":[491,88],"1":[437,116],"2":[344,162],"3":[255,186],"4":[184,208],"5":[139,246],"6":[193,292],"7":[184,343],"8":[198,383],"9":[590,307]},"57":{"0":[221,71],"1":[249,106],"2":[155,178],"3":[127,225],"4":[224,261],"5":[233,322],"6":[308,335],"7":[362,298]},"58":{"0":[162,292],"1":[185,347],"2":[246,378],"3":[417,377],"4":[446,335],"5":[572,333]},"59":{"0":[202,75],"1":[289,91],"2":[368,136],"3":[327,189],"4":[441,216],"5":[447,273],"6":[329,317],"7":[233,388]},"60":{"0":[106,325],"1":[310,260],"2":[422,368],"3":[444,302],"4":[538,298],"5":[575,241],"6":[601,167],"7":[576,111],"8":[525,80]}});
+    const townMetaById = new Map();
+    const originalGetTownMapPosition = getTownMapPosition;
+    let metadataReady = false;
+
+    const parseNumber = (value) => {
+      const number = Number(value);
+      return Number.isFinite(number) ? number : null;
+    };
+
+    const loadMetadata = async () => {
+      try {
+        const [townResponse, islandResponse] = await Promise.all([
+          fetch('/data/towns.txt', { credentials: 'same-origin' }),
+          fetch('/data/islands.txt', { credentials: 'same-origin' }),
+        ]);
+        if (!townResponse.ok || !islandResponse.ok) {
+          throw new Error(`HTTP towns=${townResponse.status}, islands=${islandResponse.status}`);
+        }
+
+        const [townText, islandText] = await Promise.all([
+          townResponse.text(),
+          islandResponse.text(),
+        ]);
+        const islandTypeByCoordinates = new Map();
+        islandText.split(/\r?\n/).filter(Boolean).forEach((line) => {
+          const row = line.split(',');
+          const islandX = parseNumber(row[1]);
+          const islandY = parseNumber(row[2]);
+          const islandType = parseNumber(row[3]);
+          if (islandX === null || islandY === null || islandType === null) return;
+          islandTypeByCoordinates.set(`${islandX}:${islandY}`, islandType);
+        });
+
+        townText.split(/\r?\n/).filter(Boolean).forEach((line) => {
+          const row = line.split(',');
+          const townId = parseNumber(row[0]);
+          const islandX = parseNumber(row[3]);
+          const islandY = parseNumber(row[4]);
+          const slot = parseNumber(row[5]);
+          if (townId === null || islandX === null || islandY === null || slot === null) return;
+          townMetaById.set(String(townId), {
+            islandX,
+            islandY,
+            slot,
+            islandType: islandTypeByCoordinates.get(`${islandX}:${islandY}`) ?? null,
+          });
+        });
+
+        metadataReady = true;
+        console.info(`[${APP.name}] corrected travel-time positions loaded for ${townMetaById.size} towns`);
+
+        if (townDistanceSorterOpen) renderTownDistanceSorter();
+        if (resourceCheckerOpen) document.getElementById(RESOURCE_CHECKER.panelId)?.setAttribute('data-plan-stale', 'true');
+      } catch (error) {
+        console.warn(`[${APP.name}] corrected travel-time positions could not be loaded; using Grepolis positions`, error);
+      }
+    };
+
+    getTownMapPosition = function getCorrectedTownMapPosition(town, townId) {
+      const actualTownId = townId
+        ?? getFirstMethodValue(town, ['getId'], ['id']);
+      const metadata = townMetaById.get(String(actualTownId));
+      if (metadataReady && metadata && metadata.islandType != null) {
+        const offset = slotOffsets[String(metadata.islandType)]?.[String(metadata.slot)];
+        if (Array.isArray(offset) && offset.length >= 2) {
+          const oddIslandXCorrection = Math.abs(metadata.islandX) % 2 === 1 ? 64 : 0;
+          return {
+            x: metadata.islandX * TOWN_DISTANCE_SORTER.mapTileSize + Number(offset[0]),
+            y: metadata.islandY * TOWN_DISTANCE_SORTER.mapTileSize
+              + Number(offset[1])
+              + oddIslandXCorrection,
+          };
+        }
+      }
+      return originalGetTownMapPosition(town, actualTownId);
+    };
+
+    void loadMetadata();
+  }
   function init() {
+    installCorrectedTravelDistanceCalculation();
     initMovementTools();
     document.addEventListener('click', allowRecruitmentTotalsRefresh, true);
     ensureUi();
