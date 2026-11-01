@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.102 — 2026-11-01
+
+- The **Academy** overview opens and refreshes much faster, especially with many towns: it no longer stalls the game for several seconds while it fills in the research grid. Research tooltips are now built when you hover a cell, so they always show current resources and research points.
+- Opening an academy, saving a research template or changing the city group no longer makes the game stutter while EgelTools colours the research icons.
+
 ## 1.2.99 — 2026-11-01
 
 - The **Academy** overview now opens in a regular Grepolis window, like the **Recruitment Simulator**: native frame and title bar, with **↻** (refresh) and close buttons at the top right. Drag it by the title bar and resize it from the bottom-right corner, and it comes to the front over other game windows when clicked. The group and sort pickers sit above the colour legend.
