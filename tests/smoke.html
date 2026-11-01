@@ -88,6 +88,7 @@
       localStorage.removeItem('egeltools_attack_alarm_minimum_points');
       localStorage.removeItem('egeltools_attack_alarm_delay_enabled');
       localStorage.removeItem('egeltools_attack_alarm_delay_start');
+      localStorage.removeItem('egeltools_trade_times_market_5_filter');
       localStorage.removeItem('egeltools_attack_alarm_delay_end');
       localStorage.removeItem('egeltools_bd_level_check_collapsed');
       localStorage.removeItem('egeltools_bd_level_check_collapsed_v2');
@@ -176,7 +177,7 @@
         101: makeTown(
           101,
           'Athens',
-          { theater: 1, academy: 30, storage: 23, hide: 10 },
+          { theater: 1, academy: 30, storage: 23, hide: 10, market: 10 },
           { wood: 17000, stone: 15900, iron: 15000 },
           18000,
           436,
@@ -186,7 +187,7 @@
         102: makeTown(
           102,
           'Thèbes',
-          { theater: 0, academy: 31, storage: 22, hide: 10 },
+          { theater: 0, academy: 31, storage: 22, hide: 10, market: 4 },
           { wood: 16000, stone: 19000, iron: 16000 },
           18250,
           437,
@@ -197,7 +198,7 @@
         103: makeTown(
           103,
           'Sparta',
-          { theater: 0, academy: 30, storage: 23, hide: 10 },
+          { theater: 0, academy: 30, storage: 23, hide: 10, market: 10 },
           { wood: 20000, stone: 19000, iron: 20000 },
           17999,
           436,
@@ -580,49 +581,9 @@
           await waitFor(() => document.querySelectorAll('.egeltools-trade-capacity-marker').length === 1),
           'The floating trade activity list should receive one warehouse-capacity line',
         );
-        const swordRecruitmentTotal = document.querySelector(
-          '#unit_order #sword .egeltools-recruitment-total',
-        );
         console.assert(
-          await waitFor(() => swordRecruitmentTotal?.textContent === '63')
-            && swordRecruitmentTotal.dataset.present === '40'
-            && swordRecruitmentTotal.dataset.outside === '8'
-            && swordRecruitmentTotal.dataset.queued === '15'
-            && swordRecruitmentTotal.classList.contains('unit_order_total')
-            && document.querySelector('#unit_order #units')
-              .classList.contains('egeltools-recruitment-totals-active')
-            && getComputedStyle(document.querySelector('#unit_order #units')).marginTop === '26px'
-            && getComputedStyle(swordRecruitmentTotal).width === '57px'
-            && getComputedStyle(swordRecruitmentTotal).backgroundColor === 'rgb(255, 240, 189)'
-            && !document.querySelector('#unit_order #archer .egeltools-recruitment-total'),
-          'Barracks should reserve space for a native-style total above buildable units',
-        );
-        document.querySelector('#unit_order #units').innerHTML = `
-          <button class="dio_reload docks" type="button">Refresh</button>
-          <div id="bireme" class="unit_tab">
-            <div class="unit unit_order_unit_image unit_icon50x50 bireme">
-              <span class="unit_order_total">5</span>
-            </div>
-          </div>
-          <div id="attack_ship" class="unit_tab" style="display:none">
-            <div data-unit_id="attack_ship"></div>
-          </div>`;
-        // Wait past EgelTools' five-second maintenance fallback as well as the
-        // mutation observer to prove neither path refreshes an open window.
-        await new Promise((resolve) => setTimeout(resolve, 5200));
-        console.assert(
-          !document.querySelector('#unit_order #bireme .egeltools-recruitment-total'),
-          'Docks should not refresh the combined totals automatically',
-        );
-        document.querySelector('#unit_order .dio_reload').click();
-        document.querySelector('#unit_order #units').append(document.createTextNode(''));
-        console.assert(
-          await waitFor(() => (
-            document.querySelector('#unit_order #bireme .egeltools-recruitment-total')?.textContent
-              === '11'
-          ))
-            && !document.querySelector('#unit_order #attack_ship .egeltools-recruitment-total'),
-          'The Docks refresh button should refresh the combined total and omit hidden unit types',
+          !document.querySelector('.egeltools-recruitment-total'),
+          'The old recruitment total badges should be gone; the Recruit Optimizer box shows totals instead',
         );
         const tradeCapacityMarker = document.querySelector(
           '#toolbar_activity_trades_list .egeltools-trade-capacity-marker',
@@ -1074,7 +1035,7 @@
             && Math.abs(toolDockBounds.bottom - (window.innerHeight - 10)) <= 1,
           'The quick-tools dock should stay fixed to the bottom-left corner',
         );
-        console.assert(distanceButton.textContent === 'Town distances', 'The town-distance sorter should start closed');
+        console.assert(distanceButton.textContent === 'Trade times', 'The trade-times panel should start closed');
         const loadedTownPositionModels = window.__townPositionModels;
         window.__townPositionModels = undefined;
         distanceButton.click();
@@ -1085,13 +1046,23 @@
           'Missing raw Town models should be treated as transient Grepolis loading, not requested from the user',
         );
         window.__townPositionModels = loadedTownPositionModels;
+        const marketFilterButton = document.getElementById('egeltools-town-distance-market-filter');
         console.assert(
-          await waitFor(() => distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 3),
-          'The sorter should automatically collect coordinates from MM Town models when they become available',
+          await waitFor(() => distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 2)
+            && !distancePanel.querySelector('tbody tr[data-town-id="102"]')
+            && marketFilterButton?.getAttribute('aria-pressed') === 'true',
+          'The sorter should collect MM Town coordinates and hide towns below Marketplace level 5 by default',
+        );
+        marketFilterButton.click();
+        console.assert(
+          distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 3
+            && marketFilterButton.getAttribute('aria-pressed') === 'false'
+            && localStorage.getItem('egeltools_trade_times_market_5_filter') === 'off',
+          'Turning the MARKET filter off should list towns below Marketplace level 5 again',
         );
         const distanceRows = [...distancePanel.querySelectorAll('tbody tr[data-town-id]')];
         console.assert(
-          distancePanel.querySelector('.egeltools-town-distance__title').textContent === 'Distances from Athens',
+          distancePanel.querySelector('.egeltools-town-distance__title').textContent === 'Trade times from Athens',
           'The current town should be the distance reference',
         );
         console.assert(distanceRows.length === 3, `Expected 3 distance rows, found ${distanceRows.length}`);
@@ -1100,7 +1071,7 @@
           'Towns should be sorted using their full map positions, including same-island offsets',
         );
         console.assert(
-          distanceRows.map((row) => row.children[1].textContent).join(',') === '0.0,5.0,118.0',
+          distanceRows.map((row) => row.children[1].title.match(/distance ([\d.]+)/)?.[1]).join(',') === '0.0,5.0,118.0',
           'Distances should use MM absolute town positions rather than island coordinates alone',
         );
         console.assert(
@@ -1130,6 +1101,13 @@
           window.__switchedTownIds.at(-1) === 101
             && distanceRows[0].getAttribute('aria-current') === 'true',
           'W should select and switch to the previous town',
+        );
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, cancelable: true }));
+        console.assert(
+          window.__switchedTownIds.slice(-2).join(',') === '103,101'
+            && distanceRows[0].getAttribute('aria-current') === 'true',
+          'Arrow Down and Arrow Up should move through the towns like S and W',
         );
         distancePanel.querySelector('[data-trade-lock-town-id="102"]').click();
         console.assert(
@@ -1174,6 +1152,17 @@
           distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 3,
           'A trade lock should also remain manually removable from the locked-town tray',
         );
+        window.Game.game_speed = 2;
+        distancePanel.querySelector('#egeltools-town-distance-sorter-refresh').click();
+        const tradeTimeCells = [...distancePanel.querySelectorAll('tbody tr[data-town-id]')]
+          .map((row) => row.children[1].textContent);
+        console.assert(
+          tradeTimeCells.length === 3
+            && tradeTimeCells[0] === '00:00:00'
+            && tradeTimeCells.slice(1).every((text) => /^\d{2}:\d{2}:\d{2}$/.test(text)),
+          'Trade times should show HH:MM:SS once the world speed is known',
+        );
+        delete window.Game.game_speed;
         distancePanel.querySelector('#egeltools-town-distance-sorter-close').click();
         console.assert(distancePanel.hidden, 'The town-distance close button should hide the panel');
         window.__switchedTownIds = [];

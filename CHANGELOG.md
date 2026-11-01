@@ -2,6 +2,22 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.98 — 2026-11-01
+
+Ports features from the EgelTools_Angepasst fork (based on 1.2.42), translated to English.
+
+- Add the **Recruit Optimizer** box to the Barracks and Docks: unit targets saved per town or town group, each unit's current total and missing amount with a fill button, resource costs, recruitment time, and free population after the plan. It replaces the old per-unit totals above the unit list. The full **Recruitment Simulator** models research, spells, heroes, and building levels.
+- Administrator's recruitment overview shows each town's target and missing units, with a **Fill troops** button.
+- **Trade window: recruitment needs** (Settings, on by default) shows and fills in the resources a town's recruitment plan still needs. A delivery bell in the left icon column lists arrived deliveries, with an optional browser notification.
+- Add the **Academy Planner**: an **Academy** dock button with an overview of every town's research against a saved template per town or group, also marked inside the Academy window.
+- **Settings → Recruit Optimizer backup** exports, imports, and resets unit targets, and can sync them through your own Google Apps Script web app.
+- **Town distances** is now **Trade times**: each row shows the trade time (HH:MM:SS) from world speed and Captain, with the distance in the tooltip, and Arrow Up/Down move like W/S. A new **MARKET** toggle, on by default, hides towns below Marketplace level 5. Distances follow the in-game travel calculator's town positions, loaded once on first use from `towns.txt` and `islands.txt`.
+- Party trades: farm village trades need a ratio above 1, use one village per exchange (best ratio first), and offer two-step chains as one row with one button. Trades are only suggested when they get the town ready by the end of its celebration or shorten the wait after it by at least 10%.
+- New **Notifications** settings: FV claim browser notification and alarm sound, recruitment delivery notifications, and the Incoming trades warehouse alarm popup and chime. FV claims also appear in the separate GrepoAlerts userscript when it is installed.
+- Incoming trades marks resources whose warehouse will be full on arrival.
+- **Settings → Store silver** sets the amount stored per town and the minimum kept (default 3,000 and 28,000); the button label follows the amount.
+- The troop-queue button now sits at the same stacking level as GrepoData's settings button, so Grepolis windows moved over it cover it.
+
 ## 1.2.97 — 2026-11-01
 
 - Remove the Notifications inbox, its dock button, preview popup, and styles.

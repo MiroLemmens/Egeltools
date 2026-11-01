@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.97
+// @version      1.2.98
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
-// @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
-// @privacy      EgelTools does not collect or store personal data. Alarm audio and UI images may contact cdn.grcrt.net, gme.cyllos.dev, flasktools.altervista.org, gpit.innogamescdn.com, or a user-selected audio host; optional YouTube embeds contact youtube-nocookie.com. These providers receive your IP address and standard browser request headers. Same-origin game/data requests remain subject to the Grepolis privacy policy.
+// @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
+// @privacy      EgelTools does not collect or store personal data. Alarm audio and UI images may contact cdn.grcrt.net, gme.cyllos.dev, flasktools.altervista.org, gpit.innogamescdn.com, or a user-selected audio host; optional YouTube embeds contact youtube-nocookie.com; the optional Recruit Optimizer Google Drive sync sends unit targets to the script.google.com web app URL you enter. These providers receive your IP address and standard browser request headers. Same-origin game/data requests remain subject to the Grepolis privacy policy.
 // @author       Egelman
 // @match        *://*.grepolis.com/game/*
 // @include      https://*.grepolis.com/game/*
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.97',
+    version: '1.2.98',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -3687,31 +3687,38 @@
   }
 
   let bdLevelRetryTimer = null;
-  let islandIdsByCoordinatesPromise = null;
+  let islandIndexPromise = null;
 
-  function loadIslandIdsByCoordinates() {
-    if (islandIdsByCoordinatesPromise) return islandIdsByCoordinatesPromise;
+  // islands.txt rows start with id,x,y,type. FV island links need the ids and
+  // corrected travel positions need the types, so both share one download.
+  function loadIslandIndex() {
+    if (islandIndexPromise) return islandIndexPromise;
 
-    islandIdsByCoordinatesPromise = (async () => {
+    islandIndexPromise = (async () => {
       const response = await fetch(BD_LEVEL_CHECK.islandDataUrl, {
         credentials: 'same-origin',
       });
       if (!response.ok) throw new Error(`Could not load island data: HTTP ${response.status}`);
 
       const islandIds = new Map();
+      const islandTypes = new Map();
       (await response.text()).split(/\r?\n/).filter(Boolean).forEach((line) => {
-        const [id, x, y] = line.split(',').map(Number);
-        if (Number.isFinite(id) && Number.isFinite(x) && Number.isFinite(y)) {
-          islandIds.set(`${x}:${y}`, id);
-        }
+        const [id, x, y, type] = line.split(',').map(Number);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (Number.isFinite(id)) islandIds.set(`${x}:${y}`, id);
+        if (Number.isFinite(type)) islandTypes.set(`${x}:${y}`, type);
       });
-      return islandIds;
+      return { islandIds, islandTypes };
     })().catch((error) => {
-      islandIdsByCoordinatesPromise = null;
+      islandIndexPromise = null;
       throw error;
     });
 
-    return islandIdsByCoordinatesPromise;
+    return islandIndexPromise;
+  }
+
+  async function loadIslandIdsByCoordinates() {
+    return (await loadIslandIndex()).islandIds;
   }
 
   async function resolveIslandId(islandX, islandY, knownIslandId) {
@@ -4975,7 +4982,10 @@
   }
 
   function readSilverStoreSetting(key, fallback) {
-    const value = Number(localStorage.getItem(key));
+    const raw = localStorage.getItem(key);
+    // Number('') and Number(null) are 0, so an unset value has to fall back first.
+    if (raw === null || String(raw).trim() === '') return fallback;
+    const value = Number(raw);
     return Number.isSafeInteger(value) && value >= 0 ? value : fallback;
   }
 
@@ -6546,7 +6556,61 @@
     return Number.NaN;
   }
 
+  // Exact travel-time coordinates, as the Grepolis travel calculator uses them:
+  //   X = island X * 128 + slot offset X
+  //   Y = island Y * 128 + slot offset Y + (odd island X ? 64 : 0)
+  // towns.txt gives each town's island and slot, islands.txt the island type.
+  // Both load on the first position lookup; until then, and for towns missing
+  // from the data, the Grepolis model position is used.
+  const TRAVEL_SLOT_OFFSETS = Object.freeze({"1":{"0":[461,143],"1":[361,181],"2":[271,243],"3":[203,281],"4":[211,330],"5":[230,409],"6":[300,406],"7":[374,414],"8":[463,472],"9":[529,511],"10":[611,476],"11":[692,475],"12":[762,454],"13":[837,423],"14":[896,360],"15":[867,302],"16":[822,215],"17":[738,239],"18":[790,296],"19":[761,332]},"2":{"0":[331,196],"1":[336,116],"2":[417,111],"3":[520,81],"4":[629,88],"5":[697,113],"6":[760,143],"7":[804,178],"8":[784,242],"9":[750,310],"10":[744,379],"11":[691,400],"12":[560,423],"13":[490,421],"14":[324,406],"15":[226,400],"16":[205,336],"17":[132,313],"18":[125,229],"19":[200,191]},"3":{"0":[495,92],"1":[410,76],"2":[350,101],"3":[293,121],"4":[248,157],"5":[162,221],"6":[151,323],"7":[224,366],"8":[308,404],"9":[369,421],"10":[413,445],"11":[491,467],"12":[578,448],"13":[617,390],"14":[747,398],"15":[719,355],"16":[868,260],"17":[857,198],"18":[786,158],"19":[703,109]},"4":{"0":[470,123],"1":[594,144],"2":[700,163],"3":[748,198],"4":[790,220],"5":[692,257],"6":[633,286],"7":[535,295],"8":[498,253],"9":[416,215],"10":[334,216],"11":[253,243],"12":[272,290],"13":[283,331],"14":[214,364],"15":[121,349],"16":[110,275],"17":[150,213],"18":[254,176],"19":[342,143]},"5":{"0":[224,217],"1":[245,140],"2":[335,92],"3":[414,67],"4":[528,83],"5":[546,135],"6":[648,138],"7":[741,138],"8":[756,189],"9":[848,213],"10":[858,265],"11":[799,339],"12":[749,376],"13":[660,406],"14":[569,431],"15":[444,478],"16":[330,430],"17":[285,386],"18":[635,321],"19":[630,253]},"6":{"0":[477,386],"1":[561,437],"2":[686,470],"3":[780,476],"4":[836,447],"5":[836,367],"6":[780,333],"7":[718,312],"8":[650,221],"9":[599,194],"10":[514,156],"11":[426,158],"12":[353,176],"13":[281,188],"14":[184,244],"15":[105,306],"16":[159,340],"17":[198,378],"18":[177,430],"19":[277,455]},"7":{"0":[163,250],"1":[138,227],"2":[122,173],"3":[129,127],"4":[183,106],"5":[236,128],"6":[333,161],"7":[390,184],"8":[518,200],"9":[457,226],"10":[485,278],"11":[517,323],"12":[512,372],"13":[448,402],"14":[443,469],"15":[380,459],"16":[301,440],"17":[230,463],"18":[184,432],"19":[134,407]},"8":{"0":[588,258],"1":[648,283],"2":[710,303],"3":[745,348],"4":[703,376],"5":[658,403],"6":[594,425],"7":[479,453],"8":[412,453],"9":[294,430],"10":[234,402],"11":[186,345],"12":[144,319],"13":[144,274],"14":[110,226],"15":[137,179],"16":[186,156],"17":[244,137],"18":[313,136],"19":[348,172]},"9":{"0":[188,334],"1":[116,295],"2":[141,233],"3":[192,176],"4":[368,85],"5":[426,59],"6":[523,72],"7":[597,129],"8":[830,202],"9":[867,243],"10":[843,332],"11":[723,403],"12":[662,438],"13":[623,375],"14":[537,410],"15":[534,462],"16":[433,460],"17":[372,455],"18":[358,408],"19":[337,379]},"10":{"0":[563,150],"1":[616,116],"2":[710,123],"3":[758,166],"4":[824,234],"5":[809,332],"6":[757,370],"7":[686,404],"8":[502,434],"9":[421,453],"10":[324,428],"11":[259,391],"12":[204,368],"13":[138,301],"14":[165,192],"15":[243,131],"16":[342,119],"17":[379,158],"18":[358,205],"19":[269,213]},"11":{"0":[134,132],"1":[205,89],"2":[288,92],"3":[410,158],"4":[440,246],"5":[327,185],"6":[274,139]},"12":{"0":[200,80],"1":[289,102],"2":[336,205],"3":[278,220],"4":[207,239],"5":[134,218],"6":[168,159]},"13":{"0":[398,13],"1":[389,159],"2":[560,298],"3":[481,310],"4":[435,290],"5":[351,308],"6":[246,277],"7":[199,248],"8":[221,151],"9":[221,59],"10":[307,44]},"14":{"0":[225,82],"1":[316,94],"2":[318,143],"3":[270,172],"4":[263,245],"5":[161,247],"6":[90,216]},"15":{"0":[134,100],"1":[259,108],"2":[280,142],"3":[392,145],"4":[446,176],"5":[505,219],"6":[412,273],"7":[340,286]},"16":{"0":[138,124],"1":[224,119],"2":[316,131],"3":[363,184],"4":[461,216],"5":[567,231],"6":[621,257],"7":[602,315],"8":[518,329],"9":[358,310],"10":[241,280],"11":[190,225],"12":[134,194]},"37":{"0":[495,133],"1":[410,143],"2":[442,203],"3":[595,305],"4":[560,363],"5":[380,233],"6":[298,206],"7":[202,253],"8":[151,313],"9":[185,366],"10":[253,424],"11":[385,458],"12":[540,503],"13":[650,513],"14":[700,483],"15":[785,463],"16":[868,380],"17":[857,258],"18":[786,213],"19":[703,172]},"38":{"0":[360,88],"1":[260,63],"2":[180,97],"3":[118,155],"4":[91,202],"5":[99,251],"6":[115,301],"7":[227,326],"8":[311,378],"9":[385,391],"10":[455,393],"11":[535,389],"12":[598,388],"13":[673,357],"14":[767,318],"15":[689,231],"16":[808,208],"17":[750,118],"18":[665,81],"19":[540,58]},"39":{"0":[527,66],"1":[440,93],"2":[276,128],"3":[197,198],"4":[121,261],"5":[117,323],"6":[199,376],"7":[263,418],"8":[354,432],"9":[434,400],"10":[512,400],"11":[660,424],"12":[721,393],"13":[826,356],"14":[884,269],"15":[701,253],"16":[646,224],"17":[711,207],"18":[662,115],"19":[595,75]},"40":{"0":[399,107],"1":[354,164],"2":[349,223],"3":[173,248],"4":[104,297],"5":[143,352],"6":[201,377],"7":[274,408],"8":[335,441],"9":[440,419],"10":[658,446],"11":[737,407],"12":[802,363],"13":[873,316],"14":[876,276],"15":[751,257],"16":[691,235],"17":[666,155],"18":[554,140],"19":[494,97]},"41":{"0":[454,108],"1":[367,123],"2":[258,163],"3":[176,212],"4":[158,246],"5":[153,289],"6":[168,340],"7":[204,388],"8":[274,426],"9":[325,446],"10":[458,475],"11":[594,466],"12":[748,393],"13":[808,361],"14":[877,336],"15":[891,273],"16":[782,257],"17":[667,322],"18":[633,141],"19":[535,108]},"42":{"0":[467,98],"1":[401,108],"2":[331,143],"3":[254,167],"4":[182,223],"5":[127,315],"6":[115,351],"7":[177,380],"8":[220,484],"9":[323,499],"10":[329,388],"11":[499,420],"12":[501,466],"13":[618,459],"14":[671,426],"15":[779,380],"16":[859,278],"17":[710,169],"18":[647,136],"19":[562,109]},"43":{"0":[315,14],"1":[260,33],"2":[201,88],"3":[95,117],"4":[101,176],"5":[131,230],"6":[111,272],"7":[190,169],"8":[666,210],"9":[313,318],"10":[371,344],"11":[452,329],"12":[561,330],"13":[656,311],"14":[716,280],"15":[778,246],"16":[751,104],"17":[699,52],"18":[538,59],"19":[458,59]},"44":{"0":[546,24],"1":[518,66],"2":[429,55],"3":[320,49],"4":[352,114],"5":[182,142],"6":[191,217],"7":[248,290],"8":[362,314],"9":[418,367],"10":[477,270],"11":[561,262],"12":[610,377],"13":[705,344],"14":[790,312],"15":[799,231],"16":[875,188],"17":[821,129],"18":[688,98],"19":[706,42]},"45":{"0":[362,145],"1":[311,199],"2":[179,212],"3":[201,256],"4":[280,327],"5":[198,340],"6":[125,368],"7":[111,406],"8":[173,441],"9":[286,441],"10":[431,401],"11":[468,456],"12":[613,454],"13":[685,403],"14":[746,354],"15":[760,259],"16":[660,148],"17":[593,152],"18":[509,163],"19":[441,126]},"46":{"0":[506,91],"1":[349,122],"2":[297,171],"3":[225,186],"4":[171,214],"5":[105,265],"6":[51,320],"7":[106,342],"8":[161,437],"9":[274,427],"10":[315,481],"11":[539,475],"12":[595,444],"13":[684,426],"14":[743,392],"15":[743,316],"16":[742,249],"17":[718,215],"18":[660,179],"19":[578,103]},"47":{"0":[170,148],"1":[263,119],"2":[356,161],"3":[453,163],"4":[531,293],"5":[503,322],"6":[275,227],"7":[97,201],"8":[495,240]},"48":{"0":[160,218],"1":[215,245],"2":[281,228],"3":[340,198],"4":[411,146],"5":[460,108],"6":[410,91],"7":[380,14]},"49":{"0":[113,113],"1":[249,119],"2":[346,108],"3":[499,128],"4":[720,91],"5":[680,141],"6":[478,266],"7":[305,283],"8":[235,259]},"50":{"0":[168,124],"1":[228,108],"2":[300,131],"3":[363,146],"4":[430,183],"5":[487,371],"6":[427,413],"7":[347,438],"8":[270,458],"9":[185,448]},"51":{"0":[170,104],"1":[244,98],"2":[346,119],"3":[413,241],"4":[390,266],"5":[235,264],"6":[255,193],"7":[185,161]},"52":{"0":[138,124],"1":[224,81],"2":[705,206],"3":[625,245],"4":[525,266],"5":[445,261],"6":[325,235],"7":[337,201],"8":[267,183],"9":[165,183]},"53":{"0":[48,19],"1":[113,16],"2":[247,52],"3":[587,182],"4":[415,195],"5":[325,225],"6":[225,229],"7":[155,193],"8":[75,173],"9":[93,123],"10":[74,69]},"54":{"0":[402,82],"1":[337,79],"2":[290,117],"3":[138,165],"4":[129,236],"5":[136,273],"6":[214,317],"7":[305,313],"8":[385,285],"9":[230,246]},"55":{"0":[192,73],"1":[130,122],"2":[69,130],"3":[215,210],"4":[236,241],"5":[361,265],"6":[414,286],"7":[469,264],"8":[465,133]},"56":{"0":[491,88],"1":[437,116],"2":[344,162],"3":[255,186],"4":[184,208],"5":[139,246],"6":[193,292],"7":[184,343],"8":[198,383],"9":[590,307]},"57":{"0":[221,71],"1":[249,106],"2":[155,178],"3":[127,225],"4":[224,261],"5":[233,322],"6":[308,335],"7":[362,298]},"58":{"0":[162,292],"1":[185,347],"2":[246,378],"3":[417,377],"4":[446,335],"5":[572,333]},"59":{"0":[202,75],"1":[289,91],"2":[368,136],"3":[327,189],"4":[441,216],"5":[447,273],"6":[329,317],"7":[233,388]},"60":{"0":[106,325],"1":[310,260],"2":[422,368],"3":[444,302],"4":[538,298],"5":[575,241],"6":[601,167],"7":[576,111],"8":[525,80]}});
+  const TRAVEL_POSITION_RETRY_DELAY = 10 * 60 * 1000;
+  const travelTownSlots = new Map();
+  let travelTownSlotsPromise = null;
+  let travelTownSlotsRetryAt = 0;
+
+  function loadTravelTownSlots() {
+    if (travelTownSlotsPromise || Date.now() < travelTownSlotsRetryAt) return;
+    travelTownSlotsPromise = (async () => {
+      const [townResponse, { islandTypes }] = await Promise.all([
+        fetch('/data/towns.txt', { credentials: 'same-origin' }),
+        loadIslandIndex(),
+      ]);
+      if (!townResponse.ok) throw new Error(`Could not load town data: HTTP ${townResponse.status}`);
+
+      (await townResponse.text()).split(/\r?\n/).filter(Boolean).forEach((line) => {
+        const row = line.split(',');
+        const [townId, islandX, islandY, slot] = [row[0], row[3], row[4], row[5]].map(Number);
+        const islandType = islandTypes.get(`${islandX}:${islandY}`);
+        if (![townId, islandX, islandY, slot].every(Number.isFinite) || islandType === undefined) return;
+        travelTownSlots.set(String(townId), { islandX, islandY, slot, islandType });
+      });
+      console.info(`[${APP.name}] corrected travel-time positions loaded for ${travelTownSlots.size} towns`);
+      if (townDistanceSorterOpen) renderTownDistanceSorter();
+    })().catch((error) => {
+      travelTownSlotsPromise = null;
+      travelTownSlotsRetryAt = Date.now() + TRAVEL_POSITION_RETRY_DELAY;
+      console.warn(`[${APP.name}] corrected travel-time positions could not be loaded; using Grepolis positions`, error);
+    });
+  }
+
+  function getCorrectedTravelPosition(townId) {
+    loadTravelTownSlots();
+    const town = travelTownSlots.get(String(townId));
+    const offset = town && TRAVEL_SLOT_OFFSETS[town.islandType]?.[town.slot];
+    if (!offset) return null;
+    return {
+      x: town.islandX * TOWN_DISTANCE_SORTER.mapTileSize + offset[0],
+      y: town.islandY * TOWN_DISTANCE_SORTER.mapTileSize + offset[1]
+        + (Math.abs(town.islandX) % 2 === 1 ? 64 : 0),
+    };
+  }
+
   function getTownMapPosition(town, townId) {
+    const correctedPosition = getCorrectedTravelPosition(
+      townId ?? getFirstMethodValue(town, ['getId'], ['id']),
+    );
+    if (correctedPosition) return correctedPosition;
+
     const sources = getTownCoordinateSources(town, townId);
     const absoluteX = getTownCoordinateValue(
       sources,
@@ -6617,7 +6681,7 @@
   function paintTradeTimesMarketFilter(button = document.getElementById(TOWN_DISTANCE_SORTER.marketFilterButtonId)) {
     if (!button) return;
     const enabled = getTradeTimesMarketFilterEnabled();
-    button.textContent = enabled ? `MARKET ON` : `MARKET OFF`;
+    button.textContent = enabled ? 'MARKET ON' : 'MARKET OFF';
     button.setAttribute('aria-pressed', String(enabled));
     button.style.setProperty(
       'background',
@@ -6626,8 +6690,8 @@
     );
     button.style.setProperty('border-color', enabled ? '#8ecb61' : '#b99b58', 'important');
     button.title = enabled
-      ? `Hide towns below Marketplace level 5.`
-      : `Show towns regardless of Marketplace level.`;
+      ? 'Hiding towns below Marketplace level 5. Click to show all towns.'
+      : 'Showing towns regardless of Marketplace level. Click to hide towns below level 5.';
   }
 
   function getTradeWorldSpeed() {
@@ -10721,95 +10785,7 @@
     refresh();
   }
 
-  // Exact travel-time coordinates, as the Grepolis travel calculator uses them:
-  //   X = island X * 128 + slot offset X
-  //   Y = island Y * 128 + slot offset Y + (odd island X ? 64 : 0)
-  // Once towns.txt and islands.txt are loaded, every caller of
-  // getTownMapPosition() (Trade times, Party trades) uses these positions.
-  // Towns on an unknown island type keep the Grepolis model position.
-  function installCorrectedTravelDistanceCalculation() {
-    const slotOffsets = Object.freeze({"1":{"0":[461,143],"1":[361,181],"2":[271,243],"3":[203,281],"4":[211,330],"5":[230,409],"6":[300,406],"7":[374,414],"8":[463,472],"9":[529,511],"10":[611,476],"11":[692,475],"12":[762,454],"13":[837,423],"14":[896,360],"15":[867,302],"16":[822,215],"17":[738,239],"18":[790,296],"19":[761,332]},"2":{"0":[331,196],"1":[336,116],"2":[417,111],"3":[520,81],"4":[629,88],"5":[697,113],"6":[760,143],"7":[804,178],"8":[784,242],"9":[750,310],"10":[744,379],"11":[691,400],"12":[560,423],"13":[490,421],"14":[324,406],"15":[226,400],"16":[205,336],"17":[132,313],"18":[125,229],"19":[200,191]},"3":{"0":[495,92],"1":[410,76],"2":[350,101],"3":[293,121],"4":[248,157],"5":[162,221],"6":[151,323],"7":[224,366],"8":[308,404],"9":[369,421],"10":[413,445],"11":[491,467],"12":[578,448],"13":[617,390],"14":[747,398],"15":[719,355],"16":[868,260],"17":[857,198],"18":[786,158],"19":[703,109]},"4":{"0":[470,123],"1":[594,144],"2":[700,163],"3":[748,198],"4":[790,220],"5":[692,257],"6":[633,286],"7":[535,295],"8":[498,253],"9":[416,215],"10":[334,216],"11":[253,243],"12":[272,290],"13":[283,331],"14":[214,364],"15":[121,349],"16":[110,275],"17":[150,213],"18":[254,176],"19":[342,143]},"5":{"0":[224,217],"1":[245,140],"2":[335,92],"3":[414,67],"4":[528,83],"5":[546,135],"6":[648,138],"7":[741,138],"8":[756,189],"9":[848,213],"10":[858,265],"11":[799,339],"12":[749,376],"13":[660,406],"14":[569,431],"15":[444,478],"16":[330,430],"17":[285,386],"18":[635,321],"19":[630,253]},"6":{"0":[477,386],"1":[561,437],"2":[686,470],"3":[780,476],"4":[836,447],"5":[836,367],"6":[780,333],"7":[718,312],"8":[650,221],"9":[599,194],"10":[514,156],"11":[426,158],"12":[353,176],"13":[281,188],"14":[184,244],"15":[105,306],"16":[159,340],"17":[198,378],"18":[177,430],"19":[277,455]},"7":{"0":[163,250],"1":[138,227],"2":[122,173],"3":[129,127],"4":[183,106],"5":[236,128],"6":[333,161],"7":[390,184],"8":[518,200],"9":[457,226],"10":[485,278],"11":[517,323],"12":[512,372],"13":[448,402],"14":[443,469],"15":[380,459],"16":[301,440],"17":[230,463],"18":[184,432],"19":[134,407]},"8":{"0":[588,258],"1":[648,283],"2":[710,303],"3":[745,348],"4":[703,376],"5":[658,403],"6":[594,425],"7":[479,453],"8":[412,453],"9":[294,430],"10":[234,402],"11":[186,345],"12":[144,319],"13":[144,274],"14":[110,226],"15":[137,179],"16":[186,156],"17":[244,137],"18":[313,136],"19":[348,172]},"9":{"0":[188,334],"1":[116,295],"2":[141,233],"3":[192,176],"4":[368,85],"5":[426,59],"6":[523,72],"7":[597,129],"8":[830,202],"9":[867,243],"10":[843,332],"11":[723,403],"12":[662,438],"13":[623,375],"14":[537,410],"15":[534,462],"16":[433,460],"17":[372,455],"18":[358,408],"19":[337,379]},"10":{"0":[563,150],"1":[616,116],"2":[710,123],"3":[758,166],"4":[824,234],"5":[809,332],"6":[757,370],"7":[686,404],"8":[502,434],"9":[421,453],"10":[324,428],"11":[259,391],"12":[204,368],"13":[138,301],"14":[165,192],"15":[243,131],"16":[342,119],"17":[379,158],"18":[358,205],"19":[269,213]},"11":{"0":[134,132],"1":[205,89],"2":[288,92],"3":[410,158],"4":[440,246],"5":[327,185],"6":[274,139]},"12":{"0":[200,80],"1":[289,102],"2":[336,205],"3":[278,220],"4":[207,239],"5":[134,218],"6":[168,159]},"13":{"0":[398,13],"1":[389,159],"2":[560,298],"3":[481,310],"4":[435,290],"5":[351,308],"6":[246,277],"7":[199,248],"8":[221,151],"9":[221,59],"10":[307,44]},"14":{"0":[225,82],"1":[316,94],"2":[318,143],"3":[270,172],"4":[263,245],"5":[161,247],"6":[90,216]},"15":{"0":[134,100],"1":[259,108],"2":[280,142],"3":[392,145],"4":[446,176],"5":[505,219],"6":[412,273],"7":[340,286]},"16":{"0":[138,124],"1":[224,119],"2":[316,131],"3":[363,184],"4":[461,216],"5":[567,231],"6":[621,257],"7":[602,315],"8":[518,329],"9":[358,310],"10":[241,280],"11":[190,225],"12":[134,194]},"37":{"0":[495,133],"1":[410,143],"2":[442,203],"3":[595,305],"4":[560,363],"5":[380,233],"6":[298,206],"7":[202,253],"8":[151,313],"9":[185,366],"10":[253,424],"11":[385,458],"12":[540,503],"13":[650,513],"14":[700,483],"15":[785,463],"16":[868,380],"17":[857,258],"18":[786,213],"19":[703,172]},"38":{"0":[360,88],"1":[260,63],"2":[180,97],"3":[118,155],"4":[91,202],"5":[99,251],"6":[115,301],"7":[227,326],"8":[311,378],"9":[385,391],"10":[455,393],"11":[535,389],"12":[598,388],"13":[673,357],"14":[767,318],"15":[689,231],"16":[808,208],"17":[750,118],"18":[665,81],"19":[540,58]},"39":{"0":[527,66],"1":[440,93],"2":[276,128],"3":[197,198],"4":[121,261],"5":[117,323],"6":[199,376],"7":[263,418],"8":[354,432],"9":[434,400],"10":[512,400],"11":[660,424],"12":[721,393],"13":[826,356],"14":[884,269],"15":[701,253],"16":[646,224],"17":[711,207],"18":[662,115],"19":[595,75]},"40":{"0":[399,107],"1":[354,164],"2":[349,223],"3":[173,248],"4":[104,297],"5":[143,352],"6":[201,377],"7":[274,408],"8":[335,441],"9":[440,419],"10":[658,446],"11":[737,407],"12":[802,363],"13":[873,316],"14":[876,276],"15":[751,257],"16":[691,235],"17":[666,155],"18":[554,140],"19":[494,97]},"41":{"0":[454,108],"1":[367,123],"2":[258,163],"3":[176,212],"4":[158,246],"5":[153,289],"6":[168,340],"7":[204,388],"8":[274,426],"9":[325,446],"10":[458,475],"11":[594,466],"12":[748,393],"13":[808,361],"14":[877,336],"15":[891,273],"16":[782,257],"17":[667,322],"18":[633,141],"19":[535,108]},"42":{"0":[467,98],"1":[401,108],"2":[331,143],"3":[254,167],"4":[182,223],"5":[127,315],"6":[115,351],"7":[177,380],"8":[220,484],"9":[323,499],"10":[329,388],"11":[499,420],"12":[501,466],"13":[618,459],"14":[671,426],"15":[779,380],"16":[859,278],"17":[710,169],"18":[647,136],"19":[562,109]},"43":{"0":[315,14],"1":[260,33],"2":[201,88],"3":[95,117],"4":[101,176],"5":[131,230],"6":[111,272],"7":[190,169],"8":[666,210],"9":[313,318],"10":[371,344],"11":[452,329],"12":[561,330],"13":[656,311],"14":[716,280],"15":[778,246],"16":[751,104],"17":[699,52],"18":[538,59],"19":[458,59]},"44":{"0":[546,24],"1":[518,66],"2":[429,55],"3":[320,49],"4":[352,114],"5":[182,142],"6":[191,217],"7":[248,290],"8":[362,314],"9":[418,367],"10":[477,270],"11":[561,262],"12":[610,377],"13":[705,344],"14":[790,312],"15":[799,231],"16":[875,188],"17":[821,129],"18":[688,98],"19":[706,42]},"45":{"0":[362,145],"1":[311,199],"2":[179,212],"3":[201,256],"4":[280,327],"5":[198,340],"6":[125,368],"7":[111,406],"8":[173,441],"9":[286,441],"10":[431,401],"11":[468,456],"12":[613,454],"13":[685,403],"14":[746,354],"15":[760,259],"16":[660,148],"17":[593,152],"18":[509,163],"19":[441,126]},"46":{"0":[506,91],"1":[349,122],"2":[297,171],"3":[225,186],"4":[171,214],"5":[105,265],"6":[51,320],"7":[106,342],"8":[161,437],"9":[274,427],"10":[315,481],"11":[539,475],"12":[595,444],"13":[684,426],"14":[743,392],"15":[743,316],"16":[742,249],"17":[718,215],"18":[660,179],"19":[578,103]},"47":{"0":[170,148],"1":[263,119],"2":[356,161],"3":[453,163],"4":[531,293],"5":[503,322],"6":[275,227],"7":[97,201],"8":[495,240]},"48":{"0":[160,218],"1":[215,245],"2":[281,228],"3":[340,198],"4":[411,146],"5":[460,108],"6":[410,91],"7":[380,14]},"49":{"0":[113,113],"1":[249,119],"2":[346,108],"3":[499,128],"4":[720,91],"5":[680,141],"6":[478,266],"7":[305,283],"8":[235,259]},"50":{"0":[168,124],"1":[228,108],"2":[300,131],"3":[363,146],"4":[430,183],"5":[487,371],"6":[427,413],"7":[347,438],"8":[270,458],"9":[185,448]},"51":{"0":[170,104],"1":[244,98],"2":[346,119],"3":[413,241],"4":[390,266],"5":[235,264],"6":[255,193],"7":[185,161]},"52":{"0":[138,124],"1":[224,81],"2":[705,206],"3":[625,245],"4":[525,266],"5":[445,261],"6":[325,235],"7":[337,201],"8":[267,183],"9":[165,183]},"53":{"0":[48,19],"1":[113,16],"2":[247,52],"3":[587,182],"4":[415,195],"5":[325,225],"6":[225,229],"7":[155,193],"8":[75,173],"9":[93,123],"10":[74,69]},"54":{"0":[402,82],"1":[337,79],"2":[290,117],"3":[138,165],"4":[129,236],"5":[136,273],"6":[214,317],"7":[305,313],"8":[385,285],"9":[230,246]},"55":{"0":[192,73],"1":[130,122],"2":[69,130],"3":[215,210],"4":[236,241],"5":[361,265],"6":[414,286],"7":[469,264],"8":[465,133]},"56":{"0":[491,88],"1":[437,116],"2":[344,162],"3":[255,186],"4":[184,208],"5":[139,246],"6":[193,292],"7":[184,343],"8":[198,383],"9":[590,307]},"57":{"0":[221,71],"1":[249,106],"2":[155,178],"3":[127,225],"4":[224,261],"5":[233,322],"6":[308,335],"7":[362,298]},"58":{"0":[162,292],"1":[185,347],"2":[246,378],"3":[417,377],"4":[446,335],"5":[572,333]},"59":{"0":[202,75],"1":[289,91],"2":[368,136],"3":[327,189],"4":[441,216],"5":[447,273],"6":[329,317],"7":[233,388]},"60":{"0":[106,325],"1":[310,260],"2":[422,368],"3":[444,302],"4":[538,298],"5":[575,241],"6":[601,167],"7":[576,111],"8":[525,80]}});
-    const townMetaById = new Map();
-    const originalGetTownMapPosition = getTownMapPosition;
-    let metadataReady = false;
-
-    const parseNumber = (value) => {
-      const number = Number(value);
-      return Number.isFinite(number) ? number : null;
-    };
-
-    const loadMetadata = async () => {
-      try {
-        const [townResponse, islandResponse] = await Promise.all([
-          fetch('/data/towns.txt', { credentials: 'same-origin' }),
-          fetch('/data/islands.txt', { credentials: 'same-origin' }),
-        ]);
-        if (!townResponse.ok || !islandResponse.ok) {
-          throw new Error(`HTTP towns=${townResponse.status}, islands=${islandResponse.status}`);
-        }
-
-        const [townText, islandText] = await Promise.all([
-          townResponse.text(),
-          islandResponse.text(),
-        ]);
-        const islandTypeByCoordinates = new Map();
-        islandText.split(/\r?\n/).filter(Boolean).forEach((line) => {
-          const row = line.split(',');
-          const islandX = parseNumber(row[1]);
-          const islandY = parseNumber(row[2]);
-          const islandType = parseNumber(row[3]);
-          if (islandX === null || islandY === null || islandType === null) return;
-          islandTypeByCoordinates.set(`${islandX}:${islandY}`, islandType);
-        });
-
-        townText.split(/\r?\n/).filter(Boolean).forEach((line) => {
-          const row = line.split(',');
-          const townId = parseNumber(row[0]);
-          const islandX = parseNumber(row[3]);
-          const islandY = parseNumber(row[4]);
-          const slot = parseNumber(row[5]);
-          if (townId === null || islandX === null || islandY === null || slot === null) return;
-          townMetaById.set(String(townId), {
-            islandX,
-            islandY,
-            slot,
-            islandType: islandTypeByCoordinates.get(`${islandX}:${islandY}`) ?? null,
-          });
-        });
-
-        metadataReady = true;
-        console.info(`[${APP.name}] corrected travel-time positions loaded for ${townMetaById.size} towns`);
-
-        if (townDistanceSorterOpen) renderTownDistanceSorter();
-        if (resourceCheckerOpen) document.getElementById(RESOURCE_CHECKER.panelId)?.setAttribute('data-plan-stale', 'true');
-      } catch (error) {
-        console.warn(`[${APP.name}] corrected travel-time positions could not be loaded; using Grepolis positions`, error);
-      }
-    };
-
-    getTownMapPosition = function getCorrectedTownMapPosition(town, townId) {
-      const actualTownId = townId
-        ?? getFirstMethodValue(town, ['getId'], ['id']);
-      const metadata = townMetaById.get(String(actualTownId));
-      if (metadataReady && metadata && metadata.islandType != null) {
-        const offset = slotOffsets[String(metadata.islandType)]?.[String(metadata.slot)];
-        if (Array.isArray(offset) && offset.length >= 2) {
-          const oddIslandXCorrection = Math.abs(metadata.islandX) % 2 === 1 ? 64 : 0;
-          return {
-            x: metadata.islandX * TOWN_DISTANCE_SORTER.mapTileSize + Number(offset[0]),
-            y: metadata.islandY * TOWN_DISTANCE_SORTER.mapTileSize
-              + Number(offset[1])
-              + oddIslandXCorrection,
-          };
-        }
-      }
-      return originalGetTownMapPosition(town, actualTownId);
-    };
-
-    void loadMetadata();
-  }
   function init() {
-    installCorrectedTravelDistanceCalculation();
     initMovementTools();
     ensureUi();
     monitoredTownTradeLockIds = Object.keys(loadTownTradeLocks()).sort().join(',');
@@ -10987,7 +10963,7 @@
 
     heroes.sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:'base'}));
     const units = [
-        // 1. Barracks - Reihenfolge wie in der Rekrutierungsansicht von links nach rechts
+        // 1. Barracks - same left-to-right order as the recruitment view
         { id: 'sword', name: 'Swordsman', time: 1080, w: 95, s: 0, m: 85, f: 0, naval: false },
         { id: 'slinger', name: 'Slinger', time: 1200, w: 55, s: 100, m: 40, f: 0, naval: false },
         { id: 'archer', name: 'Archer', time: 1140, w: 120, s: 0, m: 75, f: 0, naval: false },
@@ -10997,7 +10973,7 @@
         { id: 'catapult', name: 'Catapult', time: 12600, w: 700, s: 700, m: 700, f: 0, naval: false },
         { id: 'godsent', name: 'Divine Envoy', time: 2100, w: 0, s: 0, m: 0, f: 12, naval: false },
 
-        // 2. Harbor - Reihenfolge wie in der Harboransicht von links nach rechts
+        // 2. Harbor - same left-to-right order as the harbor view
         { id: 'big_transporter', name: 'Transport Boat', time: 5400, w: 500, s: 500, m: 400, f: 0, naval: true },
         { id: 'bireme', name: 'Bireme', time: 9900, w: 800, s: 700, m: 180, f: 0, naval: true },
         { id: 'attack_ship', name: 'Light Ship', time: 11880, w: 1300, s: 300, m: 800, f: 0, naval: true },
@@ -11134,8 +11110,8 @@
             if(!data||typeof data!=='object')return;
             const recordTownId=String(data.town_id??data.target_town_id??data.casted_on_town_id??data.target_id??'');
             if(!recordTownId||!currentTownId||recordTownId===currentTownId)records.push(data);
-            // Grepolis speichert Leiden je nach Clientstand in einem direkten Untercontainer
-            // der aktuellen Stadt. Nur diese bekannten Zaubercontainer werden aufgeloest.
+            // Depending on the client version, Grepolis stores Suffering in a direct sub-container
+            // of the current town. Only these known spell containers are resolved.
             ['casted_powers_collection','casted_powers','cast_powers','powers','active_powers','effects','active_effects','buffs']
                 .forEach(key=>add(data[key],depth+1));
         };
@@ -11150,8 +11126,8 @@
         return records;
     }
     function activePower(keys) {
-        // Zauber ausschließlich direkt an der aktuell ausgewählten Stadt abfragen.
-        // Keine MM-Gruppensuche, keine rekursive Textsuche und kein DOM-/Tooltip-Scan.
+        // Read spells only directly from the currently selected town.
+        // No MM group search, no recursive text search and no DOM/tooltip scan.
         const aliases=new Set(keys.map(key=>String(key).normalize('NFKC').toLowerCase().replace(/[\s-]+/g,'_')));
         if(aliases.has('nereids')||aliases.has('nereiden')||aliases.has('nereid')){
             ['nereids','nereid','nereiden','nereids_power','nereids_boost','nereid_power','nereid_boost'].forEach(key=>aliases.add(key));
@@ -11162,9 +11138,9 @@
         return getDirectTownPowerRecords().some(data=>{
             if(!powerStillActive(data))return false;
 
-            // Grepolis legt die Kennung je nach Zauber nicht immer im gleichen Feld ab.
-            // Deshalb alle direkten Kennungsfelder des Stadtzaubers pruefen, statt nur
-            // den ersten gefundenen Wert (der bei Nereiden teils eine numerische ID ist).
+            // Grepolis does not always store the identifier in the same field for every spell,
+            // so check every direct identifier field of the town spell instead of only
+            // the first value found (which is sometimes a numeric ID for Nereids).
             const rawIds=[
                 data?.power_id,data?.powerId,data?.power_type,data?.powerType,
                 data?.effect_id,data?.effectId,data?.effect_type,data?.effectType,
@@ -11183,8 +11159,8 @@
 
             if(ids.some(id=>aliases.has(id)))return true;
 
-            // Begrenzter Fallback nur innerhalb der direkten Zauberdaten der aktuellen Stadt.
-            // Erfasst Varianten wie "nereids_cost_reduction" ohne fremde Modelle/DOM zu scannen.
+            // Limited fallback that stays inside the current town's direct spell data.
+            // Catches variants such as "nereids_cost_reduction" without scanning other models or the DOM.
             const wantsNereids=aliases.has('nereids')||aliases.has('nereiden')||aliases.has('nereid');
             if(wantsNereids&&ids.some(id=>/(^|_)(nereids?|nereiden)(_|$)/.test(id)))return true;
             const wantsSuffering=aliases.has('suffering')||aliases.has('leiden');
@@ -11207,7 +11183,7 @@
         return result.filter(Boolean);
     }
     function getActiveAresFuryEffect() {
-        // Entscheidend ist der beim aktiven Effekt eingesetzte Zorn, nicht der aktuell beim Spieler vorhandene Zorn.
+        // What counts is the Fury spent on the active effect, not the player's current Fury.
         const ids=['fury_of_ares','ares_fury','furia_ares','ares_rage','rage_of_ares'];
         const matches=getDirectTownPowerRecords().filter(record => {
             if(!powerStillActive(record))return false;
@@ -11254,7 +11230,7 @@
         quiron:['quiron','cheiron','chiron'], odiseo:['odiseo','odysseus'],
         aristoteles:['aristoteles','aristotle'], dedalo:['dedalo','daidalos','daedalus','dädalus'],
         euribia:['euribia','eurybia'],  anysia:['anysia'], argos:['argos','argus'],   
-        ferquion:['ferquion','ferkyon','pherikyon'], parifaistes:['parifaistes','pariphaistes'], argos:['argos']
+        ferquion:['ferquion','ferkyon','pherikyon'], parifaistes:['parifaistes','pariphaistes']
     };
     function normalizeText(value) {
         return String(value??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
@@ -11718,9 +11694,9 @@
         return Number(fallback)||0;
     }
     function getOfficialBaseUnitTime(unitId,fallback) {
-        // Fuer Einheiten mit bekannter offizieller Referenz nicht den bereits
-        // weltgeschwindigkeitsbereinigten Clientwert erneut hochrechnen.
-        // Genau das hielt die Katapultzeit trotz des vorherigen Fixes bei 6:55.
+        // For units with a known official reference, do not scale up the client value
+        // again; it is already adjusted for world speed.
+        // That is what kept the catapult time at 6:55 despite the previous fix.
         if(OFFICIAL_TIME_REFERENCES[unitId]){
             return getSpeedOneLevelOneTime(unitId,fallback);
         }
@@ -11897,6 +11873,11 @@
         text.textContent=unit?unit.name:`Select unit`;
         updateSelectedUnitIcon();
     }
+    function extractBackground(source){
+        const style=getComputedStyle(source);
+        if(!style.backgroundImage||style.backgroundImage==='none')return null;
+        return{image:style.backgroundImage,position:style.backgroundPosition,size:style.backgroundSize};
+    }
     function updateSelectedUnitIcon(){
         const select=document.getElementById('sim-unit-select');
         const icon=document.getElementById('sim-selected-unit-icon');
@@ -11964,7 +11945,7 @@
             if(recommended&&!greenBadge&&name){
                 greenBadge=document.createElement('span');
                 greenBadge.className='sim-hero-recommended-badge';
-                greenBadge.textContent=`EMPFOHLEN`;
+                greenBadge.textContent=`RECOMMENDED`;
                 name.appendChild(greenBadge);
             } else if(!recommended&&greenBadge){greenBadge.remove();}
             if(alternative&&!yellowBadge&&name){
@@ -12052,10 +12033,10 @@
         let seconds=getOfficialBaseUnitTime(unit.id,unit.time)*buildingTimeFactor(buildingLevel)/speed;
         if(isNaval && hasResearch(['shipwright']))seconds*=.90;
         if(!isNaval && hasResearch(['trainer','instructor']))seconds*=.90;
-        // Produktionsboni wirken in Grepolis nacheinander (multiplikativ),
-        // nicht als gemeinsam addierter Prozentwert. Beispiel:
-        // Geburtenzuwachs (x2) + Spartanisches Training (x1,70)
-        // ergibt insgesamt x3,40 statt x2,70.
+        // Grepolis applies production bonuses one after another (multiplicatively),
+        // not as one summed percentage. Example:
+        // Population Growth (x2) + Spartan Training (x1.70)
+        // gives x3.40 in total instead of x2.70.
         if(isNaval && activePower(['call_of_the_ocean','call_of_the_sea','sea_call','llamada_mar'])){
             seconds/=2;
         }
@@ -12063,8 +12044,8 @@
             seconds/=2;
         }
         if(!isNaval && activePower(['spartan_training','spartan_training_boost','entrenamiento_espartano'])){
-            // Spartanisches Training ist ein eigener Faktor: +70 % Produktion => /1,70.
-            // Der Zorn-des-Ares-Effekt wird separat angewendet und nicht hinzuaddiert.
+            // Spartan Training is a separate factor: +70% production => /1.70.
+            // The Fury of Ares effect is applied separately, not added on top.
             seconds/=1.70;
         }
         const furyEffect=getActiveAresFuryEffect();
@@ -12083,9 +12064,9 @@
         const sufferingActive=!isNaval&&activePower(['population_growth','birth_growth','fertility_improvement','crecimiento_poblacion'])&&activePower(['suffering','leiden','passionate_training','passionate_training_boost','unit_training_boost']);
         let resourceFactor=1;
         if(nereidsActive||sufferingActive){
-            // Nereiden + Ruf des Meeres bzw. Leiden + Geburtenzuwachs
-            // reduzieren zuerst auf 70 %. Forschung und Heldenrabatte wirken
-            // danach weiterhin multiplikativ (z. B. 70 % * 90 % = 63 %).
+            // Nereids + Call of the Ocean, or Suffering + Population Growth,
+            // first reduce to 70%. Research and hero discounts still apply
+            // multiplicatively afterwards (for example 70% * 90% = 63%).
             resourceFactor=.70;
             if(isNaval&&hasResearchOrChecked(['mathematics'],'sim-mat'))resourceFactor*=.90;
             if(!isNaval&&hasResearchOrChecked(['conscription'],'sim-mil'))resourceFactor*=.90;
@@ -12439,7 +12420,7 @@
                 </style>`;
             let htmlTitulo = compactStyles + '<button id="sim-reload-data" type="button" style="display:none;">Refresh</button>';
             htmlTitulo += '<input id="sim-game-speed" type="hidden" value="1">';
-            // Research und Spells als kompakte Tabelle
+            // Research and spells as a compact table
             let htmlCostRes = '<table class="sim-settings-table">';
             htmlCostRes += '<thead><tr><th class="sim-category-head"></th><th>Land units</th><th>Naval units</th></tr></thead><tbody>';
             htmlCostRes += '<tr>';
@@ -12448,24 +12429,24 @@
             htmlCostRes += '<td><label><b>Harbor level</b><input id="sim-docks-level" type="number" min="0" max="30" value="1" style="width:48px;margin-left:5px;padding:2px;border:1px solid #c29b57;background:#fff8e6;text-align:center;"></label></td>';
             htmlCostRes += '</tr><tr>';
             htmlCostRes += '<td class="sim-category-cell" rowspan="2"><span class="sim-category-label">Research</span></td>';
-            htmlCostRes += '<td><label><input type="checkbox" id="sim-mil"><b>Conscription</b> -10% Kosten</label></td>';
-            htmlCostRes += '<td><label><input type="checkbox" id="sim-mat"><b>Mathematics</b> -10% Kosten</label></td>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-mil"><b>Conscription</b> -10% cost</label></td>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-mat"><b>Mathematics</b> -10% cost</label></td>';
             htmlCostRes += '</tr><tr>';
-            htmlCostRes += '<td><label><input type="checkbox" id="sim-inst"><b>Instructor</b> -10% Zeit</label></td>';
-            htmlCostRes += '<td><label><input type="checkbox" id="sim-const"><b>Shipwright</b> -10% Zeit</label></td>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-inst"><b>Instructor</b> -10% time</label></td>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-const"><b>Shipwright</b> -10% time</label></td>';
             htmlCostRes += '</tr><tr>';
             htmlCostRes += '<td class="sim-category-cell" rowspan="3"><span class="sim-category-label">Spells</span></td>';
             htmlCostRes += '<td>';
-            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="100" data-id="crecimiento_poblacion"><b>Population Growth</b> -100% Zeit</label>';
-            htmlCostRes += '<label style="margin-left:15px;opacity:.55;"><input type="checkbox" id="sim-pob" disabled><b>Suffering</b> -30% Kosten</label>';
+            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="100" data-id="crecimiento_poblacion"><b>Population Growth</b> -100% time</label>';
+            htmlCostRes += '<label style="margin-left:15px;opacity:.55;"><input type="checkbox" id="sim-pob" disabled><b>Suffering</b> -30% cost</label>';
             htmlCostRes += '</td>';
             htmlCostRes += '<td>';
-            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="100" data-id="llamada_mar"><b>Call of the Ocean</b> -100% Zeit</label>';
-            htmlCostRes += '<label style="margin-left:15px;opacity:.55;"><input type="checkbox" id="sim-ner" disabled><b>Nereids</b> -30% Kosten</label>';
+            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="100" data-id="llamada_mar"><b>Call of the Ocean</b> -100% time</label>';
+            htmlCostRes += '<label style="margin-left:15px;opacity:.55;"><input type="checkbox" id="sim-ner" disabled><b>Nereids</b> -30% cost</label>';
             htmlCostRes += '</td>';
             htmlCostRes += '</tr><tr>';
             htmlCostRes += '<td>';
-            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="70" data-id="entrenamiento_espartano"><b>Spartan Training</b> -70% Zeit</label>';
+            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="70" data-id="entrenamiento_espartano"><b>Spartan Training</b> -70% time</label>';
             htmlCostRes += '<label style="margin-left:15px;opacity:.70;"><input type="checkbox" class="sim-spell" value="0" data-id="furia_ares" disabled style="display:none;"><b>Fury of Ares</b> variabel</label>';
             htmlCostRes += '<div style="margin:2px 0 0 30px;"><span style="font-size:9px;">Fury:</span> <input type="number" id="sim-fury-input" value="0" min="0" max="5000" step="100" style="width:42px;height:18px;padding:0 2px;border:1px solid #c29b57;background:#fff8e6;text-align:center;font-size:10px;"></div>';
             htmlCostRes += '</td><td></td>';
@@ -12666,8 +12647,8 @@
                 let timePerUnit = isNaval&&level===0 ? Infinity : enteredTime * buildingTimeFactor(level) / speed;
                 if(Number.isFinite(timePerUnit)&&document.getElementById('sim-const').checked&&isNaval)timePerUnit*=0.90;
                 if(Number.isFinite(timePerUnit)&&document.getElementById('sim-inst').checked&&!isNaval)timePerUnit*=0.90;
-                // Jeder Rekrutierungszeiteffekt bekommt einen eigenen Faktor.
-                // Es werden keine Prozentwerte mehr miteinander addiert.
+                // Every recruitment-time effect gets its own factor.
+                // Percentages are no longer added together.
                 let recruitmentTimeMultiplier=1;
                 document.querySelectorAll('.sim-spell:checked').forEach(cb=>{
                     const spell=spells.find(x=>x.id===cb.dataset.id);
@@ -12710,8 +12691,8 @@
                 // Produktionsboni aus Spellsn bleiben dagegen additive Geschwindigkeitsboni.
                 if(Number.isFinite(timePerUnit)){
                     timePerUnit*=recruitmentTimeMultiplier;
-                    // Es kann nur ein Held gleichzeitig zugewiesen sein. Dessen Effekt
-                    // wird als eigener Zeitfaktor nach allen Zaubern angewendet.
+                    // Only one hero can be assigned at a time. Their effect
+                    // is applied as a separate time factor after all spells.
                     timePerUnit*=Math.max(0,1-heroEffect.timePercent/100);
                 }
                 const hasMat = document.getElementById('sim-mat').checked;
@@ -12725,10 +12706,10 @@
                 const nereidsActive=hasNer&&seaActive&&isNaval;
                 const sufferingActive=hasPob&&birthActive&&!isNaval;
                 if(nereidsActive||sufferingActive){
-                    // Nereiden + Ruf des Meeres bzw. Leiden + Geburtenzuwachs
-                    // setzen die Grundkosten auf 70 %. Weitere passende Rabatte
-                    // (z. B. Wehrpflicht bei Landeinheiten) gelten anschließend
-                    // weiterhin multiplikativ: 70 % * 90 % = 63 %.
+                    // Nereids + Call of the Ocean, or Suffering + Population Growth,
+                    // set the base cost to 70%. Further matching discounts
+                    // (for example Conscription for land units) still apply
+                    // multiplicatively afterwards: 70% * 90% = 63%.
                     discountW=discountS=discountM=.70;
                     if(hasMat&&isNaval)discountW*=.90,discountS*=.90,discountM*=.90;
                     if(hasMil&&!isNaval)discountW*=.90,discountS*=.90,discountM*=.90;
@@ -12918,7 +12899,7 @@
     const STORAGE_KEY = 'grepo_unit_targets_scoped_v2';
     const draftTargets = {};
     function getTownId() {
-        return Number(Game?.townId || ITown?.town_id || 0);
+        return Number(window.Game?.townId || window.ITowns?.getCurrentTown?.()?.id || 0);
     }
 
     function isValidGroupId(groupId) {
@@ -14091,7 +14072,7 @@
             if(!result)return;
             const unresearched=tab.classList.contains('unavailable');
             // Unresearched units are calculated completely on an individual basis,
-            // aber bewusst nicht zur Ressourcen- und Zeitsumme addiert.
+            // but deliberately left out of the resource and time totals.
             if(!unresearched){
                 wood+=result.wood;stone+=result.stone;iron+=result.iron;favor+=result.favor;
                 seconds=seconds===Infinity||result.seconds===Infinity?Infinity:seconds+result.seconds;
@@ -15580,7 +15561,7 @@
 
     rows.sort((a, b) => b.Difference - a.Difference || a.Town.localeCompare(b.Town));
     console.table(rows);
-    console.log(`[EgelTools] ${rows.length} Werte liegen unter dem Cache.`);
+    console.log(`[EgelTools] ${rows.length} values are below the cache.`);
     return rows;
   };
 
@@ -16019,9 +16000,9 @@
   }
   function renderPersistentDeliveryAlerts(){syncAllDeliveriesToGrepoAlerts();}
   function fireRecruitmentDeliveryNotification(delivery){
-    syncAllDeliveriesToGrepoAlerts();const buildingLabel=delivery.isNaval?(('Harbor')):(('Barracks')),body=`${('Resources for')} ${delivery.unitLabel} ${('arrived in')} ${delivery.targetTownName}. ${('Click to open')} ${buildingLabel}.`;
+    syncAllDeliveriesToGrepoAlerts();const buildingLabel=delivery.isNaval?'Harbor':'Barracks',body=`${('Resources for')} ${delivery.unitLabel} ${('arrived in')} ${delivery.targetTownName}. ${('Click to open')} ${buildingLabel}.`;
     if('Notification'in window&&Notification.permission==='granted'){
-      try{const notification=new Notification(('Delivery arrived'),{body,tag:`egeltools_delivery_${delivery.id}`,renotify:false,requireInteraction:true});notification.onclick=event=>{event?.preventDefault?.();try{window.focus();}catch(_){}void openDeliveryRecruitmentBuilding(delivery);notification.close();};}catch(error){console.warn('[EgelTools] Could not show the browser notification.',error);}
+      try{const notification=new Notification('Delivery arrived',{body,tag:`egeltools_delivery_${delivery.id}`,renotify:false,requireInteraction:true});notification.onclick=event=>{event?.preventDefault?.();try{window.focus();}catch(_){}void openDeliveryRecruitmentBuilding(delivery);notification.close();};}catch(error){console.warn('[EgelTools] Could not show the browser notification.',error);}
     }else{
       console.warn('[EgelTools] Browser notifications are not allowed:',('Notification'in window)?Notification.permission:'not supported');
     }
@@ -16341,7 +16322,7 @@ document.addEventListener('pointerdown', function egelNotificationUnlock(){
   document.removeEventListener('pointerdown',egelNotificationUnlock,true);
 },{capture:true});
 
-/* EgelTools Academy Planner: GRCT-style overview, templates and translations */
+/* EgelTools Academy Planner: GRCT-style overview and research templates */
 (() => {
   'use strict';
   const CFG={storageKey:'egeltools_academy_templates_v1',buttonId:'egeltools-academy-overview-button',overviewId:'egeltools-academy-overview',editorClass:'egeltools-academy-template-editor',styleId:'egeltools-academy-planner-style'};
@@ -16378,11 +16359,11 @@ document.addEventListener('pointerdown', function egelNotificationUnlock(){
 `;document.head.append(e);}
   function button(){let b=document.getElementById(CFG.buttonId);if(!b){b=document.createElement('button');b.id=CFG.buttonId;b.type='button';b.addEventListener('click',()=>setOpen(!state.open));}b.textContent=t('academy');b.title=t('overview');b.setAttribute('aria-expanded',String(state.open));const a=document.getElementById('egeltools-tool-dock-actions');if(a&&b.parentElement!==a){const party=document.getElementById('egeltools-resource-checker-button');party?.parentElement===a?a.insertBefore(b,party.nextSibling):a.append(b);}return b;}
   function drag(panel,handle){let d=null;handle.addEventListener('pointerdown',e=>{if(e.target.closest('button,select'))return;const r=panel.getBoundingClientRect();d={x:e.clientX-r.left,y:e.clientY-r.top};});document.addEventListener('pointermove',e=>{if(d){panel.style.left=`${Math.max(0,e.clientX-d.x)}px`;panel.style.top=`${Math.max(0,e.clientY-d.y)}px`;}});document.addEventListener('pointerup',()=>d=null);}
-  function overview(){let p=document.getElementById(CFG.overviewId);if(p)return p;p=document.createElement('section');p.id=CFG.overviewId;p.className='egeltools-academy-overview-window';p.hidden=true;p.dataset.egeltoolsActive='false';p.setAttribute('role','dialog');p.setAttribute('aria-modal','false');p.setAttribute('aria-labelledby','egeltools-academy-overview-title');p.innerHTML='<div class="ao-title egeltools-academy-overview__header"><select data-group></select><select data-sort><option value="group"></option><option value="town"></option></select><strong id="egeltools-academy-overview-title"></strong><button data-refresh></button><button data-close>×</button></div><div class="ao-legend"><span><i class="ao-dot ao-green"></i><b data-l-done></b></span><span><i class="ao-dot ao-yellow"></i><b data-l-missing></b></span><span><i class="ao-dot ao-red"></i><b data-l-wrong></b></span><span><i class="ao-dot ao-orange"></i><b data-l-insufficient></b></span><span><i class="ao-dot ao-gray"></i><b data-l-ignored></b></span><span><i class="ao-dot ao-black"></i><b data-l-unavailable></b></span></div><div class="ao-grid"></div>';p.querySelector('[data-close]').onclick=()=>setOpen(false);p.querySelector('[data-refresh]').onclick=render;p.querySelector('[data-group]').onchange=render;p.querySelector('[data-sort]').onchange=render;document.body.append(p);p.addEventListener('pointerdown',()=>activateEgelToolsFloatingWindow(p));drag(p,p.querySelector('.ao-title'));translateOverview(p);return p;}
+  function overview(){let p=document.getElementById(CFG.overviewId);if(p)return p;p=document.createElement('section');p.id=CFG.overviewId;p.className='egeltools-academy-overview-window';p.hidden=true;p.dataset.egeltoolsActive='false';p.setAttribute('role','dialog');p.setAttribute('aria-modal','false');p.setAttribute('aria-labelledby','egeltools-academy-overview-title');p.innerHTML='<div class="ao-title egeltools-academy-overview__header"><select data-group></select><select data-sort><option value="group"></option><option value="town"></option></select><strong id="egeltools-academy-overview-title"></strong><button data-refresh></button><button data-close>×</button></div><div class="ao-legend"><span><i class="ao-dot ao-green"></i><b data-l-done></b></span><span><i class="ao-dot ao-yellow"></i><b data-l-missing></b></span><span><i class="ao-dot ao-red"></i><b data-l-wrong></b></span><span><i class="ao-dot ao-orange"></i><b data-l-insufficient></b></span><span><i class="ao-dot ao-gray"></i><b data-l-ignored></b></span><span><i class="ao-dot ao-black"></i><b data-l-unavailable></b></span></div><div class="ao-grid"></div>';p.querySelector('[data-close]').onclick=()=>setOpen(false);p.querySelector('[data-refresh]').onclick=render;p.querySelector('[data-group]').onchange=render;p.querySelector('[data-sort]').onchange=render;document.body.append(p);drag(p,p.querySelector('.ao-title'));translateOverview(p);return p;}
   function translateOverview(p){p.querySelector('.ao-title strong').textContent=t('overview');p.querySelector('[data-refresh]').textContent=t('refresh');p.querySelector('[data-refresh]').title=t('refresh');p.querySelector('[data-close]').title=t('close');p.querySelector('[data-sort] option[value=group]').textContent=t('sortGroup');p.querySelector('[data-sort] option[value=town]').textContent=t('sortTown');p.querySelector('[data-l-done]').textContent=t('researched');p.querySelector('[data-l-missing]').textContent=t('missing');p.querySelector('[data-l-wrong]').textContent=t('wrong');p.querySelector('[data-l-insufficient]').textContent='Not enough resources/research points';p.querySelector('[data-l-ignored]').textContent=t('ignored');p.querySelector('[data-l-unavailable]').textContent=t('unavailable');}
   function townResources(town){const out={wood:0,stone:0,iron:0};const readObject=obj=>{if(!obj)return;const a=obj.attributes||obj.toJSON?.()||obj||{};for(const k of Object.keys(out)){let v;try{v=typeof obj.get==='function'?obj.get(k):undefined;}catch(_){}if(v==null)v=a[k]??a['resources_'+k]??a['current_'+k];if(Number.isFinite(Number(v)))out[k]=Number(v);}};try{readObject(town?.getResources?.());}catch(_){}try{readObject(town?.resources?.());}catch(_){}try{readObject(town?.getResourcesModel?.());}catch(_){}try{const models=window.MM?.getModels?.()?.Town||{};const model=models[townId(town)]||Object.values(models).find(m=>townId(m)===townId(town));readObject(model?.getResources?.());readObject(model?.attributes?.resources);readObject(model?.attributes);}catch(_){}return out;}function researchPoints(town){let total=0;try{const b=town.getBuildings(),a=Number(b.getBuildingLevel('academy')||0),l=Number(b.getBuildingLevel('library')||0);total=a*Number(window.GameDataResearches?.getResearchPointsPerAcademyLevel?.()||4)+l*Number(window.GameDataResearches?.getResearchPointsPerLibraryLevel?.()||12);Object.entries(window.GameData?.researches||{}).forEach(([id,x])=>{if(researched(town,id))total-=Number(x.research_points||0);});}catch(_){}return total;}function researchQueued(town,id){try{const wantedTown=townId(town),wantedIds=new Set(researchAliases(id).map(String));const modelBucket=window.MM?.getModels?.()?.ResearchOrder||{};const collectionBucket=window.MM?.getCollections?.()?.ResearchOrder||[];const orders=[...Object.values(modelBucket),...collectionBucket.flatMap?.(collection=>collection?.models||[])||[]];return orders.some(order=>{let orderTown,orderType;try{orderTown=order?.getTownId?.();}catch(_){}try{orderType=order?.getType?.();}catch(_){}const a=attrs(order);if(orderTown==null)orderTown=a.town_id??a.townId;if(orderType==null)orderType=a.type??a.research??a.research_id;return String(orderTown)===wantedTown&&wantedIds.has(String(orderType));});}catch(error){console.debug('[EgelTools Academy] research queue lookup failed',error);return false;}}function showGrepolisResearchError(message){try{if(window.HumanMessage?.error){window.HumanMessage.error(message);return;}if(window.HumanMessage?.getInstance?.()?.error){window.HumanMessage.getInstance().error(message);return;}if(window.Layout?.showError){window.Layout.showError(message);return;}}catch(_){}alert(message);}function researchAction(town,id,revert){id=canonicalResearchId(id);if(!revert&&!canResearch(town,id)){const needed=academyRequirement(id),current=academyLevel(town),name=label(id);showGrepolisResearchError(`${name} requires Academy level ${needed}. Current level: ${current}.`);return;}if(!revert){const affordability=researchAffordability(town,id),missing=[];if(!affordability.enoughResources)missing.push('resources');if(!affordability.enoughPoints)missing.push('research points');if(missing.length){showGrepolisResearchError(`Not enough ${missing.join(' and ')} for ${label(id)}.`);return;}}const action=revert?'revert':'research';if(revert&&window.ConfirmationWindowFactory?.openConfirmationResettingResearch){window.ConfirmationWindowFactory.openConfirmationResettingResearch(()=>sendResearchAction(town,id,action));return;}sendResearchAction(town,id,action);}function sendResearchAction(town,id,action){try{gpAjax.ajaxPost('frontend_bridge','execute',{model_url:'ResearchOrder',action_name:action,arguments:{id},town_id:Number(townId(town))},true,{success:()=>setTimeout(render,250),error:()=>alert(t('actionFailed'))});}catch(_){alert(t('actionFailed'));}}function render(){const p=overview();translateOverview(p);const grid=p.querySelector('.ao-grid');try{const gs=groups(),filter=p.querySelector('[data-group]'),old=filter.value;filter.replaceChildren(new Option(t('allGroups'),'all'),new Option(t('noGroup'),'none'));[...gs].sort((a,b)=>a[1].localeCompare(b[1],lang())).forEach(([id,n])=>filter.add(new Option(n,id)));filter.value=[...filter.options].some(o=>o.value===old)?old:'all';const researchIds=ids(),list=towns().map(x=>({town:x,gid:groupId(townId(x))})).filter(x=>filter.value==='all'||x.gid===filter.value);const sort=p.querySelector('[data-sort]').value;if(sort==='group')list.sort((a,b)=>(gs.get(a.gid)||t('noGroup')).localeCompare(gs.get(b.gid)||t('noGroup'),lang())||townName(a.town).localeCompare(townName(b.town),lang(),{numeric:true}));else list.sort((a,b)=>townName(a.town).localeCompare(townName(b.town),lang(),{numeric:true}));const grid=p.querySelector('.ao-grid');if(!list.length||!researchIds.length){grid.textContent=t('noData');return;}const table=document.createElement('table');table.className='ao-table';const hr=document.createElement('tr'),first=document.createElement('th');first.className='ao-town';first.textContent=t('town');hr.append(first);researchIds.forEach(id=>{const th=document.createElement('th');th.className='ao-research-head';th.title=label(id);const icon=document.createElement('div');icon.className=`ao-research-icon research_icon research research40x40 ${window.GameDataResearches?.getResearchCssClass?.(id)||id}`;th.append(icon);hr.append(th);});const thead=document.createElement('thead');thead.append(hr);table.append(thead);const body=document.createElement('tbody');let lastGroup=null;list.forEach(row=>{const gname=gs.get(row.gid)||t('noGroup');if(sort==='group'&&gname!==lastGroup){const gr=document.createElement('tr'),labelCell=document.createElement('td'),rest=document.createElement('td');gr.className='ao-group-row';labelCell.className='ao-group-label';labelCell.textContent=gname;rest.colSpan=researchIds.length;gr.append(labelCell,rest);body.append(gr);lastGroup=gname;}const tr=document.createElement('tr'),name=document.createElement('td');name.className='ao-town';const rr=townResources(row.town),rp=researchPoints(row.town);name.innerHTML=`<a href="#" rel="${esc(townId(row.town))}" class="gp_town_link ao-town-link"><strong>${esc(townName(row.town))}</strong></a><br><small>${esc(gname)}</small><div class="ao-resources"><span class="ao-resource"><img class="ao-resource-icon" src="https://gpde.innogamescdn.com/images/game/res/wood.png">${rr.wood.toLocaleString()}</span><span class="ao-resource"><img class="ao-resource-icon" src="https://gpde.innogamescdn.com/images/game/res/stone.png">${rr.stone.toLocaleString()}</span><span class="ao-resource"><img class="ao-resource-icon" src="https://gpde.innogamescdn.com/images/game/res/iron.png">${rr.iron.toLocaleString()}</span><span class="ao-resource"><span class="grcrt_ao_ap ao-research-points"></span>${rp}</span></div>`;name.querySelector('.ao-town-link').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();openAcademyTown(row.town);},{capture:true});tr.append(name);researchIds.forEach(id=>{const s=status(row.town,id),td=document.createElement('td'),mark=document.createElement('div');td.className='ao-cell';mark.className=`ao-mark ${s==='done'?'ao-green':s==='missing'?'ao-yellow':s==='wrong'?'ao-red':s==='insufficient'?'ao-orange':s==='unavailable'?'ao-black':'ao-gray'}`;const queued=researchQueued(row.town,id);attachGrctResearchTooltip(mark,id,row.town);mark.style.cursor='pointer';mark.textContent=s==='unavailable'?'':queued?'✓':s==='done'||s==='wrong'?'−':'+';mark.onclick=()=>researchAction(row.town,id,s==='done'||s==='wrong');td.append(mark);tr.append(td);});body.append(tr);});table.append(body);grid.replaceChildren(table);}catch(error){console.error('[EgelTools Academy Overview] render failed',error);if(grid)grid.textContent='Academy overview could not be rendered. See console for details.';}}
   const esc=x=>{const d=document.createElement('div');d.textContent=String(x);return d.innerHTML;};
-  function openAcademyTown(town){const id=townId(town),numeric=Number(id);try{if(typeof window.HelperTown?.townSwitch==='function'){window.HelperTown.townSwitch(Number.isFinite(numeric)?numeric:id);return true;}if(typeof window.HelperTown?.switchTown==='function'){window.HelperTown.switchTown(Number.isFinite(numeric)?numeric:id);return true;}if(typeof window.WMap?.mapJump==='function'){window.WMap.mapJump(town,true);return true;}if(typeof window.ITowns?.setCurrentTown==='function'){window.ITowns.setCurrentTown(id);return true;}}catch(error){console.debug('[EgelTools Academy] town switch failed',error);}return false;}function setOpen(v){state.open=v;const p=overview(),token=++state.overviewOpenToken;button();clearTimeout(state.overviewRefreshTimer);state.overviewRefreshTimer=null;if(v){p.hidden=true;const started=Date.now();const openWhenReady=()=>{if(!state.open||token!==state.overviewOpenToken)return;const townList=towns(),researchList=ids(),researchesReady=townList.length>0&&townList.every(town=>{try{return!!town?.getResearches?.();}catch(_){return false;}});if((townList.length&&researchList.length&&researchesReady)||Date.now()-started>=1200){render();p.hidden=false;activateEgelToolsFloatingWindow(p);requestAnimationFrame(()=>{if(state.open&&token===state.overviewOpenToken)render();});return;}state.overviewRefreshTimer=setTimeout(openWhenReady,80);};state.overviewRefreshTimer=setTimeout(openWhenReady,120);}else{p.hidden=true;p.dataset.egeltoolsActive='false';}}
+  function openAcademyTown(town){const id=townId(town),numeric=Number(id);try{if(typeof window.HelperTown?.townSwitch==='function'){window.HelperTown.townSwitch(Number.isFinite(numeric)?numeric:id);return true;}if(typeof window.HelperTown?.switchTown==='function'){window.HelperTown.switchTown(Number.isFinite(numeric)?numeric:id);return true;}if(typeof window.WMap?.mapJump==='function'){window.WMap.mapJump(town,true);return true;}if(typeof window.ITowns?.setCurrentTown==='function'){window.ITowns.setCurrentTown(id);return true;}}catch(error){console.debug('[EgelTools Academy] town switch failed',error);}return false;}function setOpen(v){state.open=v;const p=overview(),token=++state.overviewOpenToken;button();clearTimeout(state.overviewRefreshTimer);state.overviewRefreshTimer=null;if(v){p.hidden=true;const started=Date.now();const openWhenReady=()=>{if(!state.open||token!==state.overviewOpenToken)return;const townList=towns(),researchList=ids(),researchesReady=townList.length>0&&townList.every(town=>{try{return!!town?.getResearches?.();}catch(_){return false;}});if((townList.length&&researchList.length&&researchesReady)||Date.now()-started>=1200){render();p.hidden=false;p.dataset.egeltoolsActive='true';requestAnimationFrame(()=>{if(state.open&&token===state.overviewOpenToken)render();});return;}state.overviewRefreshTimer=setTimeout(openWhenReady,80);};state.overviewRefreshTimer=setTimeout(openWhenReady,120);}else{p.hidden=true;p.dataset.egeltoolsActive='false';}}
   function roots(){const found=new Set();document.querySelectorAll('.tech_tree_box.js-tech-tree,.js-tech-tree,.tech_tree_box').forEach(tree=>{const content=tree.closest('.window_content,.js-window-content');const host=tree.closest('.classic_window,.js-window-main-container')||content?.parentElement;if(host&&host.isConnected&&(host.classList.contains('academy')||content?.querySelector('.academy_image')))found.add(host);});return[...found];}
   function paint(root){const town=currentTown();if(!town)return;const editing=root?.classList?.contains('aop-template-edit'),editSet=root?._aopEditSelected instanceof Set?root._aopEditSelected:null;root.querySelectorAll('.research_icon.research').forEach(icon=>{const id=canonicalResearchId(researchIdFromNode(icon));if(!id)return;const box=icon.closest('.research_box')||icon;box.dataset.researchId=id;box.classList.remove('aop-academy-done','aop-academy-missing','aop-academy-wrong','aop-academy-ignored','aop-academy-unavailable','aop-academy-insufficient');if(editing){const on=editSet?editSet.has(id):box.dataset.aopSelected==='1';box.dataset.aopSelected=on?'1':'0';const done=researched(town,id)||researchQueued(town,id);box.classList.add(on?(done?'aop-academy-done':'aop-academy-missing'):(done?'aop-academy-wrong':'aop-academy-ignored'));return;}box.classList.add(`aop-academy-${status(town,id)}`);});}
   function selected(root){return[...root.querySelectorAll('.research_box[data-aop-selected="1"]')].map(x=>canonicalResearchId(x.dataset.researchId)).filter(Boolean);}function selectedWithResearched(root,town){const set=new Set(selected(root));ids(root).forEach(id=>{if(researched(town,id))set.add(id);});return[...set];}
