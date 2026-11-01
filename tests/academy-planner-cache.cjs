@@ -86,6 +86,14 @@ assert.equal(cell(5, 'r20'), 'unavailable', 'academy level below the requirement
 assert.equal(cell(2, 'r0'), 'missing', 'town template when the town is assigned to no group');
 assert.equal(cell(3, 'r4'), 'done', 'a queued research counts as done');
 assert.equal(cell(3, 'booty'), 'done', 'a queued research alias counts as done');
+const mark = (townId, id) => context.batch(() => context.markClass(towns[townId], id, context.status(towns[townId], id)));
+assert.equal(mark(6, 'r1'), 'ao-green', 'an affordable required research is a green + button');
+assert.equal(mark(6, 'r5'), 'ao-green', 'an affordable research outside the template is a green + button');
+assert.equal(mark(4, 'r1'), 'ao-gray', 'a required research the town cannot afford is a grey + button');
+assert.equal(mark(4, 'r6'), 'ao-gray', 'a research outside the template the town cannot afford is a grey + button');
+assert.equal(mark(6, 'r3'), 'ao-green', 'researched template research stays green');
+assert.equal(mark(6, 'r6'), 'ao-red', 'research outside the template stays red');
+assert.equal(mark(5, 'r20'), 'ao-black', 'research above the academy level stays black');
 assert.equal(context.batch(() => context.researchQueued(towns[3], 'booty')), true);
 assert.equal(context.researchQueued(towns[1], 'r4'), false);
 assert.equal(context.researchPoints(towns[1]), 30 * 4 + 12 - 10 * 4);

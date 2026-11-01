@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.106 — 2026-11-01
+
+- The **Academy** overview's **+** buttons are green when the town has the resources and research points to start that research, and grey when it lacks either. This applies to every research you could start, whether or not it is in the town's template. Researched cells keep their green or red **−**, and the legend explains each colour.
+
 ## 1.2.105 — 2026-11-01
 
 - **Trade times** now show twice the previous travel time, and **Party trades** use the same doubled times when judging whether a suggested trade arrives in time.
