@@ -11,6 +11,8 @@ let selected;
 const towns = { 1: { name: 'Alpha', stock: { wood: 9000, stone: 0, iron: 0 } }, 2: { name: 'Beta', stock: { wood: 9000, stone: 0, iron: 0 } } };
 const context = vm.createContext({
   Map, Set, console,
+  window: {},
+  isIncomingTradesPopupEnabled: () => true,
   document: { getElementById: () => null },
   RESOURCE_NAMES: { wood: 'Wood', stone: 'Stone', iron: 'Iron' },
   getCurrentTownId: () => selected,
