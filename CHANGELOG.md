@@ -6,6 +6,20 @@ All published EgelTools releases are preserved at <https://files.miro23.uk/egelt
 
 - Fix the dock buttons changing order: **Incoming trades**, **Show CFs**, **Trade times**, **Party trades** and **Academy** now always appear in that order. Since 1.2.98, **Show CFs**, **Trade times** and **Party trades** moved behind **Academy** when Administrator was renewed during play or became active after the game loaded.
 
+## 1.2.104 — 2026-11-01
+
+- The **Academy** overview scrolls inside its window in both directions, so every town and research column is reachable at any window size. The group and sort pickers, the colour legend and each town's resources wrap onto extra lines instead of being cut off when the window is narrow.
+- The **Academy** dock button now has the same shape, hover and open state as the other EgelTools dock buttons. The overview's pickers and the Academy window's side panel use the EgelTools button colours: green for **Save City** and **Save Group**, cream for **Edit Template**, **Reset** and the **+**/**−** group buttons.
+
+## 1.2.103 — 2026-11-01
+
+- Remove the **MARKET** toggle from **Trade times**; the list no longer hides towns below Marketplace level 5. Use the trade-capacity switch to filter towns instead.
+
+## 1.2.102 — 2026-11-01
+
+- The **Academy** overview opens and refreshes much faster, especially with many towns: it no longer stalls the game for several seconds while it fills in the research grid. Research tooltips are now built when you hover a cell, so they always show current resources and research points.
+- Opening an academy, saving a research template or changing the city group no longer makes the game stutter while EgelTools colours the research icons.
+
 ## 1.2.99 — 2026-11-01
 
 - The **Academy** overview now opens in a regular Grepolis window, like the **Recruitment Simulator**: native frame and title bar, with **↻** (refresh) and close buttons at the top right. Drag it by the title bar and resize it from the bottom-right corner, and it comes to the front over other game windows when clicked. The group and sort pickers sit above the colour legend.

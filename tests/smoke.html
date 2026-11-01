@@ -91,7 +91,6 @@
       localStorage.removeItem('egeltools_attack_alarm_minimum_points');
       localStorage.removeItem('egeltools_attack_alarm_delay_enabled');
       localStorage.removeItem('egeltools_attack_alarm_delay_start');
-      localStorage.removeItem('egeltools_trade_times_market_5_filter');
       localStorage.removeItem('egeltools_attack_alarm_delay_end');
       localStorage.removeItem('egeltools_bd_level_check_collapsed');
       localStorage.removeItem('egeltools_bd_level_check_collapsed_v2');
@@ -1061,19 +1060,10 @@
           'Missing raw Town models should be treated as transient Grepolis loading, not requested from the user',
         );
         window.__townPositionModels = loadedTownPositionModels;
-        const marketFilterButton = document.getElementById('egeltools-town-distance-market-filter');
         console.assert(
-          await waitFor(() => distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 2)
-            && !distancePanel.querySelector('tbody tr[data-town-id="102"]')
-            && marketFilterButton?.getAttribute('aria-pressed') === 'true',
-          'The sorter should collect MM Town coordinates and hide towns below Marketplace level 5 by default',
-        );
-        marketFilterButton.click();
-        console.assert(
-          distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 3
-            && marketFilterButton.getAttribute('aria-pressed') === 'false'
-            && localStorage.getItem('egeltools_trade_times_market_5_filter') === 'off',
-          'Turning the MARKET filter off should list towns below Marketplace level 5 again',
+          await waitFor(() => distancePanel.querySelectorAll('tbody tr[data-town-id]').length === 3)
+            && !document.getElementById('egeltools-town-distance-market-filter'),
+          'The sorter should collect MM Town coordinates and list towns regardless of Marketplace level',
         );
         const distanceRows = [...distancePanel.querySelectorAll('tbody tr[data-town-id]')];
         console.assert(
