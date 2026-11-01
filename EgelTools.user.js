@@ -1,10 +1,10 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.97
+// @version      1.2.98
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
-// @description  A Grepolis toolkit. Privacy: optional external audio, images, and YouTube embeds contact their providers and disclose your IP address and standard request headers.
-// @privacy      EgelTools does not collect or store personal data. Alarm audio and UI images may contact cdn.grcrt.net, gme.cyllos.dev, flasktools.altervista.org, gpit.innogamescdn.com, or a user-selected audio host; optional YouTube embeds contact youtube-nocookie.com. These providers receive your IP address and standard browser request headers. Same-origin game/data requests remain subject to the Grepolis privacy policy.
+// @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
+// @privacy      EgelTools does not collect or store personal data. Alarm audio and UI images may contact cdn.grcrt.net, gme.cyllos.dev, flasktools.altervista.org, gpit.innogamescdn.com, or a user-selected audio host; optional YouTube embeds contact youtube-nocookie.com; the optional Recruit Optimizer Google Drive sync sends unit targets to the script.google.com web app URL you enter. These providers receive your IP address and standard browser request headers. Same-origin game/data requests remain subject to the Grepolis privacy policy.
 // @author       Egelman
 // @match        *://*.grepolis.com/game/*
 // @include      https://*.grepolis.com/game/*
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.97',
+    version: '1.2.98',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -58,6 +58,38 @@
     repeatKey: 'm23_alarm_repeat',
   });
 
+  const EGEL_NOTIFICATION_SETTINGS = Object.freeze({
+    bdsKey: 'egeltools_bds_browser_notification_enabled',
+    bdsSoundKey: 'egeltools_bds_sound_enabled',
+    unitResourceKey: 'egeltools_unit_resource_notification_enabled',
+    incomingTradesPopupKey: 'egeltools_incoming_trades_popup_enabled',
+    incomingTradesSoundKey: 'egeltools_incoming_trades_sound_enabled',
+    bdsInputId: 'egeltools-bds-notification-enabled',
+    bdsSoundInputId: 'egeltools-bds-sound-enabled',
+    unitResourceInputId: 'egeltools-unit-resource-notification-enabled',
+    incomingTradesPopupInputId: 'egeltools-incoming-trades-popup-enabled',
+    incomingTradesSoundInputId: 'egeltools-incoming-trades-sound-enabled',
+  });
+  function getEgelNotificationSetting(key) { return localStorage.getItem(key) === 'on'; }
+  function setEgelNotificationSetting(key, enabled) { localStorage.setItem(key, enabled ? 'on' : 'off'); }
+  function isBdsNotificationEnabled() { return getEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsKey); }
+  function isBdsSoundEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.bdsSoundKey) !== 'off'; }
+  function isUnitResourceNotificationEnabled() { return getEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.unitResourceKey); }
+  function isIncomingTradesPopupEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupKey) !== 'off'; }
+  function isIncomingTradesSoundEnabled() { return localStorage.getItem(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundKey) !== 'off'; }
+
+  function ensureEgelNotificationPermission() {
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    void Notification.requestPermission().catch(() => {});
+  }
+
+  window.EgelToolsNotificationSettings = Object.freeze({
+    isBdsEnabled: isBdsNotificationEnabled,
+    isBdsSoundEnabled,
+    isUnitResourceEnabled: isUnitResourceNotificationEnabled,
+    requestPermission: ensureEgelNotificationPermission,
+  });
+
   const ATTACK_ALARM = Object.freeze({
     defaultSoundUrl: 'https://cdn.grcrt.net/ui/s/alarm.mp3',
     soundKey: 'm23_alarm_sound_url',
@@ -90,6 +122,12 @@
     playerDataTtl: 6 * 60 * 60 * 1000,
   });
 
+  const RECRUITMENT_TRADE_BRIDGE = Object.freeze({
+    enabledKey: 'egeltools_recruitment_trade_bridge_enabled',
+    settingId: 'egeltools-recruitment-trade-bridge-enabled',
+    changedEvent: 'egeltools:recruitment-trade-bridge-changed',
+  });
+
   const CELEBRATION_FINDER = Object.freeze({
     panelId: 'egeltools-celebration-finder',
     bodyId: 'egeltools-celebration-finder-body',
@@ -114,6 +152,9 @@
     floatingButtonId: 'egeltools-town-distance-sorter-button',
     refreshButtonId: 'egeltools-town-distance-sorter-refresh',
     closeButtonId: 'egeltools-town-distance-sorter-close',
+    marketFilterButtonId: 'egeltools-town-distance-market-filter',
+    marketFilterEnabledKey: 'egeltools_trade_times_market_5_filter',
+    minimumMarketplaceLevel: 5,
     tradeLockStoragePrefix: 'egeltools_trade_locks',
     tradeLockSpendRatio: 0.5,
     mapTileSize: 128,
@@ -137,6 +178,7 @@
     tradeModelSyncGraceSeconds: 2 * 60,
     tradeDonorCooldownSeconds: 10,
     minimumTradeAmount: 500,
+    minimumRelativeTradeSaving: 0.1,
     loyaltyClaimInterval: 13 * 60,
     loyaltyClaimByFarmLevel: Object.freeze([0, 28, 34, 40, 45, 51, 57]),
   });
@@ -156,8 +198,12 @@
 
   const SILVER_STORE = Object.freeze({
     buttonId: 'egeltools-store-silver-button',
-    amount: 3000,
-    threshold: 28000,
+    amountKey: 'egeltools_silver_store_amount',
+    minimumKey: 'egeltools_silver_store_minimum',
+    amountSettingId: 'egeltools-silver-store-amount',
+    minimumSettingId: 'egeltools-silver-store-minimum',
+    defaultAmount: 3000,
+    defaultMinimum: 28000,
     gap: 6,
     absoluteRightShift: 6,
     requestCallbackTimeout: 3 * 1000,
@@ -188,14 +234,6 @@
     closeButtonId: 'egeltools-unit-queue-close',
     administratorButtonIds: ['egeltools-unit-queue-button', 'wachtrijButton'],
     refreshInterval: 5 * 60 * 1000,
-  });
-
-  const RECRUITMENT_TOTALS = Object.freeze({
-    rootSelector: '#unit_order #units',
-    tabSelector: '.unit_tab',
-    refreshButtonSelector: '.dio_reload, .grc_reload',
-    activeClass: 'egeltools-recruitment-totals-active',
-    totalClass: 'egeltools-recruitment-total',
   });
 
   const CELEBRATION_COSTS = Object.freeze({
@@ -654,6 +692,20 @@
         margin-top: 7px;
       }
 
+      #${APP.windowId} .egeltools-settings__field-pair {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 7px;
+        margin-top: 7px;
+      }
+
+      #${APP.windowId} .egeltools-settings__button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-top: 7px;
+      }
+
       #${APP.windowId} .egeltools-settings__field {
         display: flex;
         flex-direction: column;
@@ -747,7 +799,8 @@
           grid-column: 1 / -1;
         }
 
-        #${APP.windowId} .egeltools-settings__attack-grid {
+        #${APP.windowId} .egeltools-settings__attack-grid,
+        #${APP.windowId} .egeltools-settings__field-pair {
           grid-template-columns: 1fr;
         }
       }
@@ -1157,6 +1210,22 @@
       }
       #${TOWN_DISTANCE_SORTER.panelId} .egeltools-capacity-toggle[aria-checked="true"] span { transform: translateX(18px); }
       #${TOWN_DISTANCE_SORTER.panelId} .egeltools-capacity-toggle:focus-visible { outline: 2px solid #fff0bd; outline-offset: 2px; }
+      #${TOWN_DISTANCE_SORTER.marketFilterButtonId} {
+        width: auto !important;
+        min-width: 52px;
+        height: 19px !important;
+        margin-right: 3px;
+        padding: 0 6px !important;
+        border: 1px solid #8ecb61 !important;
+        border-radius: 10px;
+        color: #fff4cd !important;
+        background: linear-gradient(#5f9b3a, #356520) !important;
+        font: bold 8px/17px Arial, Helvetica, sans-serif !important;
+        line-height: 17px !important;
+        text-shadow: 0 1px rgba(0, 0, 0, .55) !important;
+        white-space: nowrap;
+      }
+      #${TOWN_DISTANCE_SORTER.marketFilterButtonId}:hover { filter: brightness(1.1); }
       #${TOWN_DISTANCE_SORTER.bodyId} {
         box-sizing: border-box;
         max-height: min(430px, calc(100vh - 150px));
@@ -1350,10 +1419,19 @@
       #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(5)::before,
       #egeltools-trade-overview .egeltools-trade-overview__town > div:nth-child(6)::before { display: block; font-size: 10px; font-weight: bold; color: #705a39; margin-bottom: 3px; }
       #egeltools-trade-overview .egeltools-trade-overview__town.is-selected { background: #f1e7ca; }
+      #egeltools-trade-overview .egeltools-trade-overview__town.is-resource-full {
+        background: #ffe58a; border-color: #c69a22; box-shadow: inset 0 0 0 1px #fff1ad;
+      }
+      #egeltools-trade-overview .egeltools-trade-overview__town.is-resource-full.is-selected { background: #f6d96f; }
       #egeltools-trade-overview .egeltools-trade-overview__town.is-at-line { border-left-color: #b5392e; }
       #egeltools-trade-overview .egeltools-trade-overview__town button { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0; background: none; border: 0; color: #70451e; font: inherit; font-weight: bold; cursor: pointer; text-align: left; }
       #egeltools-trade-overview.has-alarms .egeltools-trade-overview__header { background: linear-gradient(#973c31, #602720); color: #fff1d6; }
       #egeltools-trade-overview .egeltools-trade-overview__town.has-alarm { background: #ffebe2; border-color: #d07969; border-left: 4px solid #b52923; }
+      #egeltools-trade-overview .egeltools-trade-overview__town.are-all-resources-full,
+      #egeltools-trade-overview .egeltools-trade-overview__town.are-all-resources-full.is-selected,
+      #egeltools-trade-overview .egeltools-trade-overview__town.are-all-resources-full.has-alarm {
+        background: #ffb3a7; border-color: #b52923; box-shadow: inset 0 0 0 1px #ffd8d1;
+      }
       #egeltools-trade-overview .egeltools-trade-overview__alarm { display: inline-block; color: #a0221e; font-size: 11px; font-weight: bold; margin-top: 3px; }
       #egeltools-trade-overview .egeltools-trade-overview__town button.egeltools-trade-overview__acknowledge { display: inline-block; margin-left: 7px; color: #81483d; font-size: 10px; text-decoration: underline; font-weight: normal; }
       #egeltools-trade-overview [hidden] { display: none !important; }
@@ -2250,38 +2328,6 @@
         background: rgba(255, 250, 226, .5);
       }
 
-      ${RECRUITMENT_TOTALS.rootSelector}.${RECRUITMENT_TOTALS.activeClass} {
-        position: relative !important;
-        overflow: visible !important;
-        margin-top: 26px !important;
-      }
-
-      ${RECRUITMENT_TOTALS.rootSelector} ${RECRUITMENT_TOTALS.tabSelector} {
-        position: relative !important;
-        overflow: visible !important;
-      }
-
-      ${RECRUITMENT_TOTALS.rootSelector} .${RECRUITMENT_TOTALS.totalClass} {
-        position: absolute;
-        top: -24px;
-        left: 0;
-        z-index: 50;
-        box-sizing: border-box;
-        width: 57px;
-        height: 20px;
-        padding: 0;
-        border: 1px solid #8a672c;
-        border-radius: 2px;
-        color: #000;
-        background: #fff0bd;
-        box-shadow: inset 0 1px rgba(255, 255, 255, .55);
-        font: bold 11px/20px Arial, Helvetica, sans-serif;
-        text-align: center;
-        text-shadow: none;
-        white-space: nowrap;
-        pointer-events: none;
-      }
-
       #${COLLECT_ALARM.fallbackStopButtonId} .boerendorpIcoon {
         display: block;
         width: 28px;
@@ -2378,6 +2424,660 @@
     settingsWindow.style.transform = 'none';
     settingsWindow.style.left = `${Math.min(maxLeft, Math.max(margin, bounds.left))}px`;
     settingsWindow.style.top = `${Math.min(maxTop, Math.max(margin, bounds.top))}px`;
+  }
+
+  const RECRUIT_OPTIMIZER_BACKUP = Object.freeze({
+    sectionId: 'egeltools-recruit-optimizer-backup',
+    exportButtonId: 'egeltools-recruit-optimizer-export',
+    importButtonId: 'egeltools-recruit-optimizer-import',
+    resetButtonId: 'egeltools-recruit-optimizer-reset',
+    fileInputId: 'egeltools-recruit-optimizer-import-file',
+    statusId: 'egeltools-recruit-optimizer-backup-status',
+    driveUrlKey: 'egeltools_recruit_drive_webapp_url',
+    driveSecretKey: 'egeltools_recruit_drive_secret',
+    debugKey: 'egeltools_debug_logging',
+    driveMetaKey: 'egeltools_recruit_drive_sync_meta_v1',
+    driveUrlId: 'egeltools-recruit-drive-url',
+    driveSecretId: 'egeltools-recruit-drive-secret',
+    driveSaveId: 'egeltools-recruit-drive-save',
+    targetKey: 'grepo_unit_targets_scoped_v2',
+    storageKeys: Object.freeze([
+      'grepo_unit_targets_scoped_v2',
+      'egeltools_recruit_final_totals_v1',
+    ]),
+  });
+
+  function getRecruitOptimizerBackupContext() {
+    const getFirst = (callbacks, fallback = '') => {
+      for (const callback of callbacks) {
+        try {
+          const value = callback();
+          if (value !== undefined && value !== null && String(value) !== '') return String(value);
+        } catch (_) {}
+      }
+      return fallback;
+    };
+    return {
+      worldId: getFirst([
+        () => window.Game?.world_id,
+        () => window.Game?.worldId,
+        () => location.hostname.split('.')[0],
+      ]),
+      playerId: getFirst([
+        () => window.Game?.player_id,
+        () => window.Game?.playerId,
+      ]),
+      playerName: getFirst([
+        () => window.Game?.player_name,
+        () => window.Game?.playerName,
+      ]),
+    };
+  }
+
+  const RECRUIT_OPTIMIZER_UNIT_ORDER = Object.freeze([
+    'sword', 'slinger', 'archer', 'hoplite', 'rider', 'chariot', 'catapult',
+    'minotaur', 'manticore', 'centaur', 'pegasus', 'harpy', 'medusa',
+    'cerberus', 'fury', 'griffin', 'calydonian_boar', 'satyr', 'siren',
+    'spartoi', 'ladon', 'godsent',
+    'big_transporter', 'bireme', 'attack_ship', 'demolition_ship',
+    'small_transporter', 'trireme', 'colonize_ship',
+  ]);
+
+  function normalizeRecruitOptimizerUnits(units) {
+    if (!units || typeof units !== 'object' || Array.isArray(units)) return units;
+    const normalized = {};
+    for (const unitId of RECRUIT_OPTIMIZER_UNIT_ORDER) {
+      if (Object.prototype.hasOwnProperty.call(units, unitId)) normalized[unitId] = units[unitId];
+    }
+    Object.keys(units)
+      .filter((unitId) => !Object.prototype.hasOwnProperty.call(normalized, unitId))
+      .sort((a, b) => a.localeCompare(b))
+      .forEach((unitId) => { normalized[unitId] = units[unitId]; });
+    return normalized;
+  }
+
+  function normalizeRecruitOptimizerTargets(targets) {
+    if (!targets || typeof targets !== 'object' || Array.isArray(targets)) return targets;
+    const normalized = { ...targets };
+    if (targets.all && typeof targets.all === 'object') normalized.all = normalizeRecruitOptimizerUnits(targets.all);
+    for (const scope of ['groups', 'cities']) {
+      if (!targets[scope] || typeof targets[scope] !== 'object') continue;
+      normalized[scope] = {};
+      Object.keys(targets[scope])
+        .sort((a, b) => a === 'default' ? -1 : b === 'default' ? 1 : Number(a) - Number(b))
+        .forEach((id) => { normalized[scope][id] = normalizeRecruitOptimizerUnits(targets[scope][id]); });
+    }
+    return normalized;
+  }
+
+  function formatRecruitTargetsForBackup(value) {
+    const source = normalizeRecruitOptimizerTargets(value || {});
+    const grepolisGroupNames = source.grepolisGroupNames || {};
+    const grepolisGroups = {};
+    const customGroups = {};
+    const cities = {};
+    const cityGroups = {};
+    const townNames = source.townNames || {};
+
+    Object.entries(source.groups || {}).forEach(([groupId, targets]) => {
+      grepolisGroups[groupId] = {
+        name: grepolisGroupNames[groupId] || groupId,
+        targets: normalizeRecruitOptimizerUnits(targets),
+      };
+    });
+
+    Object.entries(source.customGroups || {}).forEach(([customId, group]) => {
+      const name = String(group?.name || customId);
+      customGroups[name] = normalizeRecruitOptimizerUnits(group?.targets || {});
+    });
+
+    Object.entries(source.cityTargetGroups || {}).forEach(([townId, assignment]) => {
+      if (assignment === 'none') {
+        cities[townId] = {
+          name: townNames[townId] || townId,
+          targets: normalizeRecruitOptimizerUnits(source.cities?.[townId] || {}),
+        };
+        return;
+      }
+
+      if (String(assignment).startsWith('custom:')) {
+        const customId = String(assignment).slice(7);
+        const groupName = String(source.customGroups?.[customId]?.name || customId);
+        cityGroups[groupName] ||= { type: 'custom', cities: {} };
+        cityGroups[groupName].cities[townId] = townNames[townId] || townId;
+        return;
+      }
+
+      const groupId = String(assignment).startsWith('grepo:')
+        ? String(assignment).slice(6)
+        : String(assignment);
+      const groupName = String(
+        grepolisGroupNames[groupId]
+        || grepolisGroups[groupId]?.name
+        || groupId
+      );
+      cityGroups[groupName] ||= { type: 'grepolis', id: groupId, cities: {} };
+      cityGroups[groupName].cities[townId] = townNames[townId] || townId;
+    });
+
+    // Preserve legacy city entries that do not yet have an explicit assignment.
+    Object.entries(source.cities || {}).forEach(([townId, targets]) => {
+      if (!Object.prototype.hasOwnProperty.call(source.cityTargetGroups || {}, townId)) {
+        cities[townId] = { name: townNames[townId] || townId, targets: normalizeRecruitOptimizerUnits(targets) };
+      }
+    });
+
+    return { grepolisGroups, customGroups, cities, cityGroups };
+  }
+
+  function restoreRecruitTargetsFromBackup(value) {
+    if (!value || typeof value !== 'object') return value;
+    if (!value.grepolisGroups && !value.customGroups && !value.cityGroups) {
+      return normalizeRecruitOptimizerTargets(value);
+    }
+
+    const restored = {
+      all: {}, groups: {}, cities: {}, customGroups: {}, cityCustomGroups: {},
+      cityTargetGroups: {}, grepolisGroupNames: {}, townNames: {},
+    };
+
+    Object.entries(value.grepolisGroups || {}).forEach(([groupId, group]) => {
+      restored.groups[groupId] = normalizeRecruitOptimizerUnits(group?.targets || group || {});
+      restored.grepolisGroupNames[groupId] = String(group?.name || groupId);
+    });
+    Object.entries(value.customGroups || {}).forEach(([name, targets], index) => {
+      const id = `custom_imported_${index + 1}`;
+      restored.customGroups[id] = { name, targets: normalizeRecruitOptimizerUnits(targets || {}) };
+    });
+    const customIdByName = Object.fromEntries(
+      Object.entries(restored.customGroups).map(([id, group]) => [group.name, id]),
+    );
+    Object.entries(value.cities || {}).forEach(([townId, targets]) => {
+      const cityTargets = targets?.targets || targets || {};
+      restored.cities[townId] = normalizeRecruitOptimizerUnits(cityTargets);
+      restored.townNames[townId] = String(targets?.name || townId);
+      restored.cityTargetGroups[townId] = 'none';
+    });
+    Object.entries(value.cityGroups || {}).forEach(([key, group]) => {
+      if (group?.cities && typeof group.cities === 'object') {
+        Object.entries(group.cities).forEach(([townId, townName]) => {
+          restored.townNames[townId] = String(townName || townId);
+          if (group.type === 'custom') {
+            const id = customIdByName[String(key)];
+            restored.cityTargetGroups[townId] = id ? `custom:${id}` : 'none';
+          } else {
+            const id = String(group.id || '');
+            if (id) {
+              restored.cityTargetGroups[townId] = `grepo:${id}`;
+              restored.grepolisGroupNames[id] = String(key);
+            }
+          }
+        });
+        return;
+      }
+
+      // Legacy structure: town ID was the key.
+      const townId = key;
+      restored.townNames[townId] = String(group?.cityName || townId);
+      if (group?.type === 'custom') {
+        const id = customIdByName[String(group.name || '')];
+        restored.cityTargetGroups[townId] = id ? `custom:${id}` : 'none';
+      } else {
+        const id = String(group?.id || '');
+        if (id) {
+          restored.cityTargetGroups[townId] = `grepo:${id}`;
+          if (group?.name) restored.grepolisGroupNames[id] = String(group.name);
+        }
+      }
+    });
+    return normalizeRecruitOptimizerTargets(restored);
+  }
+
+  function normalizeRecruitOptimizerBackupValue(key, value) {
+    return key === 'grepo_unit_targets_scoped_v2' ? restoreRecruitTargetsFromBackup(value) : value;
+  }
+
+  function buildRecruitOptimizerBackup() {
+    const data = {};
+    for (const key of RECRUIT_OPTIMIZER_BACKUP.storageKeys) {
+      const raw = localStorage.getItem(key);
+      if (raw === null) continue;
+      try {
+        const parsed = JSON.parse(raw);
+        data[key] = key === 'grepo_unit_targets_scoped_v2'
+          ? formatRecruitTargetsForBackup(parsed)
+          : normalizeRecruitOptimizerBackupValue(key, parsed);
+      } catch (_) { data[key] = raw; }
+    }
+    return {
+      type: 'egeltools-recruit-optimizer-backup',
+      formatVersion: 1,
+      egelToolsVersion: APP.version,
+      exportedAt: new Date().toISOString(),
+      context: getRecruitOptimizerBackupContext(),
+      data,
+    };
+  }
+
+  function safeBackupFilePart(value, fallback) {
+    const cleaned = String(value || '').trim().replace(/[^a-z0-9._-]+/gi, '-').replace(/^-+|-+$/g, '');
+    return cleaned || fallback;
+  }
+
+  function exportRecruitOptimizerBackup(statusElement) {
+    try {
+      const backup = buildRecruitOptimizerBackup();
+      const json = JSON.stringify(backup, null, 2);
+      const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const date = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `egeltools-recruitoptimizer-${safeBackupFilePart(backup.context.worldId, 'world')}-${date}.json`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      if (statusElement) {
+        statusElement.textContent = 'Backup exported.';
+        statusElement.dataset.error = 'false';
+      }
+    } catch (error) {
+      if (statusElement) {
+        statusElement.textContent = 'Export failed.';
+        statusElement.dataset.error = 'true';
+      }
+      console.error('[EgelTools] Recruit Optimizer export failed:', error);
+    }
+  }
+
+  async function importRecruitOptimizerBackup(file, statusElement) {
+    try {
+      const parsed = JSON.parse(await file.text());
+      if (!parsed || parsed.type !== 'egeltools-recruit-optimizer-backup' || !parsed.data || typeof parsed.data !== 'object') {
+        throw new Error('Invalid Recruit Optimizer backup');
+      }
+      const entries = RECRUIT_OPTIMIZER_BACKUP.storageKeys
+        .filter((key) => Object.prototype.hasOwnProperty.call(parsed.data, key))
+        .map((key) => [key, parsed.data[key]]);
+      if (!entries.length) throw new Error('Backup contains no supported Recruit Optimizer data');
+
+      const current = getRecruitOptimizerBackupContext();
+      const sourceWorld = String(parsed.context?.worldId || '');
+      const differentWorld = sourceWorld && current.worldId && sourceWorld !== current.worldId;
+      const question = differentWorld
+        ? (`The backup is from world ${sourceWorld}, but ${current.worldId} is currently open. Import anyway?`)
+        : ('Existing Recruit Optimizer data will be replaced by this backup. Import?');
+      if (!window.confirm(question)) {
+        if (statusElement) statusElement.textContent = 'Import cancelled.';
+        return;
+      }
+
+      for (const [key, value] of entries) {
+        localStorage.setItem(key, JSON.stringify(normalizeRecruitOptimizerBackupValue(key, value)));
+      }
+      window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-updated'));
+      window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-population-updated'));
+      if (statusElement) {
+        statusElement.textContent = `${entries.length} Recruit Optimizer data sets imported. Please reopen the window.`;
+        statusElement.dataset.error = 'false';
+      }
+    } catch (error) {
+      if (statusElement) {
+        statusElement.textContent = 'Import failed: invalid backup file.';
+        statusElement.dataset.error = 'true';
+      }
+      console.error('[EgelTools] Recruit Optimizer import failed:', error);
+    }
+  }
+
+  let recruitDriveSyncStarted = false;
+  let recruitDriveSyncBusy = false;
+  let recruitDriveSyncTimer = null;
+  let recruitDriveLastObservedHash = '';
+
+  function normalizeRecruitDriveUrl(value) {
+    const raw = String(value || '').trim();
+    const hrefMatch = raw.match(/href=["'](https:\/\/script\.google\.com\/macros\/s\/[^"']+\/exec)["']/i);
+    if (hrefMatch) return hrefMatch[1].replace(/&amp;/g, '&');
+    const urlMatch = raw.match(/https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/i);
+    return urlMatch ? urlMatch[0] : raw;
+  }
+
+  function getRecruitDriveSettings() {
+    const storedUrl = normalizeRecruitDriveUrl(localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveUrlKey));
+    if (storedUrl) localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveUrlKey, storedUrl);
+    return {
+      url: storedUrl,
+      secret: localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveSecretKey) || '',
+      enabled: Boolean(storedUrl && localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveSecretKey)),
+    };
+  }
+
+  function getRecruitDriveScope() {
+    const context = getRecruitOptimizerBackupContext();
+    return `${context.worldId || 'world'}_${context.playerId || 'player'}`.replace(/[^a-z0-9_-]/gi, '_');
+  }
+
+  function getRecruitTargetRaw() {
+    return localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.targetKey) || '';
+  }
+
+  function getRecruitTargetHash() {
+    const text = getRecruitTargetRaw();
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `${text.length}:${hash >>> 0}`;
+  }
+
+  function getRecruitDriveMeta() {
+    try { return JSON.parse(localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.driveMetaKey) || '{}'); }
+    catch (_) { return {}; }
+  }
+
+  function setRecruitDriveMeta(meta) {
+    localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveMetaKey, JSON.stringify(meta));
+  }
+
+  function isValidRecruitDriveUrl(value) {
+    try {
+      const url = new URL(value);
+      return url.protocol === 'https:' && /(^|\.)script\.google\.com$/.test(url.hostname) && /\/exec$/.test(url.pathname);
+    } catch (_) { return false; }
+  }
+
+  function recruitDriveJsonp(settings, action = 'load') {
+    return new Promise((resolve, reject) => {
+      if (!isValidRecruitDriveUrl(settings.url)) return reject(new Error('Invalid Google web app URL'));
+      const callbackName = `__egelRecruitDrive_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+      const script = document.createElement('script');
+      const timeout = window.setTimeout(() => finish(new Error('Request timed out')), 20000);
+      const finish = (error, value) => {
+        window.clearTimeout(timeout);
+        script.remove();
+        try { delete window[callbackName]; } catch (_) { window[callbackName] = undefined; }
+        if (error) reject(error); else resolve(value);
+      };
+      window[callbackName] = (result) => {
+        if (!result?.ok) finish(new Error(result?.error || 'Google Drive error'));
+        else finish(null, result);
+      };
+      const url = new URL(settings.url);
+      url.searchParams.set('action', action);
+      url.searchParams.set('secret', settings.secret);
+      url.searchParams.set('scope', getRecruitDriveScope());
+      url.searchParams.set('callback', callbackName);
+      script.onerror = () => finish(new Error('Google web app is unreachable'));
+      script.src = url.toString();
+      document.head.append(script);
+    });
+  }
+
+  function recruitDrivePost(settings, payload) {
+    if (!isValidRecruitDriveUrl(settings.url)) {
+      return Promise.reject(new Error('Invalid Google web app URL'));
+    }
+
+    const body = new URLSearchParams();
+    body.set('secret', settings.secret);
+    body.set('scope', getRecruitDriveScope());
+    body.set('payload', JSON.stringify(payload));
+
+    return fetch(settings.url, {
+      method: 'POST',
+      mode: 'no-cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+      },
+      body: body.toString(),
+    });
+  }
+
+  async function pullRecruitTargetsFromDrive({ force = false } = {}) {
+    const settings = getRecruitDriveSettings();
+    if ((!settings.enabled && !force) || !settings.url || !settings.secret || recruitDriveSyncBusy) return false;
+    recruitDriveSyncBusy = true;
+    try {
+      const result = await recruitDriveJsonp(settings, 'load');
+      const cloud = result.record;
+      const cloudTargets = cloud?.data?.[RECRUIT_OPTIMIZER_BACKUP.targetKey] || cloud?.targets;
+      if (!cloudTargets || typeof cloudTargets !== 'object') return true;
+
+      const normalized = restoreRecruitTargetsFromBackup(cloudTargets);
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.targetKey, JSON.stringify(normalized));
+      const cloudRecruitCache = cloud?.data?.egeltools_recruit_final_totals_v1;
+      if (cloudRecruitCache && typeof cloudRecruitCache === 'object') {
+        localStorage.setItem('egeltools_recruit_final_totals_v1', JSON.stringify(cloudRecruitCache));
+      }
+      if (typeof window.EgelToolsAssignMissingCitiesNow === 'function') {
+        window.EgelToolsAssignMissingCitiesNow();
+      }
+      const localHash = getRecruitTargetHash();
+      recruitDriveLastObservedHash = localHash;
+      setRecruitDriveMeta({
+        cloudUpdatedAt: Number(cloud.updatedAt) || 0,
+        localHash,
+      });
+      window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-updated'));
+      window.dispatchEvent(new CustomEvent('egeltools:recruit-cloud-loaded'));
+      return true;
+    } finally {
+      recruitDriveSyncBusy = false;
+    }
+  }
+
+  function isEgelToolsDebugEnabled() {
+    return localStorage.getItem(RECRUIT_OPTIMIZER_BACKUP.debugKey) === 'on';
+  }
+  function egelDebug(method, ...args) {
+    if (!isEgelToolsDebugEnabled()) return;
+    const fn = console[method] || console.log;
+    fn.call(console, ...args);
+  }
+  window.EgelToolsDebug = Object.freeze({
+    enable() {
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.debugKey, 'on');
+      console.info('[EgelTools] Debug logging enabled.');
+    },
+    disable() {
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.debugKey, 'off');
+      console.info('[EgelTools] Debug logging disabled.');
+    },
+    status() {
+      return isEgelToolsDebugEnabled();
+    },
+  });
+
+  async function uploadEmptyRecruitTargetsToDrive() {
+    const settings = getRecruitDriveSettings();
+    if (!settings.enabled) return false;
+    const updatedAt = Date.now();
+    const context = getRecruitOptimizerBackupContext();
+    const backup = {
+      type: 'egeltools-recruit-optimizer-backup',
+      formatVersion: 1,
+      egelToolsVersion: APP.version,
+      exportedAt: new Date(updatedAt).toISOString(),
+      context,
+      data: {
+        [RECRUIT_OPTIMIZER_BACKUP.targetKey]: {
+          grepolisGroups: {},
+          customGroups: {},
+          cities: {},
+          cityGroups: {},
+        },
+        egeltools_recruit_final_totals_v1: { towns: {} },
+      },
+    };
+    await recruitDrivePost(settings, { updatedAt, backup });
+    setRecruitDriveMeta({ cloudUpdatedAt: updatedAt, localHash: '' });
+    return true;
+  }
+
+  async function uploadCompleteRecruitTargetsToDriveOnSave() {
+    const settings = getRecruitDriveSettings();
+    if (!settings.enabled || !settings.url || !settings.secret) {
+      egelDebug('warn', '[EgelTools] Google Drive upload skipped: synchronization settings are incomplete.');
+      return false;
+    }
+    const raw = getRecruitTargetRaw();
+    if (!raw) {
+      egelDebug('warn', '[EgelTools] Google Drive upload skipped: no target data found.');
+      return false;
+    }
+
+    const updatedAt = Date.now();
+    const localHash = getRecruitTargetHash();
+    const backup = buildRecruitOptimizerBackup();
+    backup.exportedAt = new Date(updatedAt).toISOString();
+    await recruitDrivePost(settings, {
+      updatedAt,
+      backup,
+    });
+    recruitDriveLastObservedHash = localHash;
+    setRecruitDriveMeta({ cloudUpdatedAt: updatedAt, localHash });
+    egelDebug('info', '[EgelTools] Complete Recruit Optimizer backup POST was sent.', {
+      scope: getRecruitDriveScope(),
+      updatedAt,
+    });
+    return true;
+  }
+
+
+  window.EgelToolsRecruitDriveUpload = uploadCompleteRecruitTargetsToDriveOnSave;
+
+
+  function initRecruitDriveAutoSync() {
+    if (recruitDriveSyncStarted) return;
+    recruitDriveSyncStarted = true;
+    window.setTimeout(() => { void pullRecruitTargetsFromDrive(); }, 2500);
+    const completeAssignmentsWhenReady = (attempt = 0) => {
+      const townsObject = window.ITowns?.getTowns?.() || {};
+      const townCount = Array.isArray(townsObject) ? townsObject.length : Object.keys(townsObject).length;
+      // The assignment helpers live inside the Recruit Optimizer module. Use only
+      // its public function here so this outer startup scope cannot reference
+      // module-private helpers such as getOrderedGrepolisGroups.
+      if (townCount > 0 && typeof window.EgelToolsAssignMissingCitiesNow === 'function') {
+        window.EgelToolsAssignMissingCitiesNow();
+        return;
+      }
+      if (attempt < 8) window.setTimeout(() => completeAssignmentsWhenReady(attempt + 1), 2000);
+    };
+    window.setTimeout(() => completeAssignmentsWhenReady(), 6000);
+  }
+
+  function wireNotificationSettings(settingsWindow) {
+    const input = (id) => settingsWindow.querySelector(`#${id}`);
+    const bds = input(EGEL_NOTIFICATION_SETTINGS.bdsInputId);
+    const bdsSound = input(EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId);
+    const unitResource = input(EGEL_NOTIFICATION_SETTINGS.unitResourceInputId);
+    const tradesPopup = input(EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId);
+    const tradesSound = input(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId);
+    bds.checked = isBdsNotificationEnabled();
+    bdsSound.checked = isBdsSoundEnabled();
+    unitResource.checked = isUnitResourceNotificationEnabled();
+    tradesPopup.checked = isIncomingTradesPopupEnabled();
+    tradesSound.checked = isIncomingTradesSoundEnabled();
+    bds.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsKey, bds.checked);
+      if (bds.checked) ensureEgelNotificationPermission();
+      window.EgelToolsRefreshBdsGrepoAlert?.();
+    });
+    bdsSound.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.bdsSoundKey, bdsSound.checked);
+      window.dispatchEvent(new CustomEvent('egeltools:bds-sound-changed', { detail: { enabled: bdsSound.checked } }));
+    });
+    unitResource.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.unitResourceKey, unitResource.checked);
+      if (unitResource.checked) ensureEgelNotificationPermission();
+      window.EgelToolsRecruitmentDeliveryMonitor?.checkArrivals?.();
+    });
+    tradesPopup.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupKey, tradesPopup.checked);
+      if (tradesPopup.checked) return;
+      tradeCapacityPending.clear();
+      tradeCapacityNotices.clear();
+      renderTradeCapacityNotices();
+    });
+    tradesSound.addEventListener('change', () => {
+      setEgelNotificationSetting(EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundKey, tradesSound.checked);
+    });
+  }
+
+  function wireSilverStoreSettings(settingsWindow) {
+    const fields = [
+      [SILVER_STORE.amountSettingId, SILVER_STORE.amountKey, getSilverStoreAmount, 1],
+      [SILVER_STORE.minimumSettingId, SILVER_STORE.minimumKey, getSilverStoreMinimum, 0],
+    ];
+    for (const [id, key, read, minimum] of fields) {
+      const input = settingsWindow.querySelector(`#${id}`);
+      input.value = String(read());
+      input.addEventListener('change', () => {
+        const value = Number(input.value);
+        if (!Number.isSafeInteger(value) || value < minimum) {
+          input.value = String(read());
+          return;
+        }
+        localStorage.setItem(key, String(value));
+        paintSilverStoreButton();
+      });
+    }
+  }
+
+  function wireRecruitOptimizerBackupSettings(settingsWindow) {
+    const section = settingsWindow.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.sectionId}`);
+    const status = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.statusId}`);
+    const fileInput = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.fileInputId}`);
+    const setStatus = (message, error = false) => {
+      status.textContent = message;
+      status.dataset.error = String(error);
+    };
+    section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.exportButtonId}`)
+      .addEventListener('click', () => exportRecruitOptimizerBackup(status));
+    section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.importButtonId}`).addEventListener('click', () => {
+      fileInput.value = '';
+      fileInput.click();
+    });
+    fileInput.addEventListener('change', async () => {
+      const [file] = fileInput.files || [];
+      if (file) await importRecruitOptimizerBackup(file, status);
+      fileInput.value = '';
+    });
+    const resetButton = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.resetButtonId}`);
+    resetButton.addEventListener('click', async () => {
+      if (!window.confirm('Reset all target troops, groups and city assignments locally and in Google Drive?')) return;
+      resetButton.disabled = true;
+      try {
+        if (getRecruitDriveSettings().enabled) await uploadEmptyRecruitTargetsToDrive();
+        RECRUIT_OPTIMIZER_BACKUP.storageKeys.forEach((key) => localStorage.removeItem(key));
+        localStorage.removeItem(RECRUIT_OPTIMIZER_BACKUP.driveMetaKey);
+        window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-updated'));
+        setStatus('Recruit Optimizer was reset locally and in Google Drive.');
+      } catch (error) {
+        setStatus(`Google Drive reset failed: ${error.message}`, true);
+        egelDebug('error', '[EgelTools] Google Drive reset failed:', error);
+      } finally {
+        resetButton.disabled = false;
+      }
+    });
+    const driveUrl = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.driveUrlId}`);
+    const driveSecret = section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.driveSecretId}`);
+    const storedDrive = getRecruitDriveSettings();
+    driveUrl.value = storedDrive.url;
+    driveSecret.value = storedDrive.secret;
+    section.querySelector(`#${RECRUIT_OPTIMIZER_BACKUP.driveSaveId}`).addEventListener('click', () => {
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveUrlKey, normalizeRecruitDriveUrl(driveUrl.value));
+      localStorage.setItem(RECRUIT_OPTIMIZER_BACKUP.driveSecretKey, driveSecret.value);
+      driveUrl.value = normalizeRecruitDriveUrl(driveUrl.value);
+      setStatus('Google Drive access saved.');
+      if (driveUrl.value.trim() && driveSecret.value) void pullRecruitTargetsFromDrive({ force: true });
+    });
   }
 
   function createSettingsWindow() {
@@ -2490,7 +3190,7 @@
                   <p class="egeltools-settings__feature-copy">Remove these rows from the list. Zapper controls remain available when this is off.</p>
                 </div>
                 <div class="egeltools-settings__feature">
-                  <p class="egeltools-settings__feature-title">Town distances</p>
+                  <p class="egeltools-settings__feature-title">Trade times</p>
                   <label class="egeltools-settings__field">
                     <span class="egeltools-settings__field-label">Available trade capacity above</span>
                     <input id="egeltools-distance-capacity-limit" type="number" min="1" step="1">
@@ -2504,9 +3204,84 @@
                     Exclude theaters
                   </label>
                   <label class="egeltools-settings__option">
-                    <input id="egeltools-party-farm-trades" type="checkbox"> Include farm village trades (ratio &gt; 0.8)
+                    <input id="egeltools-party-farm-trades" type="checkbox"> Include farm village trades (ratio &gt; 1, two-step chains)
                   </label>
                   <p class="egeltools-settings__feature-copy">Leave theater costs out of trade recommendations and donor reserves.</p>
+                </div>
+                <div class="egeltools-settings__feature egeltools-settings__feature--notifications">
+                  <p class="egeltools-settings__feature-title">Notifications</p>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.bdsInputId}" type="checkbox"> FV claim browser notification
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.bdsSoundInputId}" type="checkbox"> FV claim alarm sound
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.unitResourceInputId}" type="checkbox"> Recruitment resources delivered
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesPopupInputId}" type="checkbox"> Incoming trades warehouse alarms
+                  </label>
+                  <label class="egeltools-settings__option" for="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}">
+                    <input id="${EGEL_NOTIFICATION_SETTINGS.incomingTradesSoundInputId}" type="checkbox"> Incoming trades alarm sound
+                  </label>
+                  <p class="egeltools-settings__feature-copy">Browser notifications ask for permission the first time they are enabled.</p>
+                </div>
+                <div class="egeltools-settings__feature egeltools-settings__feature--silver">
+                  <p class="egeltools-settings__feature-title">Store silver</p>
+                  <div class="egeltools-settings__field-pair">
+                    <label class="egeltools-settings__field" for="${SILVER_STORE.amountSettingId}">
+                      <span class="egeltools-settings__field-label">Amount per town</span>
+                      <input id="${SILVER_STORE.amountSettingId}" type="number" inputmode="numeric" min="1" step="500">
+                    </label>
+                    <label class="egeltools-settings__field" for="${SILVER_STORE.minimumSettingId}">
+                      <span class="egeltools-settings__field-label">Minimum to keep</span>
+                      <input id="${SILVER_STORE.minimumSettingId}" type="number" inputmode="numeric" min="0" step="1000">
+                    </label>
+                  </div>
+                  <p class="egeltools-settings__feature-copy">The Store button keeps the minimum in every town with a Cave and stores up to the amount above it.</p>
+                </div>
+                <div class="egeltools-settings__feature egeltools-settings__feature--recruitment-trade">
+                  <div class="egeltools-settings__feature-heading">
+                    <div>
+                      <p class="egeltools-settings__feature-title">Trade window: recruitment needs</p>
+                      <p class="egeltools-settings__feature-copy">Show and fill the resources the recruitment plan still needs. Turn off to use GRCRT instead.</p>
+                    </div>
+                    <label class="egeltools-settings__option egeltools-settings__option--inline"
+                      for="${RECRUITMENT_TRADE_BRIDGE.settingId}">
+                      <input id="${RECRUITMENT_TRADE_BRIDGE.settingId}" type="checkbox">
+                      Enabled
+                    </label>
+                  </div>
+                </div>
+                <div class="egeltools-settings__feature" id="${RECRUIT_OPTIMIZER_BACKUP.sectionId}">
+                  <p class="egeltools-settings__feature-title">Recruit Optimizer backup</p>
+                  <p class="egeltools-settings__feature-copy">Back up or restore target troops as a JSON file.</p>
+                  <div class="egeltools-settings__button-row">
+                    <button class="egeltools-settings__sound-button" id="${RECRUIT_OPTIMIZER_BACKUP.exportButtonId}" type="button">Export</button>
+                    <button class="egeltools-settings__sound-button egeltools-settings__sound-button--secondary"
+                      id="${RECRUIT_OPTIMIZER_BACKUP.importButtonId}" type="button">Import</button>
+                    <button class="egeltools-settings__sound-button egeltools-settings__sound-button--secondary"
+                      id="${RECRUIT_OPTIMIZER_BACKUP.resetButtonId}" type="button">Reset</button>
+                    <input id="${RECRUIT_OPTIMIZER_BACKUP.fileInputId}" type="file" accept="application/json,.json" hidden>
+                  </div>
+                  <div class="egeltools-settings__field-pair">
+                    <label class="egeltools-settings__field" for="${RECRUIT_OPTIMIZER_BACKUP.driveUrlId}">
+                      <span class="egeltools-settings__field-label">Google Drive web app URL</span>
+                      <input id="${RECRUIT_OPTIMIZER_BACKUP.driveUrlId}" type="url" autocomplete="off" spellcheck="false"
+                        placeholder="https://script.google.com/macros/s/…/exec">
+                    </label>
+                    <label class="egeltools-settings__field" for="${RECRUIT_OPTIMIZER_BACKUP.driveSecretId}">
+                      <span class="egeltools-settings__field-label">Access key</span>
+                      <input id="${RECRUIT_OPTIMIZER_BACKUP.driveSecretId}" type="password" autocomplete="off">
+                    </label>
+                  </div>
+                  <div class="egeltools-settings__button-row">
+                    <button class="egeltools-settings__sound-button" id="${RECRUIT_OPTIMIZER_BACKUP.driveSaveId}" type="button">Save sync</button>
+                  </div>
+                  <p class="egeltools-settings__feature-copy">Automatic sync covers target troops only. The most recently saved state replaces older ones.</p>
+                  <p class="egeltools-settings__sound-status" id="${RECRUIT_OPTIMIZER_BACKUP.statusId}"
+                    role="status" aria-live="polite"></p>
                 </div>
       </div>`;
 
@@ -2544,6 +3319,16 @@
     movementFilter.addEventListener('change', () => {
       localStorage.setItem('egeltools_hide_noncancellable', movementFilter.checked ? 'on' : 'off');
       document.dispatchEvent(new Event('egeltools-movement-filter-change'));
+    });
+
+    wireNotificationSettings(settingsWindow);
+    wireSilverStoreSettings(settingsWindow);
+    wireRecruitOptimizerBackupSettings(settingsWindow);
+    const recruitmentTradeBridgeSetting = settingsWindow.querySelector(`#${RECRUITMENT_TRADE_BRIDGE.settingId}`);
+    recruitmentTradeBridgeSetting.checked = localStorage.getItem(RECRUITMENT_TRADE_BRIDGE.enabledKey) !== 'off';
+    recruitmentTradeBridgeSetting.addEventListener('change', () => {
+      localStorage.setItem(RECRUITMENT_TRADE_BRIDGE.enabledKey, recruitmentTradeBridgeSetting.checked ? 'on' : 'off');
+      window.dispatchEvent(new CustomEvent(RECRUITMENT_TRADE_BRIDGE.changedEvent));
     });
 
     const farmTradesSetting = settingsWindow.querySelector('#egeltools-party-farm-trades');
@@ -2902,31 +3687,38 @@
   }
 
   let bdLevelRetryTimer = null;
-  let islandIdsByCoordinatesPromise = null;
+  let islandIndexPromise = null;
 
-  function loadIslandIdsByCoordinates() {
-    if (islandIdsByCoordinatesPromise) return islandIdsByCoordinatesPromise;
+  // islands.txt rows start with id,x,y,type. FV island links need the ids and
+  // corrected travel positions need the types, so both share one download.
+  function loadIslandIndex() {
+    if (islandIndexPromise) return islandIndexPromise;
 
-    islandIdsByCoordinatesPromise = (async () => {
+    islandIndexPromise = (async () => {
       const response = await fetch(BD_LEVEL_CHECK.islandDataUrl, {
         credentials: 'same-origin',
       });
       if (!response.ok) throw new Error(`Could not load island data: HTTP ${response.status}`);
 
       const islandIds = new Map();
+      const islandTypes = new Map();
       (await response.text()).split(/\r?\n/).filter(Boolean).forEach((line) => {
-        const [id, x, y] = line.split(',').map(Number);
-        if (Number.isFinite(id) && Number.isFinite(x) && Number.isFinite(y)) {
-          islandIds.set(`${x}:${y}`, id);
-        }
+        const [id, x, y, type] = line.split(',').map(Number);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (Number.isFinite(id)) islandIds.set(`${x}:${y}`, id);
+        if (Number.isFinite(type)) islandTypes.set(`${x}:${y}`, type);
       });
-      return islandIds;
+      return { islandIds, islandTypes };
     })().catch((error) => {
-      islandIdsByCoordinatesPromise = null;
+      islandIndexPromise = null;
       throw error;
     });
 
-    return islandIdsByCoordinatesPromise;
+    return islandIndexPromise;
+  }
+
+  async function loadIslandIdsByCoordinates() {
+    return (await loadIslandIndex()).islandIds;
   }
 
   async function resolveIslandId(islandX, islandY, knownIslandId) {
@@ -3520,7 +4312,7 @@
   }
 
   function playTradeCapacitySound() {
-    if (tradeCapacityAudio?.state !== 'running') return;
+    if (!isIncomingTradesSoundEnabled() || tradeCapacityAudio?.state !== 'running') return;
     const oscillator = tradeCapacityAudio.createOscillator();
     const gain = tradeCapacityAudio.createGain();
     const now = tradeCapacityAudio.currentTime;
@@ -3575,6 +4367,14 @@
   function checkTradeCapacityArrivals() {
     const now = getResourceCheckerServerTime();
     const arrivals = getTradeCapacityArrivals();
+    window.EgelToolsRecruitmentDeliveryMonitor?.checkArrivals?.();
+    if (!isIncomingTradesPopupEnabled()) {
+      tradeCapacityPending.clear();
+      tradeCapacityNotices.clear();
+      renderTradeCapacityNotices();
+      renderTradeOverview(arrivals, now);
+      return;
+    }
     let alarmed = false;
     for (const [townId, pending] of tradeCapacityPending) {
       if (pending.arrivalAt <= now) {
@@ -3864,6 +4664,16 @@
       row.classList.toggle('is-selected', String(getCurrentTownId()) === data.townId);
       const hasAlarm = tradeCapacityNotices.has(data.townId);
       const atLine = isTradeCapacityTownAtLine(data.townId, arrivals, now);
+      // Highlight towns whose stock plus everything on the way reaches the warehouse.
+      const fullResources = data.stock && data.capacity > 0
+        ? [...TRADE_CAPACITY_MARKER.resources].filter((resource) =>
+          Number(data.stock[resource] || 0) + Number(data.incoming[resource] || 0) >= data.capacity)
+        : [];
+      row.classList.toggle('is-resource-full', fullResources.length > 0 && fullResources.length < TRADE_CAPACITY_MARKER.resources.size);
+      row.classList.toggle('are-all-resources-full', fullResources.length === TRADE_CAPACITY_MARKER.resources.size);
+      row.title = fullResources.length > 0
+        ? `Warehouse full on arrival: ${fullResources.map((resource) => RESOURCE_NAMES[resource]).join(', ')}`
+        : '';
       row.classList.toggle('is-at-line', atLine);
       row.classList.toggle('has-alarm', hasAlarm);
       cells[0].children[1].hidden = !atLine;
@@ -4171,6 +4981,31 @@
     return panel;
   }
 
+  function readSilverStoreSetting(key, fallback) {
+    const raw = localStorage.getItem(key);
+    // Number('') and Number(null) are 0, so an unset value has to fall back first.
+    if (raw === null || String(raw).trim() === '') return fallback;
+    const value = Number(raw);
+    return Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+  }
+
+  function getSilverStoreAmount() {
+    return Math.max(1, readSilverStoreSetting(SILVER_STORE.amountKey, SILVER_STORE.defaultAmount));
+  }
+
+  // Each town keeps this much silver; only towns above it are eligible.
+  function getSilverStoreMinimum() {
+    return readSilverStoreSetting(SILVER_STORE.minimumKey, SILVER_STORE.defaultMinimum);
+  }
+
+  function getSilverStoreButtonLabel() {
+    const amount = getSilverStoreAmount();
+    const short = amount >= 1000 && amount % 100 === 0
+      ? `${(amount / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })}k`
+      : amount.toLocaleString();
+    return `Store ${short}`;
+  }
+
   function getSilverStoreTowns() {
     if (typeof window.ITowns?.getTowns !== 'function') return null;
 
@@ -4192,7 +5027,7 @@
       if (!buildings || Number(buildings.hide) < 1) return [];
 
       const iron = Number(resources.iron);
-      return Number.isFinite(iron) && iron > SILVER_STORE.threshold
+      return Number.isFinite(iron) && iron > getSilverStoreMinimum()
         ? [{ town, id: townId, iron }]
         : [];
     });
@@ -4311,14 +5146,14 @@
       button,
       silverStoreInFlight || !administratorActive || eligibleCount === 0,
     );
-    if (!silverStoreInFlight) setSilverStoreButtonText(button, 'Store 3k');
+    if (!silverStoreInFlight) setSilverStoreButtonText(button, getSilverStoreButtonLabel());
     button.title = silverStoreInFlight
       ? button.querySelector('.caption, .js-caption')?.textContent || button.textContent
       : !administratorActive
         ? 'Administrator must be active to store silver across towns'
         : eligibleCount
-          ? `Store ${SILVER_STORE.amount.toLocaleString()} silver in ${eligibleCount} town${eligibleCount === 1 ? '' : 's'} above ${SILVER_STORE.threshold.toLocaleString()}`
-          : `No towns with a Cave are above ${SILVER_STORE.threshold.toLocaleString()} silver`;
+          ? `Store ${getSilverStoreAmount().toLocaleString()} silver in ${eligibleCount} town${eligibleCount === 1 ? '' : 's'} above ${getSilverStoreMinimum().toLocaleString()}`
+          : `No towns with a Cave are above ${getSilverStoreMinimum().toLocaleString()} silver`;
     button.setAttribute('aria-label', button.title);
   }
 
@@ -4344,7 +5179,7 @@
         button.setAttribute('role', 'button');
         button.removeAttribute('href');
       }
-      setSilverStoreButtonText(button, 'Store 3k');
+      setSilverStoreButtonText(button, getSilverStoreButtonLabel());
       button.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -4384,8 +5219,8 @@
           'town_overviews',
           'store_iron_in_all_towns',
           {
-            iron_to_keep: SILVER_STORE.threshold,
-            iron_to_store: SILVER_STORE.amount,
+            iron_to_keep: getSilverStoreMinimum(),
+            iron_to_store: getSilverStoreAmount(),
             town_group_id: -1,
           },
           true,
@@ -4423,7 +5258,7 @@
 
     const towns = getSilverStoreTowns();
     if (!towns?.length) {
-      showCelebrationMessage(`No towns with a Cave are above ${SILVER_STORE.threshold.toLocaleString()} silver.`, true);
+      showCelebrationMessage(`No towns with a Cave are above ${getSilverStoreMinimum().toLocaleString()} silver.`, true);
       paintSilverStoreButton(button);
       return;
     }
@@ -4432,7 +5267,7 @@
     try {
       setSilverStoreButtonDisabled(button, true);
       setSilverStoreButtonText(button, 'Storing…');
-      button.title = `Keeping ${SILVER_STORE.threshold.toLocaleString()} silver and storing ${SILVER_STORE.amount.toLocaleString()} in all towns`;
+      button.title = `Keeping ${getSilverStoreMinimum().toLocaleString()} silver and storing ${getSilverStoreAmount().toLocaleString()} in all towns`;
       const result = await postSilverAcrossTowns();
       if (result.success === true) {
         showCelebrationMessage(result.message || 'Silver stored.');
@@ -5615,7 +6450,7 @@
       button.type = 'button';
       button.setAttribute('aria-controls', TOWN_DISTANCE_SORTER.panelId);
       button.setAttribute('aria-expanded', String(townDistanceSorterOpen));
-      button.textContent = townDistanceSorterOpen ? 'Hide distances' : 'Town distances';
+      button.textContent = townDistanceSorterOpen ? 'Hide trade times' : 'Trade times';
     }
 
     return mountToolDockButton(button);
@@ -5636,13 +6471,15 @@
     panel.innerHTML = `
       <div class="egeltools-town-distance__header">
         <span class="egeltools-town-distance__title" id="egeltools-town-distance-sorter-title">
-          Town distances
+          Trade times
         </span>
         <button type="button" class="egeltools-capacity-toggle" data-distance-capacity-filter role="switch" aria-checked="false"><span></span></button>
+        <button id="${TOWN_DISTANCE_SORTER.marketFilterButtonId}" type="button"
+          aria-pressed="true">MARKET ON</button>
         <button id="${TOWN_DISTANCE_SORTER.refreshButtonId}" type="button"
           title="Recalculate from the current town" aria-label="Recalculate from the current town">&#8635;</button>
         <button id="${TOWN_DISTANCE_SORTER.closeButtonId}" type="button"
-          title="Close" aria-label="Close town distances">&times;</button>
+          title="Close" aria-label="Close trade times">&times;</button>
       </div>
       <div id="${TOWN_DISTANCE_SORTER.bodyId}" aria-live="polite">
         <p class="egeltools-town-distance__state">Loading town data…</p>
@@ -5654,6 +6491,7 @@
     });
     makeTownDistanceSorterDraggable(panel);
     document.body.append(panel);
+    paintTradeTimesMarketFilter(panel.querySelector(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`));
     return panel;
   }
 
@@ -5718,7 +6556,61 @@
     return Number.NaN;
   }
 
+  // Exact travel-time coordinates, as the Grepolis travel calculator uses them:
+  //   X = island X * 128 + slot offset X
+  //   Y = island Y * 128 + slot offset Y + (odd island X ? 64 : 0)
+  // towns.txt gives each town's island and slot, islands.txt the island type.
+  // Both load on the first position lookup; until then, and for towns missing
+  // from the data, the Grepolis model position is used.
+  const TRAVEL_SLOT_OFFSETS = Object.freeze({"1":{"0":[461,143],"1":[361,181],"2":[271,243],"3":[203,281],"4":[211,330],"5":[230,409],"6":[300,406],"7":[374,414],"8":[463,472],"9":[529,511],"10":[611,476],"11":[692,475],"12":[762,454],"13":[837,423],"14":[896,360],"15":[867,302],"16":[822,215],"17":[738,239],"18":[790,296],"19":[761,332]},"2":{"0":[331,196],"1":[336,116],"2":[417,111],"3":[520,81],"4":[629,88],"5":[697,113],"6":[760,143],"7":[804,178],"8":[784,242],"9":[750,310],"10":[744,379],"11":[691,400],"12":[560,423],"13":[490,421],"14":[324,406],"15":[226,400],"16":[205,336],"17":[132,313],"18":[125,229],"19":[200,191]},"3":{"0":[495,92],"1":[410,76],"2":[350,101],"3":[293,121],"4":[248,157],"5":[162,221],"6":[151,323],"7":[224,366],"8":[308,404],"9":[369,421],"10":[413,445],"11":[491,467],"12":[578,448],"13":[617,390],"14":[747,398],"15":[719,355],"16":[868,260],"17":[857,198],"18":[786,158],"19":[703,109]},"4":{"0":[470,123],"1":[594,144],"2":[700,163],"3":[748,198],"4":[790,220],"5":[692,257],"6":[633,286],"7":[535,295],"8":[498,253],"9":[416,215],"10":[334,216],"11":[253,243],"12":[272,290],"13":[283,331],"14":[214,364],"15":[121,349],"16":[110,275],"17":[150,213],"18":[254,176],"19":[342,143]},"5":{"0":[224,217],"1":[245,140],"2":[335,92],"3":[414,67],"4":[528,83],"5":[546,135],"6":[648,138],"7":[741,138],"8":[756,189],"9":[848,213],"10":[858,265],"11":[799,339],"12":[749,376],"13":[660,406],"14":[569,431],"15":[444,478],"16":[330,430],"17":[285,386],"18":[635,321],"19":[630,253]},"6":{"0":[477,386],"1":[561,437],"2":[686,470],"3":[780,476],"4":[836,447],"5":[836,367],"6":[780,333],"7":[718,312],"8":[650,221],"9":[599,194],"10":[514,156],"11":[426,158],"12":[353,176],"13":[281,188],"14":[184,244],"15":[105,306],"16":[159,340],"17":[198,378],"18":[177,430],"19":[277,455]},"7":{"0":[163,250],"1":[138,227],"2":[122,173],"3":[129,127],"4":[183,106],"5":[236,128],"6":[333,161],"7":[390,184],"8":[518,200],"9":[457,226],"10":[485,278],"11":[517,323],"12":[512,372],"13":[448,402],"14":[443,469],"15":[380,459],"16":[301,440],"17":[230,463],"18":[184,432],"19":[134,407]},"8":{"0":[588,258],"1":[648,283],"2":[710,303],"3":[745,348],"4":[703,376],"5":[658,403],"6":[594,425],"7":[479,453],"8":[412,453],"9":[294,430],"10":[234,402],"11":[186,345],"12":[144,319],"13":[144,274],"14":[110,226],"15":[137,179],"16":[186,156],"17":[244,137],"18":[313,136],"19":[348,172]},"9":{"0":[188,334],"1":[116,295],"2":[141,233],"3":[192,176],"4":[368,85],"5":[426,59],"6":[523,72],"7":[597,129],"8":[830,202],"9":[867,243],"10":[843,332],"11":[723,403],"12":[662,438],"13":[623,375],"14":[537,410],"15":[534,462],"16":[433,460],"17":[372,455],"18":[358,408],"19":[337,379]},"10":{"0":[563,150],"1":[616,116],"2":[710,123],"3":[758,166],"4":[824,234],"5":[809,332],"6":[757,370],"7":[686,404],"8":[502,434],"9":[421,453],"10":[324,428],"11":[259,391],"12":[204,368],"13":[138,301],"14":[165,192],"15":[243,131],"16":[342,119],"17":[379,158],"18":[358,205],"19":[269,213]},"11":{"0":[134,132],"1":[205,89],"2":[288,92],"3":[410,158],"4":[440,246],"5":[327,185],"6":[274,139]},"12":{"0":[200,80],"1":[289,102],"2":[336,205],"3":[278,220],"4":[207,239],"5":[134,218],"6":[168,159]},"13":{"0":[398,13],"1":[389,159],"2":[560,298],"3":[481,310],"4":[435,290],"5":[351,308],"6":[246,277],"7":[199,248],"8":[221,151],"9":[221,59],"10":[307,44]},"14":{"0":[225,82],"1":[316,94],"2":[318,143],"3":[270,172],"4":[263,245],"5":[161,247],"6":[90,216]},"15":{"0":[134,100],"1":[259,108],"2":[280,142],"3":[392,145],"4":[446,176],"5":[505,219],"6":[412,273],"7":[340,286]},"16":{"0":[138,124],"1":[224,119],"2":[316,131],"3":[363,184],"4":[461,216],"5":[567,231],"6":[621,257],"7":[602,315],"8":[518,329],"9":[358,310],"10":[241,280],"11":[190,225],"12":[134,194]},"37":{"0":[495,133],"1":[410,143],"2":[442,203],"3":[595,305],"4":[560,363],"5":[380,233],"6":[298,206],"7":[202,253],"8":[151,313],"9":[185,366],"10":[253,424],"11":[385,458],"12":[540,503],"13":[650,513],"14":[700,483],"15":[785,463],"16":[868,380],"17":[857,258],"18":[786,213],"19":[703,172]},"38":{"0":[360,88],"1":[260,63],"2":[180,97],"3":[118,155],"4":[91,202],"5":[99,251],"6":[115,301],"7":[227,326],"8":[311,378],"9":[385,391],"10":[455,393],"11":[535,389],"12":[598,388],"13":[673,357],"14":[767,318],"15":[689,231],"16":[808,208],"17":[750,118],"18":[665,81],"19":[540,58]},"39":{"0":[527,66],"1":[440,93],"2":[276,128],"3":[197,198],"4":[121,261],"5":[117,323],"6":[199,376],"7":[263,418],"8":[354,432],"9":[434,400],"10":[512,400],"11":[660,424],"12":[721,393],"13":[826,356],"14":[884,269],"15":[701,253],"16":[646,224],"17":[711,207],"18":[662,115],"19":[595,75]},"40":{"0":[399,107],"1":[354,164],"2":[349,223],"3":[173,248],"4":[104,297],"5":[143,352],"6":[201,377],"7":[274,408],"8":[335,441],"9":[440,419],"10":[658,446],"11":[737,407],"12":[802,363],"13":[873,316],"14":[876,276],"15":[751,257],"16":[691,235],"17":[666,155],"18":[554,140],"19":[494,97]},"41":{"0":[454,108],"1":[367,123],"2":[258,163],"3":[176,212],"4":[158,246],"5":[153,289],"6":[168,340],"7":[204,388],"8":[274,426],"9":[325,446],"10":[458,475],"11":[594,466],"12":[748,393],"13":[808,361],"14":[877,336],"15":[891,273],"16":[782,257],"17":[667,322],"18":[633,141],"19":[535,108]},"42":{"0":[467,98],"1":[401,108],"2":[331,143],"3":[254,167],"4":[182,223],"5":[127,315],"6":[115,351],"7":[177,380],"8":[220,484],"9":[323,499],"10":[329,388],"11":[499,420],"12":[501,466],"13":[618,459],"14":[671,426],"15":[779,380],"16":[859,278],"17":[710,169],"18":[647,136],"19":[562,109]},"43":{"0":[315,14],"1":[260,33],"2":[201,88],"3":[95,117],"4":[101,176],"5":[131,230],"6":[111,272],"7":[190,169],"8":[666,210],"9":[313,318],"10":[371,344],"11":[452,329],"12":[561,330],"13":[656,311],"14":[716,280],"15":[778,246],"16":[751,104],"17":[699,52],"18":[538,59],"19":[458,59]},"44":{"0":[546,24],"1":[518,66],"2":[429,55],"3":[320,49],"4":[352,114],"5":[182,142],"6":[191,217],"7":[248,290],"8":[362,314],"9":[418,367],"10":[477,270],"11":[561,262],"12":[610,377],"13":[705,344],"14":[790,312],"15":[799,231],"16":[875,188],"17":[821,129],"18":[688,98],"19":[706,42]},"45":{"0":[362,145],"1":[311,199],"2":[179,212],"3":[201,256],"4":[280,327],"5":[198,340],"6":[125,368],"7":[111,406],"8":[173,441],"9":[286,441],"10":[431,401],"11":[468,456],"12":[613,454],"13":[685,403],"14":[746,354],"15":[760,259],"16":[660,148],"17":[593,152],"18":[509,163],"19":[441,126]},"46":{"0":[506,91],"1":[349,122],"2":[297,171],"3":[225,186],"4":[171,214],"5":[105,265],"6":[51,320],"7":[106,342],"8":[161,437],"9":[274,427],"10":[315,481],"11":[539,475],"12":[595,444],"13":[684,426],"14":[743,392],"15":[743,316],"16":[742,249],"17":[718,215],"18":[660,179],"19":[578,103]},"47":{"0":[170,148],"1":[263,119],"2":[356,161],"3":[453,163],"4":[531,293],"5":[503,322],"6":[275,227],"7":[97,201],"8":[495,240]},"48":{"0":[160,218],"1":[215,245],"2":[281,228],"3":[340,198],"4":[411,146],"5":[460,108],"6":[410,91],"7":[380,14]},"49":{"0":[113,113],"1":[249,119],"2":[346,108],"3":[499,128],"4":[720,91],"5":[680,141],"6":[478,266],"7":[305,283],"8":[235,259]},"50":{"0":[168,124],"1":[228,108],"2":[300,131],"3":[363,146],"4":[430,183],"5":[487,371],"6":[427,413],"7":[347,438],"8":[270,458],"9":[185,448]},"51":{"0":[170,104],"1":[244,98],"2":[346,119],"3":[413,241],"4":[390,266],"5":[235,264],"6":[255,193],"7":[185,161]},"52":{"0":[138,124],"1":[224,81],"2":[705,206],"3":[625,245],"4":[525,266],"5":[445,261],"6":[325,235],"7":[337,201],"8":[267,183],"9":[165,183]},"53":{"0":[48,19],"1":[113,16],"2":[247,52],"3":[587,182],"4":[415,195],"5":[325,225],"6":[225,229],"7":[155,193],"8":[75,173],"9":[93,123],"10":[74,69]},"54":{"0":[402,82],"1":[337,79],"2":[290,117],"3":[138,165],"4":[129,236],"5":[136,273],"6":[214,317],"7":[305,313],"8":[385,285],"9":[230,246]},"55":{"0":[192,73],"1":[130,122],"2":[69,130],"3":[215,210],"4":[236,241],"5":[361,265],"6":[414,286],"7":[469,264],"8":[465,133]},"56":{"0":[491,88],"1":[437,116],"2":[344,162],"3":[255,186],"4":[184,208],"5":[139,246],"6":[193,292],"7":[184,343],"8":[198,383],"9":[590,307]},"57":{"0":[221,71],"1":[249,106],"2":[155,178],"3":[127,225],"4":[224,261],"5":[233,322],"6":[308,335],"7":[362,298]},"58":{"0":[162,292],"1":[185,347],"2":[246,378],"3":[417,377],"4":[446,335],"5":[572,333]},"59":{"0":[202,75],"1":[289,91],"2":[368,136],"3":[327,189],"4":[441,216],"5":[447,273],"6":[329,317],"7":[233,388]},"60":{"0":[106,325],"1":[310,260],"2":[422,368],"3":[444,302],"4":[538,298],"5":[575,241],"6":[601,167],"7":[576,111],"8":[525,80]}});
+  const TRAVEL_POSITION_RETRY_DELAY = 10 * 60 * 1000;
+  const travelTownSlots = new Map();
+  let travelTownSlotsPromise = null;
+  let travelTownSlotsRetryAt = 0;
+
+  function loadTravelTownSlots() {
+    if (travelTownSlotsPromise || Date.now() < travelTownSlotsRetryAt) return;
+    travelTownSlotsPromise = (async () => {
+      const [townResponse, { islandTypes }] = await Promise.all([
+        fetch('/data/towns.txt', { credentials: 'same-origin' }),
+        loadIslandIndex(),
+      ]);
+      if (!townResponse.ok) throw new Error(`Could not load town data: HTTP ${townResponse.status}`);
+
+      (await townResponse.text()).split(/\r?\n/).filter(Boolean).forEach((line) => {
+        const row = line.split(',');
+        const [townId, islandX, islandY, slot] = [row[0], row[3], row[4], row[5]].map(Number);
+        const islandType = islandTypes.get(`${islandX}:${islandY}`);
+        if (![townId, islandX, islandY, slot].every(Number.isFinite) || islandType === undefined) return;
+        travelTownSlots.set(String(townId), { islandX, islandY, slot, islandType });
+      });
+      console.info(`[${APP.name}] corrected travel-time positions loaded for ${travelTownSlots.size} towns`);
+      if (townDistanceSorterOpen) renderTownDistanceSorter();
+    })().catch((error) => {
+      travelTownSlotsPromise = null;
+      travelTownSlotsRetryAt = Date.now() + TRAVEL_POSITION_RETRY_DELAY;
+      console.warn(`[${APP.name}] corrected travel-time positions could not be loaded; using Grepolis positions`, error);
+    });
+  }
+
+  function getCorrectedTravelPosition(townId) {
+    loadTravelTownSlots();
+    const town = travelTownSlots.get(String(townId));
+    const offset = town && TRAVEL_SLOT_OFFSETS[town.islandType]?.[town.slot];
+    if (!offset) return null;
+    return {
+      x: town.islandX * TOWN_DISTANCE_SORTER.mapTileSize + offset[0],
+      y: town.islandY * TOWN_DISTANCE_SORTER.mapTileSize + offset[1]
+        + (Math.abs(town.islandX) % 2 === 1 ? 64 : 0),
+    };
+  }
+
   function getTownMapPosition(town, townId) {
+    const correctedPosition = getCorrectedTravelPosition(
+      townId ?? getFirstMethodValue(town, ['getId'], ['id']),
+    );
+    if (correctedPosition) return correctedPosition;
+
     const sources = getTownCoordinateSources(town, townId);
     const absoluteX = getTownCoordinateValue(
       sources,
@@ -5778,6 +6670,67 @@
     };
   }
 
+  function getTradeTimesMarketFilterEnabled() {
+    return localStorage.getItem(TOWN_DISTANCE_SORTER.marketFilterEnabledKey) !== 'off';
+  }
+
+  function setTradeTimesMarketFilterEnabled(enabled) {
+    localStorage.setItem(TOWN_DISTANCE_SORTER.marketFilterEnabledKey, enabled ? 'on' : 'off');
+  }
+
+  function paintTradeTimesMarketFilter(button = document.getElementById(TOWN_DISTANCE_SORTER.marketFilterButtonId)) {
+    if (!button) return;
+    const enabled = getTradeTimesMarketFilterEnabled();
+    button.textContent = enabled ? 'MARKET ON' : 'MARKET OFF';
+    button.setAttribute('aria-pressed', String(enabled));
+    button.style.setProperty(
+      'background',
+      enabled ? 'linear-gradient(#5f9b3a, #356520)' : '#8c3e2f',
+      'important',
+    );
+    button.style.setProperty('border-color', enabled ? '#8ecb61' : '#b99b58', 'important');
+    button.title = enabled
+      ? 'Hiding towns below Marketplace level 5. Click to show all towns.'
+      : 'Showing towns regardless of Marketplace level. Click to hide towns below level 5.';
+  }
+
+  function getTradeWorldSpeed() {
+    const speed = Number(window.Game?.game_speed);
+    return Number.isFinite(speed) && speed >= 1 && speed <= 6 ? speed : null;
+  }
+
+  function calculateTownTradeDuration(distance, sameIsland) {
+    const speed = getTradeWorldSpeed();
+    if (!Number.isFinite(distance) || distance < 0 || speed === null) return null;
+    // An active Captain doubles trade speed; apply it before rounding.
+    const duration = sameIsland
+      ? distance * 5 / (3 * speed)
+      : 2700 / (speed ** 3) + distance * 5 / (speed ** 2);
+    return Math.floor(duration / (isCaptainActive() ? 2 : 1));
+  }
+
+  function formatTownTradeDuration(seconds) {
+    if (!Number.isFinite(seconds)) return 'Unavailable';
+    const total = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor(total / 60) % 60;
+    const remainingSeconds = total % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  }
+
+  function getTownMarketplaceLevel(town) {
+    if (!town) return null;
+    try {
+      const buildings = typeof town.buildings === 'function'
+        ? getModelAttributes(town.buildings())
+        : getModelAttributes(town).buildings;
+      const level = Number(buildings?.market ?? buildings?.marketplace);
+      return Number.isFinite(level) ? Math.max(0, Math.floor(level)) : null;
+    } catch (error) {
+      console.debug(`[${APP.name}] could not read Marketplace level`, error);
+      return null;
+    }
+  }
   function getTownDistanceSorterData(referenceTownId) {
     if (!isAdministratorActive()) return null;
     if (typeof window.ITowns?.getTowns !== 'function') return null;
@@ -5792,21 +6745,36 @@
     const referenceName = String(
       getFirstMethodValue(referenceTown, ['getName'], ['name']) || referenceTownId,
     );
+    const getIsland = (town, id) => {
+      const sources = getTownCoordinateSources(town, id);
+      const x = getTownCoordinateValue(sources, ['getIslandCoordinateX', 'getIslandX'], ['island_x', 'islandX', 'ix']);
+      const y = getTownCoordinateValue(sources, ['getIslandCoordinateY', 'getIslandY'], ['island_y', 'islandY', 'iy']);
+      return Number.isFinite(x) && Number.isFinite(y) ? `${x}:${y}` : null;
+    };
+    const referenceIsland = getIsland(referenceTown, referenceTownId);
     const allDistances = towns.flatMap((town) => {
       const id = getFirstMethodValue(town, ['getId'], ['id']);
       const position = getTownMapPosition(town, id);
       if (id == null || !position) return [];
 
+      const distance = Math.hypot(position.x - referencePosition.x, position.y - referencePosition.y);
+      const island = getIsland(town, id);
+      const sameIsland = island !== null && island === referenceIsland;
       return [{
         id,
         name: String(getFirstMethodValue(town, ['getName'], ['name']) || id),
-        distance: Math.hypot(position.x - referencePosition.x, position.y - referencePosition.y),
+        marketplaceLevel: getTownMarketplaceLevel(town),
+        distance,
+        sameIsland,
+        tradeDuration: calculateTownTradeDuration(distance, sameIsland),
       }];
     });
     const capacityFilterEnabled = localStorage.getItem('egeltools_distance_capacity_filter') === 'on';
     const capacityLimit = getTownDistanceCapacityLimit();
+    const marketFilterEnabled = getTradeTimesMarketFilterEnabled();
     const distances = allDistances.filter((town) => {
       if (tradeLocks[String(town.id)]) return false;
+      if (marketFilterEnabled && !(town.marketplaceLevel >= TOWN_DISTANCE_SORTER.minimumMarketplaceLevel)) return false;
       if (!capacityFilterEnabled) return true;
       const capacity = getTownAvailableTradeCapacity(findTown(town.id));
       return capacity !== null && capacity > capacityLimit;
@@ -5896,10 +6864,11 @@
     toggle.setAttribute('aria-checked', String(localStorage.getItem('egeltools_distance_capacity_filter') === 'on'));
     toggle.title = `Only towns with available trade capacity above ${getTownDistanceCapacityLimit().toLocaleString()}`;
     toggle.setAttribute('aria-label', toggle.title);
+    paintTradeTimesMarketFilter(panel.querySelector(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`));
     const result = getTownDistanceSorterData(townDistanceReferenceTownId);
     body.replaceChildren();
     if (!result) {
-      title.textContent = 'Town distances';
+      title.textContent = 'Trade times';
       const state = document.createElement('p');
       state.className = 'egeltools-town-distance__state';
       state.textContent = 'Grepolis is still loading town positions. EgelTools will retry automatically.';
@@ -5914,10 +6883,11 @@
     }
     if (!result.complete) scheduleTownDistanceRetry();
 
-    title.textContent = `Distances from ${result.referenceName}`;
+    title.textContent = `Trade times from ${result.referenceName}`;
+    title.title = 'Use Arrow Up and Arrow Down to move through towns.';
     const table = document.createElement('table');
     table.className = 'egeltools-town-distance__table';
-    table.innerHTML = '<thead><tr><th>Town</th><th>Distance</th><th>Trade</th><th aria-label="Trade lock"></th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>Town</th><th>Trade time</th><th>Trade</th><th aria-label="Trade lock"></th></tr></thead>';
     const tbody = document.createElement('tbody');
     for (const town of result.distances) {
       const row = document.createElement('tr');
@@ -5929,7 +6899,8 @@
       name.textContent = town.name;
       name.title = town.name;
       const distance = document.createElement('td');
-      distance.textContent = town.distance.toFixed(1);
+      distance.textContent = formatTownTradeDuration(town.tradeDuration);
+      distance.title = `${town.sameIsland ? 'Same island' : 'Different island'}; distance ${town.distance.toFixed(1)}; world speed ${getTradeWorldSpeed() ?? 'unavailable'}; Marketplace level ${town.marketplaceLevel ?? 'unknown'}`;
       const tradeCell = document.createElement('td');
       tradeCell.className = 'egeltools-town-distance__trade-cell';
       const tradeButton = document.createElement('button');
@@ -5958,7 +6929,7 @@
     if (!result.distances.length) {
       const empty = document.createElement('p');
       empty.className = 'egeltools-town-distance__state';
-      empty.textContent = 'No towns match the current filters. Unknown trade capacity is excluded while the capacity filter is enabled.';
+      empty.textContent = 'No towns match the current filters. Towns with unknown trade capacity or Marketplace level are excluded while their filter is on.';
       body.append(empty);
     }
 
@@ -6000,7 +6971,7 @@
     const button = createTownDistanceSorterButton();
     if (!button) return;
     button.setAttribute('aria-expanded', String(open));
-    button.textContent = open ? 'Hide distances' : 'Town distances';
+    button.textContent = open ? 'Hide trade times' : 'Trade times';
     if (!open) {
       if (townDistanceRetryTimer !== null) window.clearTimeout(townDistanceRetryTimer);
       townDistanceRetryTimer = null;
@@ -6064,6 +7035,10 @@
       }
       if (event.target.closest(`#${TOWN_DISTANCE_SORTER.floatingButtonId}`)) {
         setTownDistanceSorterOpen(!townDistanceSorterOpen);
+      } else if (event.target.closest(`#${TOWN_DISTANCE_SORTER.marketFilterButtonId}`)) {
+        setTradeTimesMarketFilterEnabled(!getTradeTimesMarketFilterEnabled());
+        paintTradeTimesMarketFilter();
+        renderTownDistanceSorter();
       } else if (event.target.closest(`#${TOWN_DISTANCE_SORTER.refreshButtonId}`)) {
         townDistanceReferenceTownId = getCurrentTownId() ?? townDistanceSelectedTownId;
         townDistanceSelectedTownId = townDistanceReferenceTownId;
@@ -6075,7 +7050,10 @@
 
     document.addEventListener('keydown', (event) => {
       const key = event.key.toLowerCase();
-      if (!townDistanceSorterOpen || !isAdministratorActive() || (key !== 'w' && key !== 's')) return;
+      const direction = key === 'arrowup' || key === 'w'
+        ? -1
+        : key === 'arrowdown' || key === 's' ? 1 : 0;
+      if (!townDistanceSorterOpen || !isAdministratorActive() || direction === 0) return;
       const target = event.target;
       if (target instanceof HTMLElement && (
         ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable
@@ -6086,8 +7064,8 @@
       if (!rows.length) return;
       const current = rows.findIndex((row) => row.getAttribute('aria-current') === 'true');
       const next = current === -1
-        ? 0
-        : key === 'w'
+        ? direction < 0 ? rows.length - 1 : 0
+        : direction < 0
           ? Math.max(0, current - 1)
           : Math.min(rows.length - 1, current + 1);
       event.preventDefault();
@@ -6098,9 +7076,13 @@
       rows[next].scrollIntoView({ block: 'nearest' });
     }, true);
     window.addEventListener('storage', (event) => {
-      if (event.key !== getTradeLockStorageKey()) return;
-      monitoredTownTradeLockIds = Object.keys(loadTownTradeLocks()).sort().join(',');
-      if (townDistanceSorterOpen) renderTownDistanceSorter();
+      if (event.key === getTradeLockStorageKey()) {
+        monitoredTownTradeLockIds = Object.keys(loadTownTradeLocks()).sort().join(',');
+        if (townDistanceSorterOpen) renderTownDistanceSorter();
+      } else if (event.key === TOWN_DISTANCE_SORTER.marketFilterEnabledKey) {
+        paintTradeTimesMarketFilter();
+        if (townDistanceSorterOpen) renderTownDistanceSorter();
+      }
     });
   }
 
@@ -6565,6 +7547,81 @@
     }
   }
 
+  function getFarmingVillageTradeDurationSeconds() {
+    const speed = getTradeWorldSpeed();
+    // Requested fixed planning duration: speed 6 = 2 minutes, speed 3 = 4 minutes.
+    // The same inverse-speed rule also provides a safe value on other speeds.
+    return Number.isFinite(speed) && speed > 0 ? Math.round(720 / speed) : 240;
+  }
+
+  // Seconds until a town covers its shortfall: the shortfall applies when the
+  // current celebration ends, after which production and farm village claims
+  // keep filling it. Planned shipments count once all of them have arrived.
+  function estimatePartyTradeReadySeconds(town, claimIncome, covered = {}, arrivalSeconds = 0) {
+    const start = Math.max(0, Number(town.partyForecast?.secondsRemaining) || 0);
+    const production = getTownProductionPerHour(town.model)
+      || Object.fromEntries(RESOURCE_CHECKER.resources.map((resource) => [resource, 0]));
+    const interval = RESOURCE_CHECKER.loyaltyClaimInterval;
+    const enoughAt = (seconds) => RESOURCE_CHECKER.resources.every((resource) => {
+      const missing = Number(town.deficits?.[resource]) || 0;
+      if (missing <= 0) return true;
+      const produced = (production[resource] || 0) * (seconds - start) / 3600;
+      const claimed = claimIncome * (Math.floor(seconds / interval) - Math.floor(start / interval));
+      const shipped = seconds >= arrivalSeconds ? covered[resource] || 0 : 0;
+      return produced + claimed + shipped >= missing;
+    });
+    if (enoughAt(start)) return start;
+    const limit = start + 365 * 24 * 60 * 60;
+    let high = start + interval;
+    while (high < limit && !enoughAt(high)) high = start + (high - start) * 2;
+    if (!enoughAt(Math.min(high, limit))) return Number.POSITIVE_INFINITY;
+    high = Math.min(high, limit);
+    let low = start;
+    while (high - low > 1) {
+      const middle = Math.floor((low + high) / 2);
+      if (enoughAt(middle)) high = middle;
+      else low = middle;
+    }
+    return high;
+  }
+
+  // Suggested trades must have the town ready when its celebration ends, or
+  // cut the wait after that end by at least the minimum relative saving.
+  function evaluatePartyTradeSaving(town, plan, farmTrades, claimIncome) {
+    const donors = plan?.donors || [];
+    if (!donors.length && !farmTrades.length) return { meaningful: false };
+    const covered = {};
+    const add = (resource, amount) => {
+      if (amount > 0) covered[resource] = (covered[resource] || 0) + amount;
+    };
+    for (const trade of farmTrades) {
+      add(trade.receive, trade.received);
+      if (trade.steps) add(trade.steps[0].receive, trade.steps[0].received - trade.steps[1].amount);
+    }
+    let arrivalSeconds = farmTrades.length ? getFarmingVillageTradeDurationSeconds() : 0;
+    for (const donor of donors) {
+      for (const [resource, amount] of Object.entries(donor.contributions || {})) add(resource, amount);
+      const sameIsland = Number.isFinite(donor.islandX) && Number.isFinite(donor.islandY)
+        && donor.islandX === town.islandX && donor.islandY === town.islandY;
+      const duration = calculateTownTradeDuration(donor.distance, sameIsland);
+      // Without a world speed the arrival is unknown, so keep the trades visible.
+      if (!Number.isFinite(duration)) return { meaningful: true };
+      arrivalSeconds = Math.max(arrivalSeconds, duration);
+    }
+    const start = Math.max(0, Number(town.partyForecast?.secondsRemaining) || 0);
+    const currentReady = estimatePartyTradeReadySeconds(town, claimIncome);
+    const proposedReady = estimatePartyTradeReadySeconds(town, claimIncome, covered, arrivalSeconds);
+    const result = { currentReady, proposedReady };
+    // Trades that make the celebration start on time are always shown.
+    if (proposedReady <= start || !Number.isFinite(currentReady)) return { ...result, meaningful: true };
+    const savedSeconds = currentReady - proposedReady;
+    return {
+      ...result,
+      meaningful: savedSeconds > 0
+        && savedSeconds / (currentReady - start) >= RESOURCE_CHECKER.minimumRelativeTradeSaving,
+    };
+  }
+
   function compareResourceTradeTargets(left, right, plans) {
     const idleDifference = Number(left.partyForecast.active) - Number(right.partyForecast.active);
     const routeDistance = (town) => {
@@ -6680,7 +7737,8 @@
       Math.max(0, town.resources[resource] - Math.max(minimums[resource] || 0,
         forecast?.reserveNow?.[resource] || 0) - (reserved.resources[resource] || 0))]));
     const remaining = { ...(town.transferDeficits || town.deficits) };
-    const offers = [];
+    // Only positive exchanges: the farm village must return more than it receives.
+    const routes = [];
     for (const [farmId, farm] of context.farmTownById) {
       const relation = context.relationByFarmTownId.get(farmId);
       if (partyFarmTradesPending.has(`fv:${farmId}`) || !relation || Number(getFirstMethodValue(relation, ['getRelationStatus'], ['relation_status'])) !== 1) continue;
@@ -6691,26 +7749,109 @@
       const receive = getFirstMethodValue(farm, ['getResourceOffer'], ['resource_offer']);
       const ratio = Number(getFirstMethodValue(relation, ['getTradeRatio'], ['trade_ratio']));
       const relationId = getFirstMethodValue(relation, ['getId'], ['id']);
-      if (!Number.isFinite(ratio) || ratio <= 0.8 || !available[give] || !remaining[receive] || relationId == null || give === receive) continue;
-      offers.push({ farmId, relationId, give, receive, ratio });
+      if (!(ratio > 1) || relationId == null || give === receive
+        || !RESOURCE_CHECKER.resources.includes(give) || !RESOURCE_CHECKER.resources.includes(receive)) continue;
+      routes.push({ farmId, relationId, give, receive, ratio });
     }
-    offers.sort((a, b) => b.ratio - a.ratio);
+    routes.sort((a, b) => b.ratio - a.ratio);
+    const storage = getTownStorageCapacity(town.model);
     const trades = [];
     const receivedTotals = {};
-    for (const offer of offers) {
-      const room = getTownStorageCapacity(town.model) - town.resources[offer.receive]
-        - (town.incomingResources?.[offer.receive] || 0) - (receivedTotals[offer.receive] || 0);
-      const amount = Math.floor(Math.min(available[offer.give], capacity,
-        ISLAND_UTILITIES.maximumTradeAmount, Math.ceil((remaining[offer.receive] || 0) / offer.ratio), room / offer.ratio));
+    const sentTotals = {};
+    const usedFarmIds = new Set();
+    const firstTradeByExchange = new Map();
+    for (const route of routes) {
+      // Use one farm village per exchange. A second one only tops up a
+      // remainder after the first trade used the full 3,000 resources.
+      const exchange = `${route.give}:${route.receive}`;
+      const first = firstTradeByExchange.get(exchange);
+      if (first && first.amount < ISLAND_UTILITIES.maximumTradeAmount) continue;
+      if (!available[route.give] || !(remaining[route.receive] > 0)) continue;
+      const room = storage - town.resources[route.receive]
+        - (town.incomingResources?.[route.receive] || 0) - (receivedTotals[route.receive] || 0);
+      const amount = Math.floor(Math.min(available[route.give], capacity,
+        ISLAND_UTILITIES.maximumTradeAmount, Math.ceil(remaining[route.receive] / route.ratio), room / route.ratio));
       if (!Number.isFinite(amount) || amount < ISLAND_UTILITIES.minimumTradeAmount) continue;
-      const received = Math.floor(amount * offer.ratio);
-      trades.push({ ...offer, amount, received });
-      receivedTotals[offer.receive] = (receivedTotals[offer.receive] || 0) + received;
-      available[offer.give] -= amount;
+      const received = Math.floor(amount * route.ratio);
+      if (received <= amount) continue;
+      const trade = { ...route, amount, received };
+      trades.push(trade);
+      if (!first) firstTradeByExchange.set(exchange, trade);
+      usedFarmIds.add(route.farmId);
+      receivedTotals[route.receive] = (receivedTotals[route.receive] || 0) + received;
+      sentTotals[route.give] = (sentTotals[route.give] || 0) + amount;
+      available[route.give] -= amount;
       capacity -= amount;
-      remaining[offer.receive] = Math.max(0, remaining[offer.receive] - received);
+      remaining[route.receive] = Math.max(0, remaining[route.receive] - received);
+    }
+    // When no direct exchange closes a deficit, chain two positive exchanges
+    // (for example wood -> stone -> iron). Both steps start at once: the second
+    // step spends stock that the first step replaces, and each chain stops at
+    // the exact missing amount instead of creating surplus.
+    for (const finalResource of RESOURCE_CHECKER.resources) {
+      for (const second of routes) {
+        if (second.receive !== finalResource || usedFarmIds.has(second.farmId)) continue;
+        for (const first of routes) {
+          if (!(remaining[finalResource] > 0)
+            || capacity < 2 * ISLAND_UTILITIES.minimumTradeAmount) break;
+          if (first.receive !== second.give || first.give === finalResource
+            || first.farmId === second.farmId || usedFarmIds.has(first.farmId)) continue;
+          const intermediateResource = second.give;
+          const secondNeeded = Math.ceil(remaining[finalResource] / second.ratio);
+          const firstAmount = Math.floor(Math.min(ISLAND_UTILITIES.maximumTradeAmount,
+            available[first.give], Math.ceil(secondNeeded / first.ratio),
+            capacity - ISLAND_UTILITIES.minimumTradeAmount));
+          if (!Number.isFinite(firstAmount) || firstAmount < ISLAND_UTILITIES.minimumTradeAmount) continue;
+          const intermediate = Math.floor(firstAmount * first.ratio);
+          const finalRoom = storage - town.resources[finalResource]
+            - (town.incomingResources?.[finalResource] || 0) - (receivedTotals[finalResource] || 0);
+          const secondAmount = Math.floor(Math.min(ISLAND_UTILITIES.maximumTradeAmount, intermediate,
+            secondNeeded, capacity - firstAmount, finalRoom / second.ratio,
+            town.resources[intermediateResource] - (sentTotals[intermediateResource] || 0)
+              - (reserved.resources[intermediateResource] || 0)));
+          if (!Number.isFinite(secondAmount) || secondAmount < ISLAND_UTILITIES.minimumTradeAmount) continue;
+          const intermediateRoom = storage - town.resources[intermediateResource]
+            - (town.incomingResources?.[intermediateResource] || 0)
+            - (receivedTotals[intermediateResource] || 0) + (sentTotals[intermediateResource] || 0);
+          if (intermediate - secondAmount > intermediateRoom) continue;
+          const received = Math.floor(secondAmount * second.ratio);
+          if (received <= secondAmount) continue;
+          trades.push({
+            give: first.give,
+            receive: finalResource,
+            amount: firstAmount,
+            received,
+            steps: [
+              { ...first, amount: firstAmount, received: intermediate },
+              { ...second, amount: secondAmount, received },
+            ],
+          });
+          usedFarmIds.add(first.farmId);
+          usedFarmIds.add(second.farmId);
+          receivedTotals[intermediateResource] = (receivedTotals[intermediateResource] || 0) + intermediate;
+          receivedTotals[finalResource] = (receivedTotals[finalResource] || 0) + received;
+          sentTotals[first.give] = (sentTotals[first.give] || 0) + firstAmount;
+          sentTotals[intermediateResource] = (sentTotals[intermediateResource] || 0) + secondAmount;
+          available[first.give] -= firstAmount;
+          capacity -= firstAmount + secondAmount;
+          remaining[finalResource] = Math.max(0, remaining[finalResource] - received);
+          break;
+        }
+      }
     }
     return trades;
+  }
+
+  function isSamePartyFarmTrade(planned, fresh) {
+    const plannedSteps = planned.steps || [planned];
+    const freshSteps = fresh.steps || [fresh];
+    return plannedSteps.length === freshSteps.length && plannedSteps.every((step, index) => (
+      freshSteps[index].farmId === step.farmId
+      && freshSteps[index].give === step.give
+      && freshSteps[index].receive === step.receive
+      && freshSteps[index].ratio === step.ratio
+      && freshSteps[index].amount >= step.amount
+    ));
   }
 
   function makePartyFarmTradeList(town, trades) {
@@ -6720,31 +7861,55 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'egeltools-resource-checker__trade-button';
-      button.textContent = 'Trade with FV';
-      row.append(`FV ${trade.farmId}: ${trade.amount} ${trade.give} → ${trade.received} ${trade.receive} (ratio ${trade.ratio}) `, button);
+      const steps = trade.steps || [trade];
+      button.textContent = trade.steps ? 'Trade chain with FVs' : 'Trade with FV';
+      row.append(trade.steps
+        ? `FV ${steps[0].farmId} → FV ${steps[1].farmId}: ${steps.map((step) => `${step.amount} ${step.give} → ${step.received} ${step.receive}`).join(', then ')} (ratios ${steps.map((step) => step.ratio).join(' · ')}) `
+        : `FV ${trade.farmId}: ${trade.amount} ${trade.give} → ${trade.received} ${trade.receive} (ratio ${trade.ratio}) `, button);
       button.addEventListener('click', () => {
         const data = getResourceCheckerData();
         const current = data?.shortages.find(entry => String(entry.id) === String(town.id));
-        const fresh = current && buildPartyFarmTrades(current, data.minimums).find(entry => entry.farmId === trade.farmId);
-        if (!fresh || fresh.give !== trade.give || fresh.receive !== trade.receive || fresh.ratio !== trade.ratio || fresh.amount < trade.amount) {
+        const fresh = current && buildPartyFarmTrades(current, data.minimums).find(entry => (
+          Boolean(entry.steps) === Boolean(trade.steps) && (entry.steps || [entry])[0].farmId === steps[0].farmId
+        ));
+        if (!fresh || !isSamePartyFarmTrade(trade, fresh)) {
           button.disabled = true;
           button.textContent = 'Changed — refresh';
           return;
         }
+        const release = () => {
+          partyFarmTradesPending.delete(String(town.id));
+          for (const step of steps) partyFarmTradesPending.delete(`fv:${step.farmId}`);
+        };
         partyFarmTradesPending.add(String(town.id));
-        partyFarmTradesPending.add(`fv:${trade.farmId}`);
+        for (const step of steps) partyFarmTradesPending.add(`fv:${step.farmId}`);
         button.disabled = true;
         button.textContent = 'Sending…';
         const timeout = window.setTimeout(() => { button.textContent = 'Unconfirmed — check outgoing trades'; }, 30000);
         const done = (label) => { window.clearTimeout(timeout); button.textContent = label; };
-        try {
-          const sent = postIslandUtilityAction('trade', town.id, trade.farmId, trade.relationId,
-            { amount: trade.amount }, () => {
-              // Keep this town blocked until reload: the callback can precede model synchronization.
-              done('Sent — reload to plan more FV trades');
-            }, () => { partyFarmTradesPending.delete(String(town.id)); partyFarmTradesPending.delete(`fv:${trade.farmId}`); done('Failed — refresh'); });
-          if (!sent) { partyFarmTradesPending.delete(String(town.id)); partyFarmTradesPending.delete(`fv:${trade.farmId}`); done('Unavailable'); }
-        } catch (error) { done('Unconfirmed — check outgoing trades'); }
+        // A chain sends its second step only after the first one is confirmed.
+        const sendStep = (index) => {
+          const step = steps[index];
+          try {
+            const sent = postIslandUtilityAction('trade', town.id, step.farmId, step.relationId,
+              { amount: step.amount }, () => {
+                if (index + 1 < steps.length) {
+                  sendStep(index + 1);
+                  return;
+                }
+                // Keep this town blocked until reload: the callback can precede model synchronization.
+                done('Sent — reload to plan more FV trades');
+              }, () => {
+                if (index === 0) release();
+                done(index === 0 ? 'Failed — refresh' : 'Second step failed — refresh');
+              });
+            if (!sent) {
+              if (index === 0) release();
+              done(index === 0 ? 'Unavailable' : 'Second step unavailable — refresh');
+            }
+          } catch (error) { done('Unconfirmed — check outgoing trades'); }
+        };
+        sendStep(0);
       });
       list.append(row);
     }
@@ -7443,24 +8608,55 @@
     }
 
     panel.dataset.snapshotReady = 'true';
-    const reservations = new Map();
+    // Farm village trades spend the target town's own stock, so they reserve
+    // it before city donors are chosen.
+    const reserveFarmTrades = (reservations, town, trades) => {
+      for (const step of trades.flatMap((trade) => trade.steps || [trade])) {
+        const reserved = reservations.get(String(town.id)) || { total: 0, resources: {} };
+        reserved.total += step.amount;
+        reserved.resources[step.give] = (reserved.resources[step.give] || 0) + step.amount;
+        reservations.set(String(town.id), reserved);
+      }
+    };
+    let reservations = new Map();
     const farmPlans = new Map();
     for (const town of data.shortages) {
       const trades = buildPartyFarmTrades(town, data.minimums, reservations);
       farmPlans.set(String(town.id), trades);
+      reserveFarmTrades(reservations, town, trades);
       for (const trade of trades) {
-        const reserved = reservations.get(String(town.id)) || { total: 0, resources: {} };
-        reserved.total += trade.amount;
-        reserved.resources[trade.give] = (reserved.resources[trade.give] || 0) + trade.amount;
-        reservations.set(String(town.id), reserved);
         town.transferDeficits[trade.receive] = Math.max(0, town.transferDeficits[trade.receive] - trade.received);
       }
     }
-    const plans = new Map(data.shortages.map((town) => (
+    let plans = new Map(data.shortages.map((town) => (
       [String(town.id), buildResourceDonorPlan(town, data.towns, data.minimums, reservations)]
     )));
+    // Hide trades that do not shorten the wait enough, then rebuild the city
+    // allocations so the hidden trades do not hold donor stock.
+    const marginalTrades = new Map();
+    if (data.shortages.length) {
+      const claimIncomeByTown = getLoyaltyClaimIncomePerTown(data.towns);
+      for (const town of data.shortages) {
+        const townId = String(town.id);
+        const farmTrades = farmPlans.get(townId) || [];
+        if (!farmTrades.length && !plans.get(townId)?.donors.length) continue;
+        const saving = evaluatePartyTradeSaving(town, plans.get(townId), farmTrades,
+          claimIncomeByTown.get(townId) || 0);
+        if (!saving.meaningful) marginalTrades.set(townId, saving);
+      }
+    }
+    if (marginalTrades.size) {
+      reservations = new Map();
+      for (const town of data.shortages) {
+        if (marginalTrades.has(String(town.id))) farmPlans.set(String(town.id), []);
+        else reserveFarmTrades(reservations, town, farmPlans.get(String(town.id)) || []);
+      }
+      plans = new Map(data.shortages.map((town) => [String(town.id), marginalTrades.has(String(town.id))
+        ? { donors: [], remaining: {} }
+        : buildResourceDonorPlan(town, data.towns, data.minimums, reservations)]));
+    }
     data.shortages.sort((left, right) => compareResourceTradeTargets(left, right, plans));
-    const tradeCount = [...plans.values()].reduce((total, plan) => total + plan.donors.length, [...farmPlans.values()].reduce((sum, trades) => sum + trades.length, 0));
+    const tradeCount = [...plans.values()].reduce((total, plan) => total + plan.donors.length, [...farmPlans.values()].flat().reduce((sum, trade) => sum + (trade.steps?.length || 1), 0));
     count.textContent = `${tradeCount} ${tradeCount === 1 ? 'trade' : 'trades'}`;
     updateResourceCheckerButton(tradeCount);
 
@@ -7510,8 +8706,17 @@
         }
         townSection.append(incoming);
       }
-      townSection.append(makePartyFarmTradeList(town, farmPlans.get(String(town.id)) || []));
-      townSection.append(makeResourceDonorList(town, data, plans.get(String(town.id))));
+      const marginal = marginalTrades.get(String(town.id));
+      if (marginal) {
+        const note = document.createElement('p');
+        note.className = 'egeltools-resource-checker__donor-note';
+        note.textContent = `No trade shortens the wait by ${Math.round(RESOURCE_CHECKER.minimumRelativeTradeSaving * 100)}% or more. Ready without trades in ${formatPartyLockTime(marginal.currentReady)}.`;
+        note.title = 'Trades are only suggested when they make the town ready by the end of its celebration, or cut the wait after that end by at least this share.';
+        townSection.append(note);
+      } else {
+        townSection.append(makePartyFarmTradeList(town, farmPlans.get(String(town.id)) || []));
+        townSection.append(makeResourceDonorList(town, data, plans.get(String(town.id))));
+      }
       body.append(townSection);
     }
     restoreView();
@@ -7741,6 +8946,10 @@
     };
 
     const startCollectionSound = () => {
+      if (!isBdsSoundEnabled()) {
+        stopCollectionSound();
+        return;
+      }
       if (getCaptainState() !== 'active' || getState() !== 'ringing') return;
       const alarmAudio = getCollectionAudio();
       alarmAudio.loop = getRepeat();
@@ -8025,21 +9234,105 @@
         : COLLECT_ALARM.fallbackDuration;
     };
 
+    const openBdsOverviewFromNotification = () => {
+      try { window.focus(); } catch (_) {}
+      const overviewLink = document.querySelector('a[name="farm_town_overview"][type="overview"]');
+      if (!overviewLink) {
+        console.warn(`[${APP.name}] the farming-village overview menu entry was not found`);
+        return false;
+      }
+      overviewLink.click();
+      return true;
+    };
+    // Mirror the FV timer into the separate GrepoAlerts userscript when it is installed.
+    const bdsGrepoAlertId = () => `egel_bds_${Number(getTarget()) || 0}`;
+    const getBdsGrepoAlert = (status) => ({
+      id: bdsGrepoAlertId(),
+      type: 'farm',
+      icon: '',
+      label: 'Farm villages ready',
+      townId: String(window.Game?.townId || ''),
+      tsMs: Number(getTarget()),
+      status,
+      trackedAt: Date.now(),
+      source: 'EgelToolsBDS',
+      egelBds: true,
+    });
+    const renderGrepoAlerts = (grepoAlerts) => {
+      grepoAlerts.ui?._render?.();
+      grepoAlerts.ui?.updateBadge?.();
+    };
+    const syncBdsGrepoAlert = (status = 'pending') => {
+      const grepoAlerts = window.GrepoAlerts;
+      if (!grepoAlerts?.storage || !Number(getTarget()) || !isBdsNotificationEnabled()) return;
+      const alert = getBdsGrepoAlert(status);
+      const data = grepoAlerts.storage._read();
+      data.alerts = data.alerts || [];
+      const index = data.alerts.findIndex((item) => item.id === alert.id);
+      if (index >= 0) data.alerts[index] = { ...data.alerts[index], ...alert };
+      else data.alerts.push(alert);
+      grepoAlerts.storage._write(data);
+      renderGrepoAlerts(grepoAlerts);
+    };
+    const refreshBdsGrepoAlert = () => {
+      const grepoAlerts = window.GrepoAlerts;
+      if (!grepoAlerts?.storage) return;
+      const state = getState();
+      const data = grepoAlerts.storage._read();
+      data.alerts = (data.alerts || []).filter((item) => !item.egelBds);
+      if (isBdsNotificationEnabled() && Number(getTarget()) > 0 && (state === 'running' || state === 'ringing')) {
+        data.alerts.push(getBdsGrepoAlert(state === 'ringing' ? 'notified' : 'pending'));
+      }
+      grepoAlerts.storage._write(data);
+      renderGrepoAlerts(grepoAlerts);
+    };
+    window.EgelToolsRefreshBdsGrepoAlert = refreshBdsGrepoAlert;
+
+    const notifyBdsReady = () => {
+      if (!isBdsNotificationEnabled()) return;
+      syncBdsGrepoAlert('notified');
+      const body = 'Click to open the farming-village overview.';
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          const notification = new Notification('Farm villages ready', {
+            body,
+            tag: bdsGrepoAlertId(),
+            renotify: false,
+            requireInteraction: true,
+          });
+          notification.onclick = (event) => {
+            event?.preventDefault?.();
+            openBdsOverviewFromNotification();
+            notification.close();
+          };
+        } catch (error) {
+          console.warn(`[${APP.name}] could not show the FV browser notification`, error);
+        }
+      }
+    };
+
     const startTimer = () => {
       setTarget(Date.now() + getSelectedDuration());
       setState('running');
       stopCollectionSound();
+      window.setTimeout(() => syncBdsGrepoAlert('pending'), 0);
     };
 
     const fireAlarm = () => {
       setState('ringing');
       startCollectionSound();
+      notifyBdsReady();
     };
 
     const stopAlarm = () => {
+      const id = bdsGrepoAlertId();
+      const grepoAlerts = window.GrepoAlerts;
       setTarget(0);
       setState('idle');
       stopCollectionSound();
+      const alert = grepoAlerts?.storage?.getAlerts?.().find((item) => item.id === id);
+      if (alert?.status === 'pending') grepoAlerts.storage.removeAlert(id);
+      if (grepoAlerts) renderGrepoAlerts(grepoAlerts);
     };
 
     const tick = () => {
@@ -8098,10 +9391,18 @@
       if (!document.hidden) tick();
     });
 
+    window.addEventListener('egeltools:bds-sound-changed', (event) => {
+      if (event.detail?.enabled === false) stopCollectionSound();
+      else if (getState() === 'ringing') startCollectionSound();
+    });
+
     window.addEventListener('storage', (event) => {
       if (event.key === COLLECT_ALARM.stateKey || event.key === COLLECT_ALARM.targetKey) {
         if (getState() !== 'ringing') stopCollectionSound();
         tick();
+      } else if (event.key === EGEL_NOTIFICATION_SETTINGS.bdsSoundKey) {
+        if (!isBdsSoundEnabled()) stopCollectionSound();
+        else if (getState() === 'ringing') startCollectionSound();
       } else if (event.key === COLLECT_ALARM.repeatKey) {
         applyRepeat();
         paintRepeatButton(document.getElementById(COLLECT_ALARM.repeatButtonId));
@@ -8840,154 +10141,6 @@
     });
   }
 
-  function getRecruitmentUnitId(tab) {
-    const unitId = tab.id
-      || tab.dataset.unitId
-      || tab.querySelector('[data-unit_id]')?.dataset.unit_id;
-    return String(unitId || '').trim();
-  }
-
-  function isBuildableRecruitmentTab(tab) {
-    return Boolean(
-      getRecruitmentUnitId(tab)
-      && !tab.hidden
-      && tab.style.display !== 'none'
-      && tab.getAttribute('aria-hidden') !== 'true'
-      && !tab.classList.contains('unavailable'),
-    );
-  }
-
-  function getUnitOrderRemainingCount(order) {
-    const attributes = getModelAttributes(order);
-    const candidates = [
-      typeof order?.getUnitsLeft === 'function' ? order.getUnitsLeft() : null,
-      attributes.units_left,
-      attributes.unitsLeft,
-      typeof order?.getCount === 'function' ? order.getCount() : null,
-      attributes.count,
-    ];
-    const count = candidates.find((value) => (
-      value != null && value !== '' && Number.isFinite(Number(value))
-    ));
-    return Math.max(0, Number(count) || 0);
-  }
-
-  function getTownUnitOrders(town, townId) {
-    try {
-      const townOrders = getModelArray(town?.getUnitOrdersCollection?.());
-      if (townOrders.length > 0) return townOrders;
-    } catch (error) { /* Fall back to MM while a town collection is loading. */ }
-
-    return getModelArray(window.MM?.getModels?.()?.UnitOrder).filter((order) => {
-      const attributes = getModelAttributes(order);
-      const orderTownId = typeof order?.getTownId === 'function'
-        ? order.getTownId()
-        : attributes.town_id ?? attributes.townId;
-      return orderTownId != null && String(orderTownId) === String(townId);
-    });
-  }
-
-  function getCurrentTownRecruitmentCounts() {
-    const townId = getCurrentTownId();
-    const town = window.ITowns?.getCurrentTown?.()
-      || window.ITowns?.getTown?.(townId)
-      || null;
-    if (!town || townId == null) return new Map();
-
-    const present = getModelAttributes(town.units?.() || {});
-    const outside = getModelAttributes(town.unitsOuter?.() || {});
-    const queued = {};
-    getTownUnitOrders(town, townId).forEach((order) => {
-      const attributes = getModelAttributes(order);
-      const unitId = String(
-        order?.getUnitId?.()
-        || attributes.unit_type
-        || attributes.unit_id
-        || attributes.type
-        || '',
-      ).trim();
-      if (!unitId) return;
-      queued[unitId] = (queued[unitId] || 0) + getUnitOrderRemainingCount(order);
-    });
-
-    const counts = new Map();
-    const unitIds = new Set([
-      ...Object.keys(present),
-      ...Object.keys(outside),
-      ...Object.keys(queued),
-    ]);
-    unitIds.forEach((unitId) => {
-      const presentCount = Math.max(0, Number(present[unitId]) || 0);
-      const outsideCount = Math.max(0, Number(outside[unitId]) || 0);
-      const queuedCount = Math.max(0, Number(queued[unitId]) || 0);
-      counts.set(unitId, {
-        present: presentCount,
-        outside: outsideCount,
-        queued: queuedCount,
-        total: presentCount + outsideCount + queuedCount,
-      });
-    });
-    return counts;
-  }
-
-  const renderedRecruitmentTotalRoots = new WeakSet();
-
-  function renderRecruitmentTotals() {
-    const roots = document.querySelectorAll(RECRUITMENT_TOTALS.rootSelector);
-    if (roots.length === 0) return;
-
-    const counts = getCurrentTownRecruitmentCounts();
-    roots.forEach((root) => {
-      if (renderedRecruitmentTotalRoots.has(root)) return;
-      const tabs = root.querySelectorAll(RECRUITMENT_TOTALS.tabSelector);
-      if (tabs.length === 0) return;
-
-      let hasBuildableUnits = false;
-      tabs.forEach((tab) => {
-        let total = tab.querySelector(`.${RECRUITMENT_TOTALS.totalClass}`);
-        if (!isBuildableRecruitmentTab(tab)) {
-          total?.remove();
-          return;
-        }
-
-        hasBuildableUnits = true;
-        const unitId = getRecruitmentUnitId(tab);
-        const count = counts.get(unitId) || {
-          present: 0,
-          outside: 0,
-          queued: 0,
-          total: 0,
-        };
-        if (!total) {
-          total = document.createElement('span');
-          total.className = `${RECRUITMENT_TOTALS.totalClass} unit_order_total`;
-          total.setAttribute('aria-hidden', 'true');
-          tab.append(total);
-        }
-        const totalText = count.total.toLocaleString();
-        if (total.textContent !== totalText) total.textContent = totalText;
-        total.title = `Total: ${count.total.toLocaleString()} (present: ${count.present.toLocaleString()}, outside: ${count.outside.toLocaleString()}, queued: ${count.queued.toLocaleString()})`;
-        total.dataset.present = String(count.present);
-        total.dataset.outside = String(count.outside);
-        total.dataset.queued = String(count.queued);
-      });
-      root.classList.toggle(RECRUITMENT_TOTALS.activeClass, hasBuildableUnits);
-      renderedRecruitmentTotalRoots.add(root);
-    });
-  }
-
-  function allowRecruitmentTotalsRefresh(event) {
-    const refreshButton = event.target instanceof Element
-      ? event.target.closest(RECRUITMENT_TOTALS.refreshButtonSelector)
-      : null;
-    if (!refreshButton) return;
-
-    const recruitmentWindow = refreshButton.closest('.ui-dialog, [id^="gpwnd_"]');
-    const root = recruitmentWindow?.querySelector(RECRUITMENT_TOTALS.rootSelector)
-      || document.querySelector(RECRUITMENT_TOTALS.rootSelector);
-    if (root) renderedRecruitmentTotalRoots.delete(root);
-  }
-
   function refreshUnitQueue() {
     try {
       unitQueueList = getQueuedUnits();
@@ -9194,7 +10347,9 @@
     button.setAttribute('aria-expanded', String(unitQueueOpen));
     button.style.top = '140px';
     button.style.right = '110px';
-    button.style.zIndex = '10000';
+    // Same stacking level as the GrepoData settings button, so native
+    // Grepolis windows can cover it when moved over it.
+    button.style.zIndex = '101';
     button.innerHTML = `
       <svg width="22" height="22" viewBox="0 0 20 21" aria-hidden="true"
         style="display:block;margin:6px 0 0 5px;pointer-events:none">
@@ -9225,7 +10380,6 @@
     createTradeOverviewButton();
     syncAdvisorGatedTools();
     renderTradeCapacityMarkers();
-    renderRecruitmentTotals();
     window.requestAnimationFrame(positionToolDock);
   }
 
@@ -9247,22 +10401,18 @@
     COLLECT_ALARM.collectButtonSelector,
     '#farm_town_wrapper',
   ].join(',');
-  const RECRUITMENT_TOTALS_SELECTOR = `${RECRUITMENT_TOTALS.rootSelector}, #unit_order`;
   const DOCK_POSITION_SELECTOR = `#${APP.toolDockId}, .ui_quickbar, .nui_main_menu`;
   let uiMaintenanceTimer = null;
   let uiMaintenanceNeedsAdvisorUi = false;
   let uiMaintenanceNeedsTradeMarkers = false;
-  let uiMaintenanceNeedsRecruitmentTotals = false;
   let uiMaintenanceNeedsDockPosition = false;
   function scheduleUiMaintenance({
     advisorUi = false,
     tradeMarkers = false,
-    recruitmentTotals = false,
     dockPosition = false,
   } = {}) {
     uiMaintenanceNeedsAdvisorUi ||= advisorUi;
     uiMaintenanceNeedsTradeMarkers ||= tradeMarkers;
-    uiMaintenanceNeedsRecruitmentTotals ||= recruitmentTotals;
     uiMaintenanceNeedsDockPosition ||= dockPosition;
     if (uiMaintenanceTimer !== null) return;
 
@@ -9270,16 +10420,13 @@
       uiMaintenanceTimer = null;
       const shouldSyncAdvisorUi = uiMaintenanceNeedsAdvisorUi;
       const shouldRenderTradeMarkers = uiMaintenanceNeedsTradeMarkers;
-      const shouldRenderRecruitmentTotals = uiMaintenanceNeedsRecruitmentTotals;
       const shouldPositionDock = uiMaintenanceNeedsDockPosition;
       uiMaintenanceNeedsAdvisorUi = false;
       uiMaintenanceNeedsTradeMarkers = false;
-      uiMaintenanceNeedsRecruitmentTotals = false;
       uiMaintenanceNeedsDockPosition = false;
 
       if (shouldSyncAdvisorUi) syncAdvisorGatedTools();
       if (shouldRenderTradeMarkers) renderTradeCapacityMarkers();
-      if (shouldRenderRecruitmentTotals) renderRecruitmentTotals();
       if (shouldPositionDock) window.requestAnimationFrame(positionToolDock);
       if (shouldSyncAdvisorUi && (
         !document.getElementById(APP.windowId)
@@ -9640,7 +10787,6 @@
 
   function init() {
     initMovementTools();
-    document.addEventListener('click', allowRecruitmentTotalsRefresh, true);
     ensureUi();
     monitoredTownTradeLockIds = Object.keys(loadTownTradeLocks()).sort().join(',');
     hookTownSpellListRender();
@@ -9664,6 +10810,7 @@
     initTradeCapacityNotifications();
     initCollectAlarm();
     initAttackAlarm();
+    initRecruitDriveAutoSync();
     refreshUnitQueue();
     window.setInterval(refreshUnitQueue, UNIT_QUEUE.refreshInterval);
 
@@ -9673,19 +10820,12 @@
     const observer = new MutationObserver((mutations) => {
       let advisorUi = false;
       let tradeMarkers = false;
-      let recruitmentTotals = false;
       let dockPosition = false;
 
       for (const mutation of mutations) {
         if (mutation.type === 'attributes') {
           if (mutation.target instanceof Element && mutation.target.closest('.ui_advisors')) {
             advisorUi = true;
-          }
-          if (
-            mutation.target instanceof Element
-            && mutation.target.closest(RECRUITMENT_TOTALS_SELECTOR)
-          ) {
-            recruitmentTotals = true;
           }
           continue;
         }
@@ -9716,16 +10856,6 @@
         ))) {
           tradeMarkers = true;
         }
-        if (
-          (mutation.target instanceof Element
-            && mutation.target.closest(RECRUITMENT_TOTALS_SELECTOR))
-          || changedNodes.some((node) => elementMatchesOrContains(
-            node,
-            RECRUITMENT_TOTALS_SELECTOR,
-          ))
-        ) {
-          recruitmentTotals = true;
-        }
         if (changedNodes.some((node) => elementMatchesOrContains(
           node,
           DOCK_POSITION_SELECTOR,
@@ -9739,11 +10869,10 @@
         });
       }
 
-      if (advisorUi || tradeMarkers || recruitmentTotals || dockPosition) {
+      if (advisorUi || tradeMarkers || dockPosition) {
         scheduleUiMaintenance({
           advisorUi,
           tradeMarkers,
-          recruitmentTotals,
           dockPosition,
         });
       }
@@ -9763,7 +10892,6 @@
       monitoredTownTradeLockIds = tradeLockIdsAfter;
       syncAdvisorGatedTools();
       renderTradeCapacityMarkers();
-      renderRecruitmentTotals();
       positionToolDock();
       if (
         !document.getElementById(APP.windowId)
@@ -9803,4 +10931,5512 @@
       console.error(`[${APP.name}] failed to initialize`, error);
     }
   }
+})();
+
+// ---------------------------------------------------------------------------
+// Embedded Recruit Optimizer & Recruitment Simulator 61.10
+// ---------------------------------------------------------------------------
+(function() {
+    'use strict';
+
+    const spells = [
+        { id: 'llamada_mar', name: 'Call of the Ocean (Naval Units - 100%)', bonus: 100, navalOnly: true, terrestrialOnly: false, usesFury: false, color: '#333333' },
+        { id: 'crecimiento_poblacion', name: 'Population Growth (Land Units - 100%)', bonus: 100, navalOnly: false, terrestrialOnly: true, usesFury: false, color: '#333333' },
+        { id: 'entrenamiento_espartano', name: 'Spartan Training (Land Units - 70%)', bonus: 70, navalOnly: false, terrestrialOnly: true, usesFury: false, color: '#333333' },
+        { id: 'furia_ares', name: 'Fury of Ares (Land Units - +1% per 100 Fury)', bonus: 0, navalOnly: false, terrestrialOnly: true, usesFury: true, color: '#333333' },
+        { id: 'reduccion_epica', name: 'Reduced Recruitment Time: Epic (All Units - 50%)', bonus: 50, navalOnly: false, terrestrialOnly: false, usesFury: false, color: '#333333' },
+        { id: 'reduccion_rara', name: 'Reduced Recruitment Time: Rare (All Units - 25%)', bonus: 25, navalOnly: false, terrestrialOnly: false, usesFury: false, color: '#333333' }
+    ];
+
+    const heroes = [
+        { id: 'filoctetes', name: 'Philoctetes', description: 'Reduces the resource cost and recruitment time of Archers.', level1: 22, level20: 60 },
+        { id: 'quiron', name: 'Cheiron', description: 'Reduces the resource cost and recruitment time of Hoplites.', level1: 22, level20: 60 },
+        { id: 'odiseo', name: 'Odysseus', description: 'Reduces the resource cost and recruitment time of Swordsmen.', level1: 22, level20: 60 },
+        { id: 'aristoteles', name: 'Aristotle', description: 'Reduces the resource cost and construction time of Light Ships.', level1: 22, level20: 60 },
+        { id: 'dedalo', name: 'Daedalus', description: 'Reduces the resource cost and construction time of Biremes.', level1: 11, level20: 30 },
+        { id: 'euribia', name: 'Eurybia', description: 'Reduces the resource cost and construction time of Triremes.', level1: 22, level20: 60 },
+        { id: 'anysia', name: 'Anysia', description: 'Reduces the favor cost of Mythical Units.', level1: 10, level20: 30 },
+        { id: 'ferquion', name: 'Pherikyon', description: 'Reduces the recruitment time of all Land Units.', level1: 16.5, level20: 45 },
+        { id: 'parifaistes', name: 'Pariphaistes', description: 'Reduces the construction time of all naval units.', level1: 22, level20: 60 },
+        { id: 'argos', name: 'Argus', description: 'Reduces the resource cost of all Naval Units.', level1: 22, level20: 60 }
+    ];
+
+    heroes.sort((a,b)=>a.name.localeCompare(b.name,undefined,{sensitivity:'base'}));
+    const units = [
+        // 1. Barracks - same left-to-right order as the recruitment view
+        { id: 'sword', name: 'Swordsman', time: 1080, w: 95, s: 0, m: 85, f: 0, naval: false },
+        { id: 'slinger', name: 'Slinger', time: 1200, w: 55, s: 100, m: 40, f: 0, naval: false },
+        { id: 'archer', name: 'Archer', time: 1140, w: 120, s: 0, m: 75, f: 0, naval: false },
+        { id: 'hoplite', name: 'Hoplite', time: 1380, w: 0, s: 75, m: 150, f: 0, naval: false },
+        { id: 'rider', name: 'Horseman', time: 4320, w: 240, s: 120, m: 360, f: 0, naval: false },
+        { id: 'chariot', name: 'Chariot', time: 5760, w: 200, s: 440, m: 320, f: 0, naval: false },
+        { id: 'catapult', name: 'Catapult', time: 12600, w: 700, s: 700, m: 700, f: 0, naval: false },
+        { id: 'godsent', name: 'Divine Envoy', time: 2100, w: 0, s: 0, m: 0, f: 12, naval: false },
+
+        // 2. Harbor - same left-to-right order as the harbor view
+        { id: 'big_transporter', name: 'Transport Boat', time: 5400, w: 500, s: 500, m: 400, f: 0, naval: true },
+        { id: 'bireme', name: 'Bireme', time: 9900, w: 800, s: 700, m: 180, f: 0, naval: true },
+        { id: 'attack_ship', name: 'Light Ship', time: 11880, w: 1300, s: 300, m: 800, f: 0, naval: true },
+        { id: 'demolition_ship', name: 'Fire Ship', time: 9000, w: 500, s: 750, m: 150, f: 0, naval: true },
+        { id: 'small_transporter', name: 'Fast Transport Ship', time: 6600, w: 800, s: 0, m: 400, f: 0, naval: true },
+        { id: 'trireme', name: 'Trireme', time: 14400, w: 2000, s: 1300, m: 900, f: 0, naval: true },
+        { id: 'colonize_ship', name: 'Colony Ship', time: 25920, w: 10000, s: 10000, m: 10000, f: 0, naval: true },
+
+        // 3. Mythical Units - sorted by deity
+        // Zeus
+        { id: 'minotaur', name: 'Zeus - Minotaur', time: 16200, w: 900, s: 1300, m: 800, f: 180, naval: false },
+        { id: 'manticore', name: 'Zeus - Manticore', time: 32400, w: 4400, s: 3000, m: 3400, f: 390, naval: false },
+        // Hera
+        { id: 'harpy', name: 'Hera - Harpy', time: 10080, w: 1600, s: 400, m: 1360, f: 170, naval: false },
+        { id: 'medusa', name: 'Hera - Medusa', time: 22500, w: 1400, s: 2200, m: 1800, f: 280, naval: false },
+        // Poseidon
+        { id: 'cyclops', name: 'Poseidon - Cyclops', time: 28680, w: 2000, s: 1000, m: 1600, f: 240, naval: false },
+        { id: 'hydra', name: 'Poseidon - Hydra', time: 42000, w: 4000, s: 3200, m: 4000, f: 420, naval: true },
+        // Athene
+        { id: 'centaur', name: 'Athena - Centaur', time: 8220, w: 1100, s: 700, m: 1000, f: 140, naval: false },
+        { id: 'pegasus', name: 'Athena - Pegasus', time: 14400, w: 2800, s: 400, m: 2400, f: 220, naval: false },
+        // Hades
+        { id: 'cerberus', name: 'Hades - Cerberus', time: 8400, w: 800, s: 2600, m: 2200, f: 320, naval: false },
+        { id: 'erinyes', name: 'Hades - Erinyes', time: 21600, w: 2500, s: 3000, m: 3500, f: 380, naval: false },
+        // Artemis
+        { id: 'griffin', name: 'Artemis - Griffin', time: 15900, w: 3000, s: 2500, m: 2800, f: 360, naval: false },
+        { id: 'boar', name: 'Artemis - Calydonian Boar', time: 7800, w: 1000, s: 800, m: 600, f: 130, naval: false },
+        // Aphrodite
+        { id: 'siren', name: 'Aphrodite - Siren', time: 11400, w: 1200, s: 900, m: 1500, f: 190, naval: true },
+        { id: 'satyr', name: 'Aphrodite - Satyrs', time: 10520, w: 800, s: 600, m: 1100, f: 110, naval: false },
+        // Ares
+        { id: 'espartoi', name: 'Ares - Spartoi', time: 6900, w: 500, s: 1200, m: 800, f: 150, naval: false },
+        { id: 'ladon', name: 'Ares - Ladon', time: 90480, w: 3500, s: 3500, m: 3500, f: 450, naval: false }
+    ];
+
+
+
+    function formatTime(totalSeconds) {
+        if (totalSeconds === Infinity || !Number.isFinite(totalSeconds) && !isNaN(totalSeconds)) return "infinite";
+        if (isNaN(totalSeconds) || totalSeconds <= 0) return "0h 0m 0s";
+        const roundedTotal = Math.round(totalSeconds + 1e-9);
+        const h = Math.floor(roundedTotal / 3600);
+        const m = Math.floor((roundedTotal % 3600) / 60);
+        const s = roundedTotal % 60;
+        return `${h}h ${m}m ${s}s`;
+    }
+
+    function town() { try { return window.ITowns && ITowns.getCurrentTown ? ITowns.getCurrentTown() : null; } catch(e) { return null; } }
+    function snapshot() {
+        try {
+            const all = window.MM && MM.getModels ? MM.getModels() : {};
+            const out = {};
+            Object.keys(all || {}).forEach(k => out[k] = Object.values(all[k] || {}).map(m => m && (m.attributes || (m.toJSON ? m.toJSON() : {}))));
+            return JSON.stringify(out).toLowerCase();
+        } catch(e) { return ''; }
+    }
+    function researchValue(researches,key) {
+        try {
+            if(typeof researches.get==='function') {
+                const value=researches.get(key);
+                if(value!==undefined&&value!==null)return value===true||value===1||value==='1';
+            }
+            const data=researches.attributes||(researches.toJSON?researches.toJSON():researches)||{};
+            const value=data[key];
+            return value===true||value===1||value==='1';
+        } catch(e){return false;}
+    }
+    function hasResearch(keys) {
+        const normalizedKeys=(keys||[]).map(key=>String(key).normalize('NFKC').toLowerCase().replace(/[\s-]+/g,'_'));
+        const containsActiveResearch=(value,depth=0,visited=new Set())=>{
+            if(value===null||value===undefined||depth>6)return false;
+            if(typeof value!=='object')return false;
+            if(visited.has(value))return false;
+            visited.add(value);
+            for(const [rawKey,rawValue] of Object.entries(value)){
+                const key=String(rawKey).normalize('NFKC').toLowerCase().replace(/[\s-]+/g,'_');
+                if(normalizedKeys.includes(key)&&(rawValue===true||rawValue===1||rawValue==='1'))return true;
+                if(rawValue&&typeof rawValue==='object'&&containsActiveResearch(rawValue,depth+1,visited))return true;
+            }
+            return false;
+        };
+        const t=town();
+        try {
+            const researches=t&&typeof t.getResearches==='function'?t.getResearches():null;
+            if(researches&&keys.some(key=>researchValue(researches,key)))return true;
+            const researchData=researches&&(researches.attributes||(researches.toJSON?researches.toJSON():researches));
+            if(containsActiveResearch(researchData))return true;
+        } catch(e) {}
+        try {
+            const townId=String(t?.getId?.()??window.Game?.townId??window.Game?.town_id??'');
+            const groups=MM.getModels();
+            for(const [groupName,group] of Object.entries(groups||{})) {
+                if(!/research/i.test(groupName))continue;
+                for(const model of Object.values(group||{})) {
+                    const data=model.attributes||(model.toJSON?model.toJSON():model)||{};
+                    const modelTown=String(data.town_id??data.id??'');
+                    if(modelTown&&townId&&modelTown!==townId)continue;
+                    if(keys.some(key=>researchValue(data,key))||containsActiveResearch(data))return true;
+                }
+            }
+        } catch(e) {}
+        return false;
+    }
+    function hasResearchOrChecked(keys,checkboxId) {
+        if(hasResearch(keys))return true;
+        const checkbox=checkboxId?document.getElementById(checkboxId):null;
+        return !!checkbox?.checked;
+    }
+    function normalizePowerId(data) {
+        return String(data?.power_id??data?.powerId??data?.effect_id??data?.effectId??data?.configuration?.type??data?.configuration?.power_id??data?.configuration?.id??data?.configuration?.name??data?.power?.id??data?.power?.type??data?.power?.name??data?.power??data?.type??data?.id??data?.name??data?.title??'')
+            .normalize('NFKC').toLowerCase().replace(/[\s-]+/g,'_');
+    }
+    function powerStillActive(data) {
+        if(!data || data.active===false || data.is_active===false || data.expired===true || data.cancelled===true)return false;
+        const end=Number(data.end_at??data.ends_at??data.expiration??data.expire_at??data.end??data.valid_until??0);
+        if(!end)return true;
+        return end>1000000000000 ? end>Date.now() : end>Math.floor(Date.now()/1000);
+    }
+    function getDirectTownPowerRecords() {
+        const currentTown=town();
+        const currentTownId=String(currentTown?.getId?.()??window.Game?.townId??window.Game?.town_id??'');
+        const records=[];
+        const visited=new Set();
+        const add=(value,depth=0)=>{
+            if(!value||depth>3)return;
+            if(Array.isArray(value)){value.forEach(item=>add(item,depth+1));return;}
+            if(typeof value!=='object'||visited.has(value))return;
+            visited.add(value);
+            if(value.models){
+                (Array.isArray(value.models)?value.models:Object.values(value.models||{})).forEach(item=>add(item,depth+1));
+            }
+            let data;
+            try { data=value.attributes||(typeof value.toJSON==='function'?value.toJSON():value); } catch(e) { return; }
+            if(!data||typeof data!=='object')return;
+            const recordTownId=String(data.town_id??data.target_town_id??data.casted_on_town_id??data.target_id??'');
+            if(!recordTownId||!currentTownId||recordTownId===currentTownId)records.push(data);
+            // Depending on the client version, Grepolis stores Suffering in a direct sub-container
+            // of the current town. Only these known spell containers are resolved.
+            ['casted_powers_collection','casted_powers','cast_powers','powers','active_powers','effects','active_effects','buffs']
+                .forEach(key=>add(data[key],depth+1));
+        };
+        try {
+            add(currentTown);
+            add(currentTown?.attributes);
+            add(currentTown?.casted_powers_collection);
+            add(currentTown?.casted_powers);
+            if(typeof currentTown?.getCastedPowersCollection==='function')add(currentTown.getCastedPowersCollection());
+            if(typeof currentTown?.getCastedPowers==='function')add(currentTown.getCastedPowers());
+        } catch(e) {}
+        return records;
+    }
+    function activePower(keys) {
+        // Read spells only directly from the currently selected town.
+        // No MM group search, no recursive text search and no DOM/tooltip scan.
+        const aliases=new Set(keys.map(key=>String(key).normalize('NFKC').toLowerCase().replace(/[\s-]+/g,'_')));
+        if(aliases.has('nereids')||aliases.has('nereiden')||aliases.has('nereid')){
+            ['nereids','nereid','nereiden','nereids_power','nereids_boost','nereid_power','nereid_boost'].forEach(key=>aliases.add(key));
+        }
+        if(aliases.has('suffering')||aliases.has('leiden')){
+            ['suffering','leiden','passionate_training','passionate_training_boost','unit_training_boost','population_cost_reduction','ground_unit_cost_reduction','land_unit_cost_reduction','unit_cost_reduction'].forEach(key=>aliases.add(key));
+        }
+        return getDirectTownPowerRecords().some(data=>{
+            if(!powerStillActive(data))return false;
+
+            // Grepolis does not always store the identifier in the same field for every spell,
+            // so check every direct identifier field of the town spell instead of only
+            // the first value found (which is sometimes a numeric ID for Nereids).
+            const rawIds=[
+                data?.power_id,data?.powerId,data?.power_type,data?.powerType,
+                data?.effect_id,data?.effectId,data?.effect_type,data?.effectType,
+                data?.configuration?.type,data?.configuration?.power_id,
+                data?.configuration?.powerId,data?.configuration?.effect_id,
+                data?.configuration?.effectId,data?.configuration?.id,data?.configuration?.name,
+                data?.configuration?.key,data?.configuration?.identifier,
+                data?.power?.id,data?.power?.type,data?.power?.name,data?.power?.key,data?.power?.identifier,
+                data?.effect?.id,data?.effect?.type,data?.effect?.name,data?.effect?.key,data?.effect?.identifier,
+                typeof data?.power==='string'?data.power:null,
+                typeof data?.effect==='string'?data.effect:null,
+                data?.key,data?.identifier,data?.type,data?.name,data?.title,data?.id
+            ];
+            const ids=rawIds.filter(value=>value!==undefined&&value!==null&&value!=='')
+                .map(value=>String(value).normalize('NFKC').toLowerCase().replace(/[\s-]+/g,'_'));
+
+            if(ids.some(id=>aliases.has(id)))return true;
+
+            // Limited fallback that stays inside the current town's direct spell data.
+            // Catches variants such as "nereids_cost_reduction" without scanning other models or the DOM.
+            const wantsNereids=aliases.has('nereids')||aliases.has('nereiden')||aliases.has('nereid');
+            if(wantsNereids&&ids.some(id=>/(^|_)(nereids?|nereiden)(_|$)/.test(id)))return true;
+            const wantsSuffering=aliases.has('suffering')||aliases.has('leiden');
+            if(wantsSuffering&&ids.some(id=>/(^|_)(suffering|leiden|passionate_training|unit_training_boost|population_cost_reduction|ground_unit_cost_reduction|land_unit_cost_reduction)(_|$)/.test(id)))return true;
+            return false;
+        });
+    }
+    function plainModel(model) {
+        try { return model && (model.attributes || (model.toJSON ? model.toJSON() : model)); } catch(e) { return null; }
+    }
+    function findModelsByGroup(pattern) {
+        const result=[];
+        try {
+            const groups=MM.getModels();
+            Object.keys(groups || {}).forEach(name => {
+                if (!pattern.test(name)) return;
+                Object.values(groups[name] || {}).forEach(model => result.push(plainModel(model)));
+            });
+        } catch(e) {}
+        return result.filter(Boolean);
+    }
+    function getActiveAresFuryEffect() {
+        // What counts is the Fury spent on the active effect, not the player's current Fury.
+        const ids=['fury_of_ares','ares_fury','furia_ares','ares_rage','rage_of_ares'];
+        const matches=getDirectTownPowerRecords().filter(record => {
+            if(!powerStillActive(record))return false;
+            const id=normalizePowerId(record);
+            return ids.some(alias => id===alias || id.includes(alias));
+        });
+        const amountKeys=[
+            'fury_used','used_fury','spent_fury','fury_spent','fury_amount','ares_fury_amount',
+            'rage_used','used_rage','spent_rage','rage_spent','rage_amount','amount','value'
+        ];
+        const readAmount=value=>{
+            if(!value || typeof value!=='object')return null;
+            for(const key of amountKeys){
+                const n=Number(value[key]);
+                if(Number.isFinite(n) && n>=0 && n<=5000)return n;
+            }
+            for(const key of ['configuration','config','power','params','data','effect']){
+                const nested=readAmount(value[key]);
+                if(nested!==null)return nested;
+            }
+            return null;
+        };
+        for(const record of matches){
+            const amount=readAmount(record);
+            if(amount!==null)return {active:true,amount};
+        }
+        return {active:matches.length>0,amount:0};
+    }
+    function readFury() {
+        return getActiveAresFuryEffect().amount;
+    }
+    const heroAliases={
+        philoctetes:'filoctetes',filoctetes:'filoctetes',cheiron:'quiron',chiron:'quiron',quiron:'quiron',odysseus:'odiseo',odiseo:'odiseo',
+        aristotle:'aristoteles',aristoteles:'aristoteles',daidalos:'dedalo',daedalus:'dedalo',dedalo:'dedalo',eurybia:'euribia',euribia:'euribia',
+        anysia:'anysia',argus:'argos',ferkyon:'ferquion',pherikyon:'ferquion',ferquion:'ferquion',pariphaistes:'parifaistes',parifaistes:'parifaistes',argos:'argos'
+    };
+    function normalizeHeroId(value) {
+        const raw=String(value ?? '').toLowerCase().split(':').pop().replace(/[^a-z]/g,'');
+        return heroAliases[raw] || raw;
+    }
+    const HERO_LEVEL_STORAGE_KEY='grepo_sim_hero_levels_v2';
+    const HERO_NAMES={
+        filoctetes:['filoctetes','philoctetes','philoktetes'],
+        quiron:['quiron','cheiron','chiron'], odiseo:['odiseo','odysseus'],
+        aristoteles:['aristoteles','aristotle'], dedalo:['dedalo','daidalos','daedalus','dädalus'],
+        euribia:['euribia','eurybia'],  anysia:['anysia'], argos:['argos','argus'],   
+        ferquion:['ferquion','ferkyon','pherikyon'], parifaistes:['parifaistes','pariphaistes']
+    };
+    function normalizeText(value) {
+        return String(value??'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+    }
+    function identifyHero(value) {
+        const text=normalizeText(typeof value==='string'?value:JSON.stringify(value||{}));
+        for(const [id,names] of Object.entries(HERO_NAMES)) if(names.some(name=>text.includes(normalizeText(name)))) return id;
+        return null;
+    }
+    function walkObjects(value,out=[],seen=new WeakSet(),depth=0) {
+        if(value==null||depth>8)return out;
+        if(typeof value!=='object')return out;
+        if(seen.has(value))return out; seen.add(value);
+        const plain=plainModel(value);
+        if(plain&&typeof plain==='object'){
+            out.push(plain);
+            if(Array.isArray(plain))plain.forEach(v=>walkObjects(v,out,seen,depth+1));
+            else Object.values(plain).forEach(v=>walkObjects(v,out,seen,depth+1));
+        }
+        return out;
+    }
+    function allHeroRecords() {
+        const rows=[];
+        try {
+            const groups=MM.getModels();
+            Object.entries(groups||{}).forEach(([group,models])=>{
+                Object.values(models||{}).forEach(model=>{
+                    const a=plainModel(model); if(!a)return;
+                    if(/hero/i.test(group)||identifyHero(a)) walkObjects(a,rows);
+                });
+            });
+        } catch(e) {}
+        try { const t=town(); if(t)walkObjects(plainModel(t),rows); } catch(e) {}
+        return rows.filter(a=>a&&typeof a==='object');
+    }
+    function heroIdFrom(a) {
+        for(const value of [a.hero_id,a.hero_type,a.hero_name,a.hero,a.type,a.name,a.id,a.key,a.identifier]){
+            const id=identifyHero(value); if(id)return id;
+        }
+        return identifyHero(a);
+    }
+    function heroLevelFrom(a) {
+        for(const k of ['level','hero_level','current_level','lvl','heroLevel']) {
+            const n=Number(a&&a[k]); if(Number.isFinite(n)&&n>=1&&n<=20)return n;
+        }
+        const text=String(a&&JSON.stringify(a)||'');
+        const match=text.match(/(?:hero[_ ]?level|level|lvl)[^0-9]{0,8}(20|1[0-9]|[1-9])/i);
+        return match?Number(match[1]):0;
+    }
+    function loadRememberedHeroLevels() {
+        try { const value=JSON.parse(localStorage.getItem(HERO_LEVEL_STORAGE_KEY)||'{}'); return value&&typeof value==='object'?value:{}; } catch(e){return {};}
+    }
+    function rememberHeroLevel(heroId,level) {
+        const id=normalizeHeroId(heroId), n=Math.max(1,Math.min(20,Number(level)||1));
+        if(!heroes.some(h=>h.id===id))return;
+        const saved=loadRememberedHeroLevels(); saved[id]=n;
+        localStorage.setItem(HERO_LEVEL_STORAGE_KEY,JSON.stringify(saved));
+    }
+    function getRememberedHeroLevel(heroId) {
+        const n=Number(loadRememberedHeroLevels()[normalizeHeroId(heroId)]); return n>=1&&n<=20?n:0;
+    }
+    function decodeHeroTownLink(link) {
+        try {
+            const raw=String(link?.getAttribute('href')||'').replace(/^#/,'');
+            if(!raw)return null;
+            return JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(raw),c=>c.charCodeAt(0))));
+        } catch(e){return null;}
+    }
+    function currentTownObject() {
+        const t=town();
+        if(!t)return null;
+        try { return typeof t.toJSON==='function'?t.toJSON():(t.attributes||t); } catch(e){ return t.attributes||null; }
+    }
+    function modelManagerHeroRecords() {
+        const rows=[];
+        const add=(value,source='')=>{
+            if(value==null)return;
+            if(Array.isArray(value)){value.forEach(v=>add(v,source));return;}
+            if(typeof value!=='object')return;
+            const plain=plainModel(value);
+            if(!plain||typeof plain!=='object')return;
+            rows.push({...plain,__source:source});
+        };
+        try {
+            const collections=MM.getCollections?MM.getCollections():{};
+            Object.entries(collections||{}).forEach(([name,group])=>{
+                if(!/hero/i.test(name))return;
+                const list=Array.isArray(group)?group:Object.values(group||{});
+                list.forEach(collection=>{
+                    if(collection&&Array.isArray(collection.models))collection.models.forEach(model=>add(model,'collection:'+name));
+                    else add(collection,'collection:'+name);
+                });
+            });
+        } catch(e) {}
+        try {
+            const models=MM.getModels?MM.getModels():{};
+            Object.entries(models||{}).forEach(([name,group])=>{
+                if(!/hero/i.test(name))return;
+                Object.values(group||{}).forEach(model=>add(model,'model:'+name));
+            });
+        } catch(e) {}
+        return rows;
+    }
+    function directTownHeroReference() {
+        const t=town(); const townObj=currentTownObject()||{};
+        const candidates=[];
+        const add=value=>{if(value!==undefined&&value!==null&&value!=='')candidates.push(value);};
+        try { if(typeof t.getHero==='function')add(t.getHero()); } catch(e) {}
+        try { if(typeof t.getHeroId==='function')add(t.getHeroId()); } catch(e) {}
+        try { if(typeof t.getAssignedHero==='function')add(t.getAssignedHero()); } catch(e) {}
+        ['hero','hero_id','hero_type','assigned_hero','assigned_hero_id','current_hero','current_hero_id'].forEach(key=>add(townObj[key]));
+        for(const raw of candidates){
+            const obj=plainModel(raw)||raw;
+            const id=identifyHero(obj)||normalizeHeroId(typeof obj==='object'?(obj.hero_id??obj.hero_type??obj.id??obj.name):obj);
+            if(heroes.some(hero=>hero.id===id))return {id,raw:obj};
+        }
+        return null;
+    }
+    function exactHeroLevel(record) {
+        if(!record)return 0;
+        for(const key of ['level','hero_level','current_level','lvl','heroLevel']){
+            const n=Number(record[key]); if(Number.isFinite(n)&&n>=1&&n<=20)return n;
+        }
+        return 0;
+    }
+    function getPlayerHeroRecords() {
+        try {
+            return Object.values(MM.getModels().PlayerHero || {}).map(model => model.attributes || (model.toJSON ? model.toJSON() : model)).filter(Boolean);
+        } catch(e) { return []; }
+    }
+    function gameHeroTypeToSimulatorId(type) {
+        const value=String(type||'').toLowerCase();
+        if(value==='argus')return 'argos';
+        return normalizeHeroId(value);
+    }
+    function readHeroDataWithoutCouncil() {
+        const activeTownId=String(ITowns.getCurrentTown().getId());
+        const records=getPlayerHeroRecords();
+        const levels={};
+        let assigned=null;
+        records.forEach(record=>{
+            const id=gameHeroTypeToSimulatorId(record.type);
+            const level=Number(record.level)||0;
+            if(!heroes.some(hero=>hero.id===id))return;
+            if(level>=1&&level<=20)levels[id]=level;
+            // Console diagnosis proved that home_town_id contains the assigned town.
+            if(record.home_town_id!==null && record.home_town_id!==undefined && String(record.home_town_id)===activeTownId){
+                assigned={id,level};
+            }
+        });
+        return {assigned,levels};
+    }
+    function readCouncilSlots() {
+        const rows=[];
+        document.querySelectorAll('.heroes_overview .hero_slot').forEach(slot=>{
+            const ignored=new Set(['hero_slot','the_lowest_level_hero']);
+            let internal=[...slot.classList].find(c=>!ignored.has(c))||'';
+            if(internal==='argus')internal='argos';
+            const id=normalizeHeroId(internal)||identifyHero(slot.querySelector('.hero_caption')?.textContent||'');
+            if(!heroes.some(h=>h.id===id))return;
+            const levelText=slot.querySelector('.level_change_indicator')?.textContent||'';
+            const level=Number((levelText.match(/Level\s*:\s*(20|1[0-9]|[1-9])/i)||[])[1])||0;
+            const link=slot.querySelector('.hero_caption .gp_town_link');
+            const townData=decodeHeroTownLink(link);
+            rows.push({id,level,townId:String(townData?.id??''),townName:String(townData?.name??''),assigned:!!slot.querySelector('.btn_hero_unassign')});
+        });
+        return rows;
+    }
+    function readHeroLevelsFromDom() {
+        const levels={};
+        document.querySelectorAll('[class*="hero" i],[id*="hero" i],[data-hero-id],[data-hero-type],[title]').forEach(el=>{
+            const content=[el.getAttribute('data-hero-id'),el.getAttribute('data-hero-type'),el.getAttribute('title'),el.getAttribute('alt'),el.textContent].filter(Boolean).join(' ');
+            const id=identifyHero(content); if(!id)return;
+            const match=content.match(/(?:level|lvl|stufe)\s*[:.]?\s*(20|1[0-9]|[1-9])/i);
+            if(match)levels[id]=Math.max(levels[id]||0,Number(match[1]));
+        });
+        readCouncilSlots().forEach(hero=>{if(hero.level)levels[hero.id]=hero.level;});
+        return levels;
+    }
+    function readHeroLevels() {
+        const exact=readHeroDataWithoutCouncil().levels;
+        const levels={...loadRememberedHeroLevels(),...exact};
+        Object.entries(exact).forEach(([id,level])=>rememberHeroLevel(id,level));
+        return levels;
+    }
+    function rememberDetectedHeroLevels() {
+        const levels=readHeroLevels(); Object.entries(levels).forEach(([id,level])=>rememberHeroLevel(id,level)); return levels;
+    }
+    function currentTownId() {
+        const t=town(); try{return String((t && (t.getId ? t.getId() : (t.id ?? (t.attributes && t.attributes.id)))) ?? '');}catch(e){return '';}
+    }
+    function isAssignedToCurrentTown(a,townId) {
+        const ids=[a.town_id,a.assigned_town_id,a.current_town_id,a.home_town_id,a.origin_town_id,a.city_id].filter(v=>v!=null).map(String);
+        const state=String(a.status??a.state??a.assignment_status??'').toLowerCase();
+        return (townId&&ids.includes(townId))||a.assigned===true||a.is_assigned===true||a.active===true||a.is_active===true||['assigned','active','in_town','home'].includes(state);
+    }
+    function readAssignedHeroFromDom() {
+        const activeTownId=currentTownId();
+        const exactSlot=readCouncilSlots().find(hero=>hero.assigned && hero.townId===activeTownId);
+        if(exactSlot)return {id:exactSlot.id,level:exactSlot.level,exact:true};
+        const selectors=['.ui_hero_overview .hero_icon','.hero_overview .hero_icon','.assigned_hero','[class*="assigned_hero"]','[data-hero-id][class*="active"]','[class*="hero"] [class*="active"]'];
+        for(const selector of selectors){
+            for(const el of document.querySelectorAll(selector)){
+                const style=getComputedStyle(el); if(style.display==='none'||style.visibility==='hidden')continue;
+                const content=[el.dataset?.heroId,el.dataset?.heroType,el.getAttribute('title'),el.getAttribute('alt'),el.textContent,el.innerHTML].filter(Boolean).join(' ');
+                const id=identifyHero(content); if(!id)continue;
+                const match=content.match(/(?:level|lvl|stufe)\s*[:.]?\s*(20|1[0-9]|[1-9])/i);
+                return {id,level:match?Number(match[1]):0};
+            }
+        }
+        return null;
+    }
+    function readAssignedHero() {
+        const gameData=readHeroDataWithoutCouncil();
+        if(!gameData.assigned)return null;
+        return {id:gameData.assigned.id,level:gameData.assigned.level||1,source:'PlayerHero.home_town_id'};
+    }
+    function setHeroSelection(hero) {
+        if(!hero)return false;
+        const select=document.getElementById('sim-hero-select');
+        const level=document.getElementById('sim-hero-level');
+        if(!select||![...select.options].some(option=>option.value===hero.id))return false;
+        select.value=hero.id;
+        select.dispatchEvent(new Event('change',{bubbles:true}));
+        const exactLevel=Math.max(1,Math.min(20,Number(hero.level)||1));
+        if(level)level.value=exactLevel;
+        updateHeroPickerDisplay();
+        updateHeroDetails();
+        rememberHeroLevel(hero.id,exactLevel);
+        prefillMaximumTroops();
+        updateInfoGlobal();
+        return true;
+    }
+    function syncDependentSpells() {
+        const sync=(parent,child)=>{if(!parent||!child)return;child.disabled=!parent.checked;if(!parent.checked)child.checked=false;const l=child.closest('label');if(l)l.style.opacity=parent.checked?'1':'.55';};
+        sync(document.querySelector('.sim-spell[data-id="llamada_mar"]'),document.getElementById('sim-ner'));
+        sync(document.querySelector('.sim-spell[data-id="crecimiento_poblacion"]'),document.getElementById('sim-pob'));
+        const spartan=document.querySelector('.sim-spell[data-id="entrenamiento_espartano"]');
+        const ares=document.querySelector('.sim-spell[data-id="furia_ares"]');
+        if(spartan&&ares){
+            ares.disabled=true;
+            ares.checked=spartan.checked;
+            const label=ares.closest('label');
+            if(label)label.style.opacity=spartan.checked?'1':'.55';
+        }
+    }
+    function getCurrentTownName(){
+        const t=town();
+        try {
+            if(t&&typeof t.getName==='function')return String(t.getName()||'').trim();
+            return String(t?.name??t?.attributes?.name??'').trim();
+        } catch(e){return '';}
+    }
+    function updateSimulatorTownTitle(){
+        const townName=getCurrentTownName();
+        const title=townName ? `Recruitment Simulator - ${townName}` : 'Recruitment Simulator';
+        const root=findRecruitmentWindowRoot();
+        const titleElement=root?.querySelector('.wnd_border_t .title');
+        if(titleElement)titleElement.textContent=title;
+        const taskbarCaption=document.querySelector('#recruitment_simulator_taskbar_item .caption');
+        if(taskbarCaption)taskbarCaption.textContent=title;
+        return title;
+    }
+    function readCurrentGameData() {
+        updateSimulatorTownTitle();
+        const set=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=!!v;};
+        set('sim-mil',hasResearch(['conscription'])); set('sim-mat',hasResearch(['mathematics']));
+        set('sim-inst',hasResearch(['trainer','instructor'])); set('sim-const',hasResearch(['shipwright']));
+        const active={
+            llamada_mar:activePower(['call_of_the_ocean','call_of_the_sea','sea_call','llamada_mar']),
+            crecimiento_poblacion:activePower(['population_growth','birth_growth','fertility_improvement','crecimiento_poblacion']),
+            entrenamiento_espartano:activePower(['spartan_training','spartan_training_boost','entrenamiento_espartano']),
+            furia_ares:getActiveAresFuryEffect().active
+        };
+        document.querySelectorAll('.sim-spell').forEach(e=>{const id=e.dataset.id;if(id in active)e.checked=active[id];});
+        set('sim-ner',active.llamada_mar&&activePower(['nereids','nereiden','nereid']));
+        set('sim-pob',active.crecimiento_poblacion&&activePower(['suffering','leiden','passionate_training','passionate_training_boost','unit_training_boost']));
+        syncDependentSpells();
+        const epic=document.querySelector('.sim-spell[data-id="reduccion_epica"]');
+        const rare=document.querySelector('.sim-spell[data-id="reduccion_rara"]');
+        if(epic?.checked&&rare?.checked)rare.checked=false;
+        const furyEffect=getActiveAresFuryEffect();
+        const f=document.getElementById('sim-fury-input'); if(f)f.value=furyEffect.active?furyEffect.amount:0;
+        setHeroSelection(readAssignedHero());
+        updateInfoGlobal();
+    }
+    let updateInfoGlobal=()=>{};
+    let simulatorAmountManuallyEdited=false;
+    let simulatorAmountUnitId='';
+    let reloadRequestToken=0;
+    function getGameUnitData(unitId) {
+        try { return GameData && GameData.units && GameData.units[unitId] ? GameData.units[unitId] : null; } catch(e) { return null; }
+    }
+    function firstNumber(object,keys,fallback=0) {
+        for(const key of keys){
+            const value=Number(object&&object[key]);
+            if(Number.isFinite(value))return value;
+        }
+        return Number(fallback)||0;
+    }
+    function hydrateUnitsFromGameData() {
+        units.forEach(unit=>{
+            const data=getGameUnitData(unit.id);
+            if(!data)return;
+            unit.w=firstNumber(data,['resources_wood','wood'],unit.w);
+            unit.s=firstNumber(data,['resources_stone','stone'],unit.s);
+            unit.m=firstNumber(data,['resources_iron','iron','silver'],unit.m);
+            unit.f=firstNumber(data,['favor','resources_favor'],unit.f);
+            const knownPopulation=UNIT_POPULATION[unit.id];
+            unit.population=knownPopulation||firstNumber(data,['population','population_cost','pop'],unit.population||1);
+            const clientTime=firstNumber(data,['build_time','buildTime','recruit_time','recruitTime'],0);
+            // Grepolis exposes build_time already adjusted to world speed. Convert it back once.
+            if(clientTime>0)unit.time=Math.round(clientTime*getDetectedGameSpeed());
+        });
+    }
+    function getAvailablePopulation() {
+        const t=town();
+        try { const n=Number(t.getAvailablePopulation()); if(Number.isFinite(n)&&n>=0)return Math.floor(n); } catch(e) {}
+        return 0;
+    }
+    function getDisplayedPopulationAfterPlan() {
+        // Use the exact value shown by the recruitment planner beside
+        // "Nach Planung". This keeps the simulator synchronized with the
+        // visible harbour/barracks plan, even while Grepolis windows refresh.
+        const entries=[...document.querySelectorAll('.uti-recruitment-summary .uti-pop-planned')]
+            .filter(element=>element.offsetParent!==null || getComputedStyle(element).display!=='none');
+        for(const element of entries){
+            const match=String(element.textContent||'').match(/Nach\s+Planung:\s*([+-]?[\d.]+)/i);
+            if(!match)continue;
+            const value=Number.parseInt(match[1].replace(/\./g,''),10);
+            if(Number.isFinite(value))return Math.max(0,value);
+        }
+        return null;
+    }
+    function getPopulationAfterCurrentPlan() {
+        const displayed=getDisplayedPopulationAfterPlan();
+        if(displayed!==null)return displayed;
+        const raw=getAvailablePopulation();
+        const planned=Math.max(0,Number(window.GrepolisRecruitmentTools?.getPlannedPopulation?.())||0);
+        return Math.max(0,raw-planned);
+    }
+    const UNIT_POPULATION={
+        sword:1,slinger:1,archer:1,hoplite:1,rider:3,chariot:4,catapult:15,godsent:3,
+        big_transporter:7,bireme:8,attack_ship:10,demolition_ship:8,small_transporter:5,trireme:16,colonize_ship:170,
+        minotaur:30,manticore:45,harpy:14,medusa:18,cyclops:40,hydra:50,centaur:12,pegasus:20,
+        cerberus:30,erinyes:55,griffin:35,boar:20,siren:16,satyr:12,espartoi:16,ladon:85
+    };
+    function getUnitPopulation(unitId) {
+        // Use stable values keyed by the simulator's exact unit IDs first. GameData differs
+        // between clients for some units (e.g. godsent/envoy and ship aliases).
+        const fixed=Number(UNIT_POPULATION[unitId]);
+        if(Number.isFinite(fixed)&&fixed>0)return fixed;
+        const aliases={godsent:'envoy',big_transporter:'transport',small_transporter:'fast_transport',attack_ship:'fireship',colonize_ship:'colonize'};
+        const sources=[];
+        const localUnit=units.find(unit=>unit.id===unitId);
+        if(localUnit&&localUnit.population)sources.push(localUnit);
+        try { sources.push(GameData.units[unitId]); } catch(e) {}
+        try { if(aliases[unitId])sources.push(GameData.units[aliases[unitId]]); } catch(e) {}
+        for(const source of sources){
+            if(!source)continue;
+            for(const key of ['population','population_cost','pop','populationCost']){
+                const n=Number(source[key]); if(Number.isFinite(n)&&n>0)return n;
+            }
+        }
+        return 1;
+    }
+    function refreshPopulationForUnit(unitId,updateAmount=true) {
+        const input=document.getElementById('sim-unit-amount');
+        const info=document.getElementById('sim-population-info');
+        if(!input||!unitId)return;
+        const rawFree=getAvailablePopulation();
+        const free=getPopulationAfterCurrentPlan();
+        const planned=Math.max(0,rawFree-free);
+        const perUnit=getUnitPopulation(unitId);
+        const maximum=Math.max(0,Math.floor(free/perUnit));
+        const unitChanged=simulatorAmountUnitId!==String(unitId);
+        if(updateAmount&&(!simulatorAmountManuallyEdited||unitChanged)){
+            input.value=maximum;
+            simulatorAmountManuallyEdited=false;
+            simulatorAmountUnitId=String(unitId);
+        }
+        // max is informative only. The user may deliberately simulate any amount.
+        input.removeAttribute('max');
+        input.title=`Available population: ${free} | Population per unit: ${perUnit} | Maximum: ${maximum}`;
+        const selectedAmount=Math.max(0,Number.parseInt(input.value,10)||0);
+        const usedPopulation=selectedAmount*perUnit;
+        if(info)info.textContent=`Available after harbor and barracks plan: ${free.toLocaleString()} population | currently available: ${rawFree.toLocaleString()} | planned: ${planned.toLocaleString()} | per unit: ${perUnit}`;
+        return {free,perUnit,maximum,usedPopulation};
+    }
+    function prefillMaximumTroops() {
+        const select=document.getElementById('sim-unit-select');
+        if(select)refreshPopulationForUnit(select.value,true);
+    }
+    function getDetectedGameSpeed() {
+        const values=[window.Game&&Game.game_speed,window.Game&&Game.gameSpeed,window.GameData&&GameData.game_speed,window.GameData&&GameData.world_speed];
+        for(const value of values){const n=Number(value);if(Number.isFinite(n)&&n>0)return n;}
+        return 1;
+    }
+    function getDetectedBuildingLevel(isNaval) {
+        const t=town(); const id=isNaval?'docks':'barracks';
+        const take=value=>{const n=Number(value);return Number.isFinite(n)&&n>=0?n:null;};
+        try {
+            const b=t&&typeof t.getBuildings==='function'?t.getBuildings():null;
+            if(b){
+                for(const fn of ['getBuildingLevel','getLevel']){
+                    if(typeof b[fn]==='function'){
+                        const n=take(b[fn](id)); if(n!==null)return n;
+                    }
+                }
+                if(typeof b.get==='function'){const n=take(b.get(id));if(n!==null)return n;}
+                if(typeof b.getLevels==='function'){const levels=b.getLevels()||{};const n=take(levels[id]);if(n!==null)return n;}
+                const a=b.attributes||(typeof b.toJSON==='function'?b.toJSON():b)||{};
+                for(const key of [id,id+'_level','level_'+id]){if(key in a){const n=take(a[key]);if(n!==null)return n;}}
+            }
+            const a=t&&(t.attributes||(typeof t.toJSON==='function'?t.toJSON():{}))||{};
+            for(const source of [a.buildings,a.building_levels,a]){
+                if(!source)continue;
+                for(const key of [id,id+'_level','level_'+id]){if(key in source){const n=take(source[key]);if(n!==null)return n;}}
+            }
+        } catch(e){}
+        try {
+            const groups=MM.getModels();
+            for(const [name,group] of Object.entries(groups||{})){
+                if(!/building/i.test(name))continue;
+                for(const model of Object.values(group||{})){
+                    const a=plainModel(model)||{};
+                    const modelTown=String(a.town_id??a.current_town_id??'');
+                    let townId='';try{townId=String((t&&(t.getId?t.getId():t.id))??'');}catch(e){}
+                    if(townId&&modelTown&&modelTown!==townId)continue;
+                    for(const key of [id,id+'_level','level_'+id]){
+                        const value=a[key]??(a.buildings&&a.buildings[key]);
+                        if(value!==undefined){const n=take(value);if(n!==null)return n;}
+                    }
+                }
+            }
+        } catch(e){}
+        return null;
+    }
+    // Official Grepolis speed-1 recruitment factors, derived from the barracks table.
+    // The official table gives sword times by barracks level; level 1 is 18:00 and level 5 is 17:10 on speed 1.
+    const WIKI_RECRUITMENT_FACTORS=[
+        0,
+        1080/1080,1069/1080,1056/1080,1043/1080,1030/1080,1016/1080,1002/1080,988/1080,973/1080,958/1080,
+        944/1080,929/1080,913/1080,898/1080,884/1080,867/1080,851/1080,836/1080,820/1080,804/1080,
+        788/1080,772/1080,756/1080,740/1080,723/1080,707/1080,691/1080,674/1080,658/1080,641/1080
+    ];
+    function buildingTimeFactor(level) {
+        const lvl=Math.max(1,Math.min(30,Math.floor(Number(level)||1)));
+        return WIKI_RECRUITMENT_FACTORS[lvl];
+    }
+    // Official support pages give some times at the minimum building level, not at level 1.
+    const OFFICIAL_TIME_REFERENCES={
+        catapult:{seconds:12600,level:1},
+        espartoi:{seconds:6900,level:4},
+        ladon:{seconds:90480,level:20},
+        siren:{seconds:11400,level:6}
+    };
+    function getSpeedOneLevelOneTime(unitId,fallback) {
+        const reference=OFFICIAL_TIME_REFERENCES[unitId];
+        if(reference)return reference.seconds/buildingTimeFactor(reference.level);
+        return Number(fallback)||0;
+    }
+    function getOfficialBaseUnitTime(unitId,fallback) {
+        // For units with a known official reference, do not scale up the client value
+        // again; it is already adjusted for world speed.
+        // That is what kept the catapult time at 6:55 despite the previous fix.
+        if(OFFICIAL_TIME_REFERENCES[unitId]){
+            return getSpeedOneLevelOneTime(unitId,fallback);
+        }
+        const data=getGameUnitData(unitId);
+        const clientTime=firstNumber(data,['build_time','buildTime','recruit_time','recruitTime'],0);
+        if(clientTime>0)return clientTime*getDetectedGameSpeed();
+        return getSpeedOneLevelOneTime(unitId,fallback);
+    }
+    function getSecondsFromInputs() {
+        const holder=document.getElementById('sim-time-value');
+        return Number(holder && holder.dataset.seconds) || 0;
+    }
+
+    function writeTimeTable(prefix,totalSeconds) {
+        const hours=document.getElementById(prefix+'-hours');
+        const minutes=document.getElementById(prefix+'-minutes');
+        const seconds=document.getElementById(prefix+'-seconds');
+        if(!hours||!minutes||!seconds)return;
+        if(totalSeconds===Infinity){hours.textContent='∞';minutes.textContent='00';seconds.textContent='00';return;}
+        const rounded=Math.max(0,Math.round(Number(totalSeconds)||0));
+        const hourValue=Math.floor(rounded/3600);
+        const minuteValue=Math.floor((rounded%3600)/60);
+        const secondValue=rounded%60;
+        hours.textContent=hourValue.toLocaleString();
+        minutes.textContent=String(minuteValue).padStart(2,'0');
+        seconds.textContent=String(secondValue).padStart(2,'0');
+    }
+    function setInputsFromSeconds(totalSeconds) {
+        const holder=document.getElementById('sim-time-value');
+        if(!holder)return;
+        if(totalSeconds===Infinity){
+            holder.dataset.seconds='Infinity';
+            holder.textContent=`infinite`;
+            writeTimeTable('sim-time',Infinity);
+            return;
+        }
+        const seconds=Math.max(0,Math.round(totalSeconds + 1e-9));
+        holder.dataset.seconds=String(seconds);
+        holder.textContent=formatTime(seconds);
+        writeTimeTable('sim-time',seconds);
+    }
+
+    function saveCheckboxState(id) {
+        const el = document.getElementById(id);
+        if (el) {
+            localStorage.setItem('grepo_sim_' + id, el.checked ? '1' : '0');
+        }
+    }
+
+    function loadCheckboxState(id) {
+        const val = localStorage.getItem('grepo_sim_' + id);
+        if (val !== null) {
+            const el = document.getElementById(id);
+            if (el) el.checked = (val === '1');
+        }
+    }
+
+    function makeDraggable(element, dragHandle) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        dragHandle.onmousedown = dragMouseDown;
+
+        function dragMouseDown(e) {
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag;
+        }
+
+        function elementDrag(e) {
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            element.style.bottom = 'auto';
+            element.style.top = (element.offsetTop - pos2) + "px";
+            element.style.left = (element.offsetLeft - pos1) + "px";
+        }
+
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+        }
+    }
+
+    const HERO_FACE_CLASS={
+        filoctetes:'philoctetes',quiron:'cheiron',odiseo:'odysseus',aristoteles:'aristotle',
+        dedalo:'daidalos',euribia:'eurybia',anysia:'anysia',ferquion:'ferkyon',
+        parifaistes:'pariphaistes',argos:'argus'
+    };
+    const UNIT_ICON_CLASS={
+        cyclops:'zyklop',hydra:'sea_monster',boar:'calydonian_boar',espartoi:'spartoi',
+        erinyes:'fury',griffin:'griffin',siren:'siren',satyr:'satyr',ladon:'ladon'
+    };
+    function copyHeroSpriteFromExisting(target,gameId){
+        const alternatives={cheiron:['cheiron','chiron'],daidalos:['daidalos','daedalus'],ferkyon:['ferkyon','pherikyon']}[gameId]||[gameId];
+        const selector=alternatives.flatMap(id=>[`.dio_hero.hero_icon.hero25x25.${id}`,`.grcrt_hero.hero_icon.hero25x25.${id}`,`.hero_icon.hero25x25.${id}`]).join(', ');
+        const candidates=[...document.querySelectorAll(selector)]
+            .filter(element=>element!==target&&!element.closest('#panel-simulador-lateral'));
+        const source=candidates.find(element=>getComputedStyle(element).backgroundImage!=='none');
+        if(!source)return false;
+        const style=getComputedStyle(source);
+        target.style.backgroundImage=style.backgroundImage;
+        target.style.backgroundPosition=style.backgroundPosition;
+        target.style.backgroundSize=style.backgroundSize;
+        target.style.backgroundRepeat=style.backgroundRepeat;
+        return true;
+    }
+    function updateHeroPortrait(heroId){
+        const portrait=document.getElementById('hero-face-icon');
+        if(!portrait)return;
+        portrait.className='';
+        portrait.removeAttribute('style');
+        if(!heroId||heroId==='none'){
+            portrait.style.display='none';
+            return;
+        }
+        const gameId=HERO_FACE_CLASS[heroId]||heroId;
+        // Exact Grepolis structure used in the town list, e.g.:
+        // <div class="hero_icon hero25x25 democritus"></div>
+        portrait.className=`dio_hero hero_icon hero25x25 ${gameId}`;
+        portrait.style.cssText='display:block;width:25px;height:25px;flex:0 0 25px;';
+        // Normally the class above is sufficient. Copy computed sprite values as fallback.
+        requestAnimationFrame(()=>copyHeroSpriteFromExisting(portrait,gameId));
+    }
+    function getUnitDescription(unit){
+        const type=unit.naval?'Naval unit':(unit.f>0?'Mythical unit':'Land unit');
+        const costs=[];
+        if(unit.w)costs.push(`Wood ${unit.w}`);
+        if(unit.s)costs.push(`Stone ${unit.s}`);
+        if(unit.m)costs.push(`Silver ${unit.m}`);
+        if(unit.f)costs.push(`Favor ${unit.f}`);
+        return `${type} · ${costs.join(' · ')}`;
+    }
+    function placeDetachedPicker(button,options){
+        if(!button||!options)return;
+        const rect=button.getBoundingClientRect();
+        options.style.position='fixed';
+        const viewportHeight=window.innerHeight||document.documentElement.clientHeight;
+        const spaceBelow=Math.max(0,viewportHeight-rect.bottom-8);
+        const spaceAbove=Math.max(0,rect.top-8);
+        const desired=options.classList.contains('sim-hero-options')?330:360;
+        const openAbove=spaceBelow<180&&spaceAbove>spaceBelow;
+        const available=Math.max(80,Math.min(desired,openAbove?spaceAbove:spaceBelow));
+        options.style.left=Math.round(rect.left)+'px';
+        options.style.width=Math.round(rect.width)+'px';
+        options.style.right='auto';
+        options.style.maxHeight=Math.floor(available)+'px';
+        options.style.top=openAbove?'auto':Math.round(rect.bottom+2)+'px';
+        options.style.bottom=openAbove?Math.round(viewportHeight-rect.top+2)+'px':'auto';
+        options.style.zIndex='2147483646';
+    }
+    function detachPicker(options){
+        if(options&&options.parentElement!==document.body)document.body.appendChild(options);
+    }
+    function openDetachedPicker(button,options){
+        const opening=options.hidden||options.style.display!=='block';
+        document.querySelectorAll('body > .sim-unit-options, body > .sim-hero-options').forEach(list=>{list.hidden=true;list.style.display='none';});
+        if(!opening)return;
+        detachPicker(options);
+        placeDetachedPicker(button,options);
+        options.hidden=false;options.style.display='block';
+    }
+    function closeDetachedPickers(event){
+        if(event?.target?.closest?.('.sim-unit-selected,.sim-hero-selected,.sim-unit-options,.sim-hero-options'))return;
+        document.querySelectorAll('body > .sim-unit-options, body > .sim-hero-options').forEach(list=>{list.hidden=true;list.style.display='none';});
+    }
+    function updateUnitPickerDisplay(){
+        const select=document.getElementById('sim-unit-select');
+        const text=document.getElementById('sim-unit-selected-text');
+        if(!select||!text)return;
+        const unit=units.find(entry=>entry.id===select.value);
+        text.textContent=unit?unit.name:`Select unit`;
+        updateSelectedUnitIcon();
+    }
+    function extractBackground(source){
+        const style=getComputedStyle(source);
+        if(!style.backgroundImage||style.backgroundImage==='none')return null;
+        return{image:style.backgroundImage,position:style.backgroundPosition,size:style.backgroundSize};
+    }
+    function updateSelectedUnitIcon(){
+        const select=document.getElementById('sim-unit-select');
+        const icon=document.getElementById('sim-selected-unit-icon');
+        if(!select||!icon)return;
+        const unitId=UNIT_ICON_CLASS[select.value]||select.value;
+        icon.removeAttribute('style');
+        icon.className=`unit_icon25x25 ${unitId}`;
+        icon.style.cssText='display:block;width:25px;height:25px;background-repeat:no-repeat;';
+        // Grepolis CSS normally supplies the correct sprite and position. Copy it explicitly as a fallback.
+        const source=document.querySelector(`.unit_icon25x25.${unitId}, .unit_icon25x25.${select.value}`);
+        if(source&&source!==icon){
+            const background=extractBackground(source);
+            if(background){
+                icon.style.backgroundImage=background.image;
+                icon.style.backgroundPosition=background.position;
+                icon.style.backgroundSize=background.size;
+            }
+        }
+    }
+    function heroPercent(level,level1,level20) {
+        const lvl=Math.max(1,Math.min(20,Number(level)||1));
+        return level1+((level20-level1)*(lvl-1)/19);
+    }
+    function formatPercent(value) {
+        const rounded=Math.round(Number(value)*10)/10;
+        return Number.isInteger(rounded)?String(rounded):String(rounded).replace('.',',');
+    }
+    function getRecommendedHeroId(unitId) {
+        const unit=units.find(entry=>entry.id===unitId);
+        if(!unit)return null;
+        const mythicalUnits=new Set(['harpy','pegasus','manticore','medusa','cerberus','cyclops','centaur','minotaur','godsent','espartoi','ladon','griffin','boar','erinyes','siren','hydra','satyr']);
+        const isMythical=mythicalUnits.has(unitId);
+        const matches=heroes.map(hero=>({
+            id:hero.id,
+            effect:getHeroRecruitmentEffect(hero.id,1,unitId,unit.naval,isMythical)
+        })).filter(entry=>entry.effect.timePercent>0||entry.effect.resourcePercent>0||entry.effect.favorPercent>0);
+        if(!matches.length)return null;
+        // Priority: favor cost, then resource cost, then recruitment time.
+        const score=entry=>entry.effect.favorPercent*1000000+entry.effect.resourcePercent*1000+entry.effect.timePercent;
+        return matches.sort((a,b)=>score(b)-score(a)||a.id.localeCompare(b.id))[0].id;
+    }
+    function getApplicableHeroIds(unitId) {
+        const unit=units.find(entry=>entry.id===unitId);
+        if(!unit)return [];
+        const mythicalUnits=new Set(['harpy','pegasus','manticore','medusa','cerberus','cyclops','centaur','minotaur','godsent','espartoi','ladon','griffin','boar','erinyes','siren','hydra','satyr']);
+        const isMythical=mythicalUnits.has(unitId);
+        return heroes.filter(hero=>{
+            const effect=getHeroRecruitmentEffect(hero.id,1,unitId,unit.naval,isMythical);
+            return effect.timePercent>0||effect.resourcePercent>0||effect.favorPercent>0;
+        }).map(hero=>hero.id);
+    }
+    function updateRecommendedHeroMarker() {
+        const unitId=document.getElementById('sim-unit-select')?.value;
+        const recommendedId=getRecommendedHeroId(unitId);
+        const applicableIds=new Set(getApplicableHeroIds(unitId));
+        document.querySelectorAll('#sim-hero-options .sim-hero-option').forEach(option=>{
+            const heroId=option.dataset.heroId;
+            const recommended=heroId===recommendedId;
+            const alternative=!recommended&&applicableIds.has(heroId);
+            option.classList.toggle('sim-hero-recommended',recommended);
+            option.classList.toggle('sim-hero-alternative',alternative);
+            const name=option.querySelector('.sim-hero-option-name');
+            let greenBadge=name?.querySelector('.sim-hero-recommended-badge');
+            let yellowBadge=name?.querySelector('.sim-hero-alternative-badge');
+            if(recommended&&!greenBadge&&name){
+                greenBadge=document.createElement('span');
+                greenBadge.className='sim-hero-recommended-badge';
+                greenBadge.textContent=`RECOMMENDED`;
+                name.appendChild(greenBadge);
+            } else if(!recommended&&greenBadge){greenBadge.remove();}
+            if(alternative&&!yellowBadge&&name){
+                yellowBadge=document.createElement('span');
+                yellowBadge.className='sim-hero-alternative-badge';
+                yellowBadge.textContent=`ALTERNATIVE`;
+                name.appendChild(yellowBadge);
+            } else if(!alternative&&yellowBadge){yellowBadge.remove();}
+        });
+    }
+    function updateHeroPickerDisplay() {
+        const select=document.getElementById('sim-hero-select');
+        const text=document.getElementById('sim-hero-selected-text');
+        if(!select||!text)return;
+        const hero=heroes.find(entry=>entry.id===select.value);
+        text.textContent=hero?hero.name:`No hero`;
+        updateHeroPortrait(select.value);
+    }
+    function updateHeroDetails() {
+        const select=document.getElementById('sim-hero-select');
+        const levelInput=document.getElementById('sim-hero-level');
+        const description=document.getElementById('sim-hero-description');
+        const percent=document.getElementById('sim-hero-percent');
+        if(!select||!levelInput||!description||!percent)return;
+        const hero=heroes.find(entry=>entry.id===select.value);
+        if(!hero){
+            description.textContent=`No recruitment bonus selected.`;
+            percent.textContent='';
+            return;
+        }
+        const level=Math.max(1,Math.min(20,Number(levelInput.value)||1));
+        const value=heroPercent(level,hero.level1,hero.level20);
+        description.textContent=hero.description;
+        percent.textContent=`${formatPercent(value)} %`;
+    }
+    function getHeroRecruitmentEffect(heroId,heroLevel,unitId,isNaval,isMythical) {
+        const effect={timePercent:0,resourcePercent:0,favorPercent:0};
+        switch(heroId) {
+            case 'anysia':
+                // Only favor cost of mythical units; no recruitment-time effect.
+                if(isMythical)effect.favorPercent=heroPercent(heroLevel,10,30);
+                break;
+            case 'argos':
+                // Only resource cost of sea units; no build-time effect.
+                if(isNaval)effect.resourcePercent=heroPercent(heroLevel,22,60);
+                break;
+            case 'parifaistes':
+                if(isNaval)effect.timePercent=heroPercent(heroLevel,22,60);
+                break;
+            case 'ferquion':
+                if(!isNaval)effect.timePercent=heroPercent(heroLevel,16.5,45);
+                break;
+            case 'filoctetes':
+                if(unitId==='archer')effect.timePercent=effect.resourcePercent=heroPercent(heroLevel,22,60);
+                break;
+            case 'quiron':
+                if(unitId==='hoplite')effect.timePercent=effect.resourcePercent=heroPercent(heroLevel,22,60);
+                break;
+            case 'odiseo':
+                if(unitId==='sword')effect.timePercent=effect.resourcePercent=heroPercent(heroLevel,22,60);
+                break;
+            case 'aristoteles':
+                if(unitId==='attack_ship')effect.timePercent=effect.resourcePercent=heroPercent(heroLevel,22,60);
+                break;
+            case 'dedalo':
+                if(unitId==='bireme')effect.timePercent=effect.resourcePercent=heroPercent(heroLevel,11,30);
+                break;
+            case 'euribia':
+                if(unitId==='trireme')effect.timePercent=effect.resourcePercent=heroPercent(heroLevel,22,60);
+                break;
+        }
+        return effect;
+    }
+
+    function calculateCurrentRecruitment(unitId, amount=1) {
+        const unit=units.find(entry=>entry.id===unitId);
+        if(!unit)return null;
+        hydrateUnitsFromGameData();
+        const isNaval=!!unit.naval;
+        const count=Math.max(0,Math.floor(Number(amount)||0));
+        const level=getDetectedBuildingLevel(isNaval);
+        if(isNaval && Number(level)===0)return {unitId,count,wood:0,stone:0,iron:0,favor:0,seconds:Infinity,secondsPerUnit:Infinity};
+        const buildingLevel=isNaval?Math.max(1,Number(level)||1):Math.max(1,Number(level)||1);
+        const speed=Math.max(.1,getDetectedGameSpeed());
+        let seconds=getOfficialBaseUnitTime(unit.id,unit.time)*buildingTimeFactor(buildingLevel)/speed;
+        if(isNaval && hasResearch(['shipwright']))seconds*=.90;
+        if(!isNaval && hasResearch(['trainer','instructor']))seconds*=.90;
+        // Grepolis applies production bonuses one after another (multiplicatively),
+        // not as one summed percentage. Example:
+        // Population Growth (x2) + Spartan Training (x1.70)
+        // gives x3.40 in total instead of x2.70.
+        if(isNaval && activePower(['call_of_the_ocean','call_of_the_sea','sea_call','llamada_mar'])){
+            seconds/=2;
+        }
+        if(!isNaval && activePower(['population_growth','birth_growth','fertility_improvement','crecimiento_poblacion'])){
+            seconds/=2;
+        }
+        if(!isNaval && activePower(['spartan_training','spartan_training_boost','entrenamiento_espartano'])){
+            // Spartan Training is a separate factor: +70% production => /1.70.
+            // The Fury of Ares effect is applied separately, not added on top.
+            seconds/=1.70;
+        }
+        const furyEffect=getActiveAresFuryEffect();
+        if(!isNaval && furyEffect.active && furyEffect.amount>0){
+            const furyBonus=Math.floor(Math.min(5000,Math.max(0,furyEffect.amount))/100);
+            seconds/=1+furyBonus/100;
+        }
+        if(activePower(['rare_unit_order_boost','rare_recruitment_time_reduction','rare_unit_training_boost']))seconds*=0.75;
+        if(activePower(['epic_unit_order_boost','epic_recruitment_time_reduction','epic_unit_training_boost']))seconds*=0.50;
+        const assigned=readAssignedHero();
+        const mythicalUnits=new Set(['harpy','pegasus','manticore','medusa','cerberus','cyclops','centaur','minotaur','godsent','espartoi','ladon','griffin','boar','erinyes','siren','hydra','satyr']);
+        const heroEffect=assigned?getHeroRecruitmentEffect(assigned.id,assigned.level||1,unit.id,isNaval,mythicalUnits.has(unit.id)):{timePercent:0,resourcePercent:0,favorPercent:0};
+        seconds*=Math.max(0,1-heroEffect.timePercent/100);
+        const roundedSeconds=Math.max(0,Math.round(seconds+1e-9));
+        const nereidsActive=isNaval&&activePower(['call_of_the_ocean','call_of_the_sea','sea_call','llamada_mar'])&&activePower(['nereids','nereiden','nereid']);
+        const sufferingActive=!isNaval&&activePower(['population_growth','birth_growth','fertility_improvement','crecimiento_poblacion'])&&activePower(['suffering','leiden','passionate_training','passionate_training_boost','unit_training_boost']);
+        let resourceFactor=1;
+        if(nereidsActive||sufferingActive){
+            // Nereids + Call of the Ocean, or Suffering + Population Growth,
+            // first reduce to 70%. Research and hero discounts still apply
+            // multiplicatively afterwards (for example 70% * 90% = 63%).
+            resourceFactor=.70;
+            if(isNaval&&hasResearchOrChecked(['mathematics'],'sim-mat'))resourceFactor*=.90;
+            if(!isNaval&&hasResearchOrChecked(['conscription'],'sim-mil'))resourceFactor*=.90;
+            resourceFactor*=Math.max(0,1-heroEffect.resourcePercent/100);
+        } else {
+            if(isNaval&&hasResearchOrChecked(['mathematics'],'sim-mat'))resourceFactor*=.90;
+            if(!isNaval&&hasResearchOrChecked(['conscription'],'sim-mil'))resourceFactor*=.90;
+            resourceFactor*=Math.max(0,1-heroEffect.resourcePercent/100);
+        }
+        const perWood=Math.max(0,Math.ceil(unit.w*resourceFactor));
+        const perStone=Math.max(0,Math.ceil(unit.s*resourceFactor));
+        const perIron=Math.max(0,Math.ceil(unit.m*resourceFactor));
+        const perFavor=Math.max(0,Math.ceil(unit.f*Math.max(0,1-heroEffect.favorPercent/100)));
+        return {
+            unitId,count,
+            wood:perWood*count,stone:perStone*count,iron:perIron*count,favor:perFavor*count,
+            secondsPerUnit:roundedSeconds,seconds:roundedSeconds*count,
+            hero:assigned||null
+        };
+    }
+    window.GrepolisRecruitmentTools=window.GrepolisRecruitmentTools||{};
+    window.GrepolisRecruitmentTools.calculateCurrentRecruitment=calculateCurrentRecruitment;
+    window.GrepolisRecruitmentTools.getAvailablePopulation=getAvailablePopulation;
+    window.GrepolisRecruitmentTools.getUnitPopulation=getUnitPopulation;
+
+    let simulatorPanelRef=null;
+    function registerRecruitmentWindow(){return true;}
+    function findRecruitmentWindowRoot(){return document.getElementById('window_recruitment_simulator_pro');}
+    function makeClassicWindowDraggable(root,handle){
+        let grabX=0,grabY=0,dragging=false;
+        const move=event=>{
+            if(!dragging)return;
+            const pageX=event.clientX+window.scrollX;
+            const pageY=event.clientY+window.scrollY;
+            root.style.left=(pageX-grabX)+'px';
+            root.style.top=(pageY-grabY)+'px';
+            event.preventDefault();
+        };
+        const stop=()=>{
+            if(!dragging)return;
+            dragging=false;
+            document.removeEventListener('mousemove',move,true);
+            document.removeEventListener('mouseup',stop,true);
+            document.body.style.userSelect='';
+        };
+        handle.addEventListener('mousedown',event=>{
+            if(event.button!==0||event.target.closest('.buttons_container'))return;
+            closeDetachedPickers();
+            const rect=root.getBoundingClientRect();
+            grabX=event.clientX-rect.left;
+            grabY=event.clientY-rect.top;
+            const pageLeft=rect.left+window.scrollX;
+            const pageTop=rect.top+window.scrollY;
+            // Reset shorthand positioning first. Setting inset after left/top would erase both values.
+            root.style.position='absolute';
+            root.style.inset='auto';
+            root.style.right='auto';
+            root.style.bottom='auto';
+            root.style.margin='0';
+            root.style.left=pageLeft+'px';
+            root.style.top=pageTop+'px';
+            dragging=true;
+            document.body.style.userSelect='none';
+            document.addEventListener('mousemove',move,true);
+            document.addEventListener('mouseup',stop,true);
+            event.preventDefault();
+            event.stopPropagation();
+        });
+    }
+    function removeRecruitmentTaskbarItem(){
+        document.getElementById('recruitment_simulator_taskbar_item')?.remove();
+    }
+    function getGrepolisTaskbarWindows(){
+        return document.querySelector('#minimized_windows_area .minimized_windows_area .windows_box .windows');
+    }
+    let recruitmentWindowZCounter=1000;
+    function getVisibleGrepolisWindows(){
+        return [...new Set([...document.querySelectorAll('.classic_window,.ui-dialog,.js-window-main-container')])]
+            .filter(element=>element?.isConnected&&getComputedStyle(element).display!=='none');
+    }
+    function bringWindowToFront(root){
+        if(!root||getComputedStyle(root).display==='none')return;
+        const zValues=getVisibleGrepolisWindows()
+            .filter(element=>element!==root)
+            .map(element=>Number(getComputedStyle(element).zIndex)||0)
+            .filter(Number.isFinite);
+        recruitmentWindowZCounter=Math.max(recruitmentWindowZCounter,...zValues)+1;
+        root.style.zIndex=String(recruitmentWindowZCounter);
+    }
+    function bringRecruitmentWindowToFront(root){bringWindowToFront(root);}
+    function installSharedWindowFocus(){
+        if(document.documentElement.dataset.recruitmentSharedWindowFocus==='1')return;
+        document.documentElement.dataset.recruitmentSharedWindowFocus='1';
+        document.addEventListener('pointerdown',event=>{
+            const clickedWindow=event.target?.closest?.('.classic_window,.ui-dialog,.js-window-main-container');
+            if(clickedWindow)bringWindowToFront(clickedWindow);
+        },true);
+        document.addEventListener('mousedown',event=>{
+            const clickedWindow=event.target?.closest?.('.classic_window,.ui-dialog,.js-window-main-container');
+            if(clickedWindow)bringWindowToFront(clickedWindow);
+        },true);
+    }
+    function minimizeRecruitmentWindow(root){
+        if(!root||!root.isConnected||getComputedStyle(root).display==='none')return false;
+        closeDetachedPickers();
+        // First create the native Grepolis taskbar entry. Never hide the window if
+        // the taskbar is not available, otherwise the simulator would disappear.
+        if(!createRecruitmentTaskbarItem(root))return false;
+        root.style.display='none';
+        return true;
+    }
+    function closeRecruitmentWindow(root){
+        if(!root||!root.isConnected)return false;
+        root.querySelector('.btn_wnd.close')?.click();
+        return true;
+    }
+    function isTypingTarget(target){
+        return !!target?.closest?.('input,textarea,select,[contenteditable="true"],[role="textbox"]');
+    }
+    function installRecruitmentWindowShortcuts(){
+        if(document.documentElement.dataset.recruitmentShortcutsInstalled==='1')return;
+        document.documentElement.dataset.recruitmentShortcutsInstalled='1';
+        document.addEventListener('keydown',event=>{
+            const root=findRecruitmentWindowRoot();
+            if(!root||root.style.display==='none'||isTypingTarget(event.target))return;
+            if(event.key===' '||event.code==='Space'){
+                // Grepolis must receive the key itself so all original windows are minimized.
+                // Minimize the simulator afterwards through its own title-bar button.
+                setTimeout(()=>{
+                    const currentRoot=findRecruitmentWindowRoot();
+                    if(currentRoot&&getComputedStyle(currentRoot).display!=='none'){
+                        currentRoot.querySelector('.btn_wnd.minimize')?.click();
+                    }
+                },0);
+            } else if(event.key==='Escape'||event.key==='Esc'){
+                // Do not consume Escape. Grepolis closes its own windows; afterwards close ours.
+                setTimeout(()=>{
+                    const currentRoot=findRecruitmentWindowRoot();
+                    if(currentRoot)closeRecruitmentWindow(currentRoot);
+                },0);
+            }
+        },true);
+        document.addEventListener('click',event=>{
+            const root=findRecruitmentWindowRoot();
+            if(!root)return;
+            const control=event.target?.closest?.('[title],[data-tooltip],.jump_to_town,.btn_jump_to_town,.close_all,.close_all_windows');
+            if(!control)return;
+            const marker=((control.getAttribute('title')||'')+' '+(control.getAttribute('data-tooltip')||'')+' '+(control.textContent||'')+' '+control.className).toLowerCase();
+            if(/alle fenster.*schlie|close[_ -]?all/.test(marker)){
+                closeRecruitmentWindow(root);
+            } else if(/springen|jump[_ -]?to[_ -]?town/.test(marker)){
+                root.querySelector('.btn_wnd.minimize')?.click();
+            }
+        },true);
+    }
+    function createRecruitmentTaskbarItem(root){
+        removeRecruitmentTaskbarItem();
+        const windows=getGrepolisTaskbarWindows();
+        const area=document.querySelector('#minimized_windows_area .minimized_windows_area');
+        if(!windows||!area){return false;}
+        area.style.display='block';
+        const box=document.createElement('div');
+        box.id='recruitment_simulator_taskbar_item';
+        box.className='box recruitment_simulator_minimized';
+        box.setAttribute('cid','recruitment_simulator_pro');
+        box.innerHTML=`
+            <div class="box-left"></div>
+            <div class="box-right"></div>
+            <div class="box-middle">
+                <div class="caption">${getCurrentTownName() ? `Recruitment Simulator - ${getCurrentTownName()}` : 'Recruitment Simulator'}</div>
+                <div class="btn_wnd close" cid="recruitment_simulator_pro"></div>
+                <div class="btn_wnd maximize" cid="recruitment_simulator_pro"></div>
+            </div>`;
+        windows.appendChild(box);
+        const maximize=box.querySelector('.maximize');
+        const close=box.querySelector('.close');
+        const restore=event=>{
+            event.preventDefault();event.stopImmediatePropagation();
+            root.style.display='block';
+            bringRecruitmentWindowToFront(root);
+            removeRecruitmentTaskbarItem();
+        };
+        box.querySelector('.caption').addEventListener('click',restore);
+        maximize.addEventListener('click',restore);
+        close.addEventListener('click',event=>{
+            event.preventDefault();event.stopImmediatePropagation();
+            removeRecruitmentTaskbarItem();
+            root.querySelector('.btn_wnd.close')?.click();
+        });
+        return true;
+    }
+    function createClassicRecruitmentWindow(panel){
+        let root=findRecruitmentWindowRoot();
+        if(root){root.style.display='block';removeRecruitmentTaskbarItem();updateSimulatorTownTitle();bringRecruitmentWindowToFront(root);return root;}
+        root=document.createElement('div');
+        root.id='window_recruitment_simulator_pro';
+        root.className='js-window-main-container classic_window recruitment_simulator_pro';
+        root.style.cssText='position:absolute;width:445px;height:635px;max-height:calc(100vh - 20px);min-width:420px;min-height:435px;margin:0;inset:auto;overflow:visible;';
+        root.innerHTML=`
+            <div class="wnd_border_b"></div><div class="wnd_border_l"></div><div class="wnd_border_r"></div>
+            <div class="corner_tl"></div><div class="corner_tr"></div><div class="corner_bl"></div><div class="corner_br"></div>
+            <div class="wnd_border_t js-wnd-buttons">
+                <div class="title" unselectable="on">${getCurrentTownName() ? `Recruitment Simulator - ${getCurrentTownName()}` : 'Recruitment Simulator'}</div>
+                <div class="js-window-move window_move_container"></div>
+                <div class="buttons_container">
+                    <div class="btn_wnd sim_reload" title="Reload game data" style="display:block;background-image:none !important;width:22px;height:22px;cursor:pointer;"><span style="display:block;color:#f6d477;font:bold 17px/20px Arial;text-align:center;text-shadow:0 1px #000;">↻</span></div>
+                    <div class="btn_wnd minimize" style="display:block" title="Minimize"></div>
+                    <div class="btn_wnd maximize" style="display:none"></div>
+                    <div class="btn_wnd close" title="Close"></div>
+                </div>
+                <div class="js-tabs_container tabs_container"></div>
+            </div>
+            <div class="filler"></div><div class="filler window_background"></div>
+            <div class="window_content js-window-content" style="background:transparent;"><div id="recruitment-simulator-window-content" style="height:100%;max-height:calc(100vh - 70px);overflow-y:auto;overflow-x:hidden;background:transparent;"></div></div>`;
+        document.body.appendChild(root);
+        bringRecruitmentWindowToFront(root);
+        const viewportWidth=window.innerWidth||document.documentElement.clientWidth;
+        const viewportHeight=window.innerHeight||document.documentElement.clientHeight;
+        root.style.left=(window.scrollX+Math.max(0,Math.round((viewportWidth-445)/2)))+'px';
+        root.style.top=(window.scrollY+Math.max(0,Math.round((viewportHeight-570)/2))+5)+'px';
+        const mount=root.querySelector('#recruitment-simulator-window-content');
+        panel.style.cssText='display:block;position:relative;width:auto;height:auto;background:transparent;color:#333;border:0;padding:7px 9px;font-size:12px;box-shadow:none;max-height:none;overflow:visible;';
+        mount.appendChild(panel);
+        const reloadButton=root.querySelector('.sim_reload');
+        const minimizeButton=root.querySelector('.minimize');
+        const closeButton=root.querySelector('.close');
+        reloadButton.addEventListener('mousedown',event=>{event.preventDefault();event.stopImmediatePropagation();});
+        reloadButton.addEventListener('click',event=>{event.preventDefault();event.stopImmediatePropagation();closeDetachedPickers();document.getElementById('sim-reload-data')?.click();});
+        minimizeButton.addEventListener('mousedown',event=>{event.preventDefault();event.stopImmediatePropagation();});
+        minimizeButton.addEventListener('click',event=>{
+            event.preventDefault();event.stopImmediatePropagation();
+            if(minimizeRecruitmentWindow(root)){
+                const launcher=document.getElementById('btn-simulador-lateral');
+                if(launcher)launcher.title=`Reopen Recruitment Simulator`;
+            }
+        });
+        closeButton.addEventListener('mousedown',event=>{event.preventDefault();event.stopImmediatePropagation();});
+        closeButton.addEventListener('click',event=>{
+            event.preventDefault();event.stopImmediatePropagation();
+            closeDetachedPickers();
+            removeRecruitmentTaskbarItem();
+            document.getElementById('sim-unit-options')?.remove();
+            document.getElementById('sim-hero-options')?.remove();
+            root.remove();
+            simulatorPanelRef=panel;
+            panel.style.display='none';panel.style.position='absolute';panel.style.left='-10000px';panel.style.top='-10000px';
+            document.body.appendChild(panel);
+        });
+        root.addEventListener('pointerdown',()=>bringRecruitmentWindowToFront(root),true);
+        root.addEventListener('mousedown',()=>bringRecruitmentWindowToFront(root),true);
+        installRecruitmentWindowShortcuts();
+        installSharedWindowFocus();
+        makeClassicWindowDraggable(root,root.querySelector('.wnd_border_t'));
+        return root;
+    }
+    function openRecruitmentWindow(panel){simulatorPanelRef=panel;return createClassicRecruitmentWindow(panel);}
+
+    let recruitmentSimulatorOpen = null;
+    function injectSimulator() {
+        if (!document.getElementById('btn-simulador-lateral')) {
+
+            const btnMas = document.createElement('div');
+            btnMas.id = 'btn-simulador-lateral';
+            btnMas.innerText = '+';
+            btnMas.title = `Troop recruitment`;
+
+            btnMas.style.cssText = 'display:none !important;';
+
+            const panel = document.createElement('div');
+            panel.id = 'panel-simulador-lateral';
+            panel.style.cssText = `display:none;position:absolute;left:-10000px;top:-10000px;width:395px;background:transparent;color:#333;border:0;padding:7px 9px;font-size:12px;`;
+
+            hydrateUnitsFromGameData();
+            const compactStyles = `
+                <style>
+                    #panel-simulador-lateral .sim-section-title{margin:7px 0 3px;color:#5a3c11;font-size:11px;text-align:center;line-height:1.15;}
+                    #panel-simulador-lateral .sim-section-box{background:#f7e3b5;border:1px solid #d4b572;border-radius:3px;padding:5px 7px;margin-bottom:6px;font-size:10px;line-height:1.25;}
+                    #panel-simulador-lateral .sim-section-box label{margin:0;line-height:1.25;}
+                    #panel-simulador-lateral .sim-section-box input[type=checkbox]{width:12px;height:12px;margin:0 4px 0 0;vertical-align:-2px;}
+                    #panel-simulador-lateral .sim-subtitle{font-size:10px;font-weight:bold;text-align:center;color:#6b4b1f;border-bottom:1px solid #d4b572;padding-bottom:2px;margin:0 0 3px;}
+                    #panel-simulador-lateral .sim-row{display:flex;align-items:center;margin:2px 0;min-height:14px;}
+                    #panel-simulador-lateral .sim-spell-row{display:block;margin:2px 0;}
+                    #panel-simulador-lateral .sim-settings-table{width:100%;border-collapse:collapse;table-layout:fixed;background:#f7e3b5;border:1px solid #d4b572;margin:5px 0 7px;font-size:10px;line-height:1.2;}
+                    #panel-simulador-lateral .sim-settings-table th{padding:3px 4px;background:#eed79c;color:#5a3c11;border-bottom:1px solid #d4b572;font-size:10px;}
+                    #panel-simulador-lateral .sim-settings-table th+th,#panel-simulador-lateral .sim-settings-table td+td{border-left:1px solid #d4b572;}
+                    #panel-simulador-lateral .sim-settings-table .sim-category-head{width:24px;padding:0;}
+                    #panel-simulador-lateral .sim-settings-table .sim-category-cell{width:24px;padding:0;background:#eed79c;text-align:center;vertical-align:middle;border-right:1px solid #d4b572;}
+                    #panel-simulador-lateral .sim-settings-table .sim-category-label{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-weight:bold;color:#5a3c11;letter-spacing:.3px;white-space:nowrap;padding:5px 0;}
+                    #panel-simulador-lateral .sim-settings-table td{padding:3px 5px;vertical-align:top;overflow-wrap:anywhere;}
+                    #panel-simulador-lateral .sim-settings-table tr+tr td{border-top:1px dotted #dcc48a;}
+                    #panel-simulador-lateral .sim-settings-table label{display:block;margin:1px 0;}
+                    #panel-simulador-lateral .sim-settings-table input[type=checkbox]{width:12px;height:12px;margin:0 3px 0 0;vertical-align:-2px;}
+                    #panel-simulador-lateral .sim-global-spells{padding:3px 5px;text-align:center;border-top:1px solid #d4b572;}
+                    #panel-simulador-lateral .sim-reduction-table{width:auto;margin:0 auto;border-collapse:collapse;table-layout:fixed;}
+                    #panel-simulador-lateral .sim-reduction-table col.sim-reduction-check-col{width:18px;}
+                    #panel-simulador-lateral .sim-reduction-table col.sim-reduction-name-col{width:170px;}
+                    #panel-simulador-lateral .sim-reduction-table col.sim-reduction-value-col{width:70px;}
+                    #panel-simulador-lateral .sim-reduction-table td{padding:1px 1px;border:0 !important;vertical-align:middle;}
+                    #panel-simulador-lateral .sim-reduction-check{text-align:center;}
+                    #panel-simulador-lateral .sim-reduction-name{text-align:left;font-weight:bold;white-space:nowrap;}
+                    #panel-simulador-lateral .sim-reduction-value{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+                    #panel-simulador-lateral .sim-reduction-table input[type=checkbox]{display:block;margin:0 auto;width:12px;height:12px;}
+                    #panel-simulador-lateral .sim-hero-picker{position:relative;flex:2;min-width:0;}
+                    #panel-simulador-lateral .sim-hero-selected{height:30px;display:flex;align-items:center;border:1px solid #c29b57;background:#fff8e6;border-radius:3px;cursor:pointer;overflow:hidden;}
+                    #panel-simulador-lateral .sim-hero-selected-icon,#panel-simulador-lateral .sim-hero-option-icon{width:32px;height:30px;display:flex;align-items:center;justify-content:center;flex:0 0 32px;}
+                    #panel-simulador-lateral .sim-hero-selected-text{min-width:0;flex:1;padding:0 5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    #panel-simulador-lateral .sim-hero-arrow{padding:0 6px;color:#5a3c11;font-size:10px;}
+                    #panel-simulador-lateral .sim-hero-options{display:none;position:absolute;z-index:12000;left:0;right:0;top:32px;max-height:275px;overflow-y:auto;border:1px solid #8f6b32;background:#fff8e6;box-shadow:0 3px 7px rgba(0,0,0,.55);}
+                    #panel-simulador-lateral .sim-hero-option{display:flex;align-items:center;min-height:34px;border-bottom:1px dotted #d4b572;cursor:pointer;}
+                    #panel-simulador-lateral .sim-hero-option:hover{background:#eed79c;}
+                    #panel-simulador-lateral .sim-hero-option-main{min-width:0;flex:1;padding:3px 5px;line-height:1.2;}
+                    #panel-simulador-lateral .sim-hero-option-name{font-weight:bold;color:#333;font-size:11px;}
+                    #panel-simulador-lateral .sim-hero-option-description{color:#6b4b1f;font-size:9px;white-space:normal;}
+                    #panel-simulador-lateral .sim-hero-option.sim-hero-recommended,body > .sim-hero-options .sim-hero-option.sim-hero-recommended{background:#d9efc2;border-left:4px solid #4f9b2f;box-sizing:border-box;}
+                    #panel-simulador-lateral .sim-hero-option.sim-hero-recommended:hover,body > .sim-hero-options .sim-hero-option.sim-hero-recommended:hover{background:#c8e8aa;}
+                    #panel-simulador-lateral .sim-hero-recommended-badge,body > .sim-hero-options .sim-hero-recommended-badge{margin-left:5px;padding:1px 4px;border-radius:3px;background:#4f9b2f;color:#fff;font-size:8px;font-weight:bold;vertical-align:1px;}
+                    #panel-simulador-lateral .sim-hero-option.sim-hero-alternative,body > .sim-hero-options .sim-hero-option.sim-hero-alternative{background:#fff1a8;border-left:4px solid #d5a400;box-sizing:border-box;}
+                    #panel-simulador-lateral .sim-hero-option.sim-hero-alternative:hover,body > .sim-hero-options .sim-hero-option.sim-hero-alternative:hover{background:#ffe77a;}
+                    #panel-simulador-lateral .sim-hero-alternative-badge,body > .sim-hero-options .sim-hero-alternative-badge{margin-left:5px;padding:1px 4px;border-radius:3px;background:#d5a400;color:#442f00;font-size:8px;font-weight:bold;vertical-align:1px;}
+                    #panel-simulador-lateral .sim-unit-picker{position:relative;flex:2;min-width:0;}
+                    #panel-simulador-lateral .sim-unit-selected{height:30px;display:flex;align-items:center;border:1px solid #c29b57;background:#fff8e6;border-radius:3px;cursor:pointer;overflow:hidden;}
+                    #panel-simulador-lateral .sim-unit-selected-icon,#panel-simulador-lateral .sim-unit-option-icon{width:32px;height:30px;display:flex;align-items:center;justify-content:center;flex:0 0 32px;}
+                    #panel-simulador-lateral .sim-unit-selected-text{min-width:0;flex:1;padding:0 5px;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+                    #panel-simulador-lateral .sim-unit-arrow{padding:0 6px;color:#5a3c11;font-size:10px;}
+                    #panel-simulador-lateral .sim-unit-options{display:none;position:absolute;z-index:12000;left:0;right:0;top:32px;max-height:330px;overflow-y:auto;border:1px solid #8f6b32;background:#fff8e6;box-shadow:0 3px 7px rgba(0,0,0,.55);}
+                    #panel-simulador-lateral .sim-unit-option{display:flex;align-items:center;min-height:34px;border-bottom:1px dotted #d4b572;cursor:pointer;}
+                    #panel-simulador-lateral .sim-unit-option:hover{background:#eed79c;}
+                    #panel-simulador-lateral .sim-unit-option-main{min-width:0;flex:1;padding:3px 5px;line-height:1.2;}
+                    #panel-simulador-lateral .sim-unit-option-name{font-weight:bold;color:#333;font-size:11px;}
+                    #panel-simulador-lateral .sim-unit-option-description{color:#6b4b1f;font-size:9px;white-space:normal;}
+                    body > .sim-unit-options,body > .sim-hero-options{display:none;position:fixed;z-index:2147483646;max-height:330px;overflow-y:auto;border:1px solid #8f6b32;background:#fff8e6;box-shadow:0 3px 9px rgba(0,0,0,.75);box-sizing:border-box;}
+                    body > .sim-unit-options .sim-unit-option,body > .sim-hero-options .sim-hero-option{display:flex;align-items:center;min-height:34px;border-bottom:1px dotted #d4b572;cursor:pointer;}
+                    body > .sim-unit-options .sim-unit-option:hover,body > .sim-hero-options .sim-hero-option:hover{background:#eed79c;}
+                    body > .sim-unit-options .sim-unit-option-icon,body > .sim-hero-options .sim-hero-option-icon{width:32px;height:30px;display:flex;align-items:center;justify-content:center;flex:0 0 32px;}
+                    body > .sim-unit-options .sim-unit-option-main,body > .sim-hero-options .sim-hero-option-main{min-width:0;flex:1;padding:3px 5px;line-height:1.2;}
+                    body > .sim-unit-options .sim-unit-option-name,body > .sim-hero-options .sim-hero-option-name{font-weight:bold;color:#333;font-size:11px;}
+                    body > .sim-unit-options .sim-unit-option-description,body > .sim-hero-options .sim-hero-option-description{color:#6b4b1f;font-size:9px;white-space:normal;}
+                    #panel-simulador-lateral .sim-result-table{width:100%;border-collapse:collapse;table-layout:fixed;line-height:1.25;}
+                    #panel-simulador-lateral .sim-result-table col.sim-result-label-col{width:132px;}
+                    #panel-simulador-lateral .sim-result-table col.sim-result-resource-col{width:58px;}
+                    #panel-simulador-lateral .sim-result-table td{padding:2px 1px;border:0;vertical-align:middle;}
+                    #panel-simulador-lateral .sim-result-label{font-weight:bold;white-space:nowrap;}
+                    #panel-simulador-lateral .sim-resource-cell{text-align:right;white-space:nowrap;font-size:10px;font-variant-numeric:tabular-nums;}
+                    #panel-simulador-lateral .sim-resource-cell img{width:13px;height:13px;object-fit:contain;margin-left:3px;vertical-align:-2px;}
+                    #panel-simulador-lateral .sim-time-cell{padding:0 1px 0 0 !important;text-align:right;}
+                    #panel-simulador-lateral .sim-time-table{width:auto;margin-left:auto;border-collapse:collapse;table-layout:fixed;}
+                    #panel-simulador-lateral .sim-time-table col.sim-time-number-col{width:18px;}
+                    #panel-simulador-lateral .sim-time-table col.sim-time-unit-col{width:11px;}
+                    #panel-simulador-lateral .sim-time-table td{padding:2px 0 !important;border:0;text-align:right;white-space:nowrap;color:#333;font-variant-numeric:tabular-nums;overflow:visible;}
+                    #panel-simulador-lateral .sim-time-value{text-align:right;white-space:nowrap;color:#333;font-variant-numeric:tabular-nums;padding-right:3px !important;}
+                </style>`;
+            let htmlTitulo = compactStyles + '<button id="sim-reload-data" type="button" style="display:none;">Refresh</button>';
+            htmlTitulo += '<input id="sim-game-speed" type="hidden" value="1">';
+            // Research and spells as a compact table
+            let htmlCostRes = '<table class="sim-settings-table">';
+            htmlCostRes += '<thead><tr><th class="sim-category-head"></th><th>Land units</th><th>Naval units</th></tr></thead><tbody>';
+            htmlCostRes += '<tr>';
+            htmlCostRes += '<td class="sim-category-cell"><span class="sim-category-label">Buildings</span></td>';
+            htmlCostRes += '<td><label><b>Barracks level</b><input id="sim-barracks-level" type="number" min="1" max="30" value="1" style="width:48px;margin-left:5px;padding:2px;border:1px solid #c29b57;background:#fff8e6;text-align:center;"></label></td>';
+            htmlCostRes += '<td><label><b>Harbor level</b><input id="sim-docks-level" type="number" min="0" max="30" value="1" style="width:48px;margin-left:5px;padding:2px;border:1px solid #c29b57;background:#fff8e6;text-align:center;"></label></td>';
+            htmlCostRes += '</tr><tr>';
+            htmlCostRes += '<td class="sim-category-cell" rowspan="2"><span class="sim-category-label">Research</span></td>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-mil"><b>Conscription</b> -10% cost</label></td>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-mat"><b>Mathematics</b> -10% cost</label></td>';
+            htmlCostRes += '</tr><tr>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-inst"><b>Instructor</b> -10% time</label></td>';
+            htmlCostRes += '<td><label><input type="checkbox" id="sim-const"><b>Shipwright</b> -10% time</label></td>';
+            htmlCostRes += '</tr><tr>';
+            htmlCostRes += '<td class="sim-category-cell" rowspan="3"><span class="sim-category-label">Spells</span></td>';
+            htmlCostRes += '<td>';
+            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="100" data-id="crecimiento_poblacion"><b>Population Growth</b> -100% time</label>';
+            htmlCostRes += '<label style="margin-left:15px;opacity:.55;"><input type="checkbox" id="sim-pob" disabled><b>Suffering</b> -30% cost</label>';
+            htmlCostRes += '</td>';
+            htmlCostRes += '<td>';
+            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="100" data-id="llamada_mar"><b>Call of the Ocean</b> -100% time</label>';
+            htmlCostRes += '<label style="margin-left:15px;opacity:.55;"><input type="checkbox" id="sim-ner" disabled><b>Nereids</b> -30% cost</label>';
+            htmlCostRes += '</td>';
+            htmlCostRes += '</tr><tr>';
+            htmlCostRes += '<td>';
+            htmlCostRes += '<label><input type="checkbox" class="sim-spell" value="70" data-id="entrenamiento_espartano"><b>Spartan Training</b> -70% time</label>';
+            htmlCostRes += '<label style="margin-left:15px;opacity:.70;"><input type="checkbox" class="sim-spell" value="0" data-id="furia_ares" disabled style="display:none;"><b>Fury of Ares</b> variabel</label>';
+            htmlCostRes += '<div style="margin:2px 0 0 30px;"><span style="font-size:9px;">Fury:</span> <input type="number" id="sim-fury-input" value="0" min="0" max="5000" step="100" style="width:42px;height:18px;padding:0 2px;border:1px solid #c29b57;background:#fff8e6;text-align:center;font-size:10px;"></div>';
+            htmlCostRes += '</td><td></td>';
+            htmlCostRes += '</tr><tr>';
+            htmlCostRes += '<td colspan="2" class="sim-global-spells">';
+            htmlCostRes += '<table class="sim-reduction-table"><colgroup><col class="sim-reduction-check-col"><col class="sim-reduction-name-col"><col class="sim-reduction-value-col"></colgroup><tbody>';
+            htmlCostRes += '<tr><td class="sim-reduction-check"><input type="checkbox" class="sim-spell" value="50" data-id="reduccion_epica" aria-label="Epice reduzierte Rekrutierungszeit"></td><td class="sim-reduction-name">Reduced recruitment time</td><td class="sim-reduction-value">Epic -50%</td></tr>';
+            htmlCostRes += '<tr><td class="sim-reduction-check"><input type="checkbox" class="sim-spell" value="25" data-id="reduccion_rara" aria-label="Raree reduzierte Rekrutierungszeit"></td><td class="sim-reduction-name">Reduced recruitment time</td><td class="sim-reduction-value">Rare -25%</td></tr>';
+            htmlCostRes += '</tbody></table>';
+            htmlCostRes += '</td></tr></tbody></table>';
+            let htmlInvestigaciones = '';
+            let htmlHechizos = '';
+            // PUNKT 3: Unit and amount
+            let htmlUnidades = '<h4 style="margin: 0 0 6px 0; color: #5a3c11; font-size: 12px;">Unit and amount</h4>';
+            htmlUnidades += '<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">';
+            htmlUnidades += '<div class="sim-unit-picker">';
+            htmlUnidades += '<select id="sim-unit-select" style="display:none;">';
+            units.forEach(u => htmlUnidades += `<option value="${u.id}" data-time="${u.time}" data-w="${u.w}" data-s="${u.s}" data-m="${u.m}" data-f="${u.f}" data-naval="${u.naval}">${u.name}</option>`);
+            htmlUnidades += '</select>';
+            htmlUnidades += '<div id="sim-unit-selected" class="sim-unit-selected"><div class="sim-unit-selected-icon"><div id="sim-selected-unit-icon" style="width:25px;height:25px;"></div></div><div id="sim-unit-selected-text" class="sim-unit-selected-text">Select unit</div><div class="sim-unit-arrow">▼</div></div>';
+            htmlUnidades += '<div id="sim-unit-options" class="sim-unit-options" hidden>';
+            units.forEach(unit => { const iconId=UNIT_ICON_CLASS[unit.id]||unit.id; htmlUnidades += `<div class="sim-unit-option" data-unit-id="${unit.id}"><div class="sim-unit-option-icon"><div class="unit_icon25x25 ${iconId}"></div></div><div class="sim-unit-option-main"><div class="sim-unit-option-name">${unit.name}</div><div class="sim-unit-option-description">${getUnitDescription(unit)}</div></div></div>`; });
+            htmlUnidades += '</div></div>';
+            htmlUnidades += '<input type="number" id="sim-unit-amount" placeholder="Amount" style="flex:1;min-width:0;padding:3px;border:1px solid #c29b57;background:#fff8e6;" min="0" value="85">';
+            htmlUnidades += '<button id="sim-apply-to-plan" type="button" title="Add amount to the selected unit target" style="flex:0 0 auto;height:30px;padding:0 9px;border:1px solid #49341c;border-radius:3px;color:#fff3c5;background:linear-gradient(#587d35,#35551f);font:bold 10px Arial;text-shadow:0 1px #1b260f;cursor:pointer;">Apply</button>';
+            htmlUnidades += '</div>';
+
+            htmlUnidades += '<div id="sim-population-info" style="margin:-4px 0 8px;color:#5a3c11;font-size:10px;">Loading available population...</div>';
+            // PUNKT 5: Assigned hero
+            let htmlHeroes = '<h4 style="margin: 8px 0 6px 0; color: #5a3c11; font-size: 12px;">Assigned hero</h4>';
+            htmlHeroes += '<div style="display:flex;gap:8px;align-items:center;">';
+            htmlHeroes += '<div class="sim-hero-picker">';
+            htmlHeroes += '<select id="sim-hero-select" style="display:none;"><option value="none">No hero</option>';
+            heroes.forEach(hero => htmlHeroes += `<option value="${hero.id}">${hero.name}</option>`);
+            htmlHeroes += '</select>';
+            htmlHeroes += '<div id="sim-hero-selected" class="sim-hero-selected"><div id="hero-avatar-container" class="sim-hero-selected-icon"><div id="hero-face-icon" style="display:none;width:25px;height:25px;"></div></div><div id="sim-hero-selected-text" class="sim-hero-selected-text">No hero</div><div class="sim-hero-arrow">▼</div></div>';
+            htmlHeroes += '<div id="sim-hero-options" class="sim-hero-options" hidden>';
+            htmlHeroes += '<div class="sim-hero-option" data-hero-id="none"><div class="sim-hero-option-icon"></div><div class="sim-hero-option-main"><div class="sim-hero-option-name">No hero</div><div class="sim-hero-option-description">No recruitment bonus</div></div></div>';
+            heroes.forEach(hero => { const gameId=HERO_FACE_CLASS[hero.id]||hero.id; htmlHeroes += `<div class="sim-hero-option" data-hero-id="${hero.id}"><div class="sim-hero-option-icon"><div class="dio_hero hero_icon hero25x25 ${gameId}"></div></div><div class="sim-hero-option-main"><div class="sim-hero-option-name">${hero.name}</div><div class="sim-hero-option-description">${hero.description}</div></div></div>`; });
+            htmlHeroes += '</div></div>';
+            htmlHeroes += '<input type="number" id="sim-hero-level" placeholder="Level" min="1" max="20" value="1" title="Level des Helden" style="width:46px;padding:3px;border:1px solid #c29b57;background:#fff8e6;text-align:center;">';
+            htmlHeroes += '<span id="sim-hero-percent" style="width:48px;font-size:11px;font-weight:bold;color:#5a3c11;text-align:right;"></span>';
+            htmlHeroes += '</div>';
+            htmlHeroes += '<div id="sim-hero-description" style="margin:4px 0 7px 40px;color:#5a3c11;font-size:10px;line-height:1.25;">No recruitment bonus selected.</div>';
+
+            htmlHeroes += '<div id="sim-res-display" style="margin-bottom:10px;font-size:11px;color:#333;background:#eedda6;padding:8px;border-radius:3px;line-height:1.35;">';
+            htmlHeroes += '<table class="sim-result-table"><colgroup><col class="sim-result-label-col"><col class="sim-result-resource-col"><col class="sim-result-resource-col"><col class="sim-result-resource-col"><col class="sim-result-resource-col"></colgroup><tbody>';
+            htmlHeroes += '<tr><td class="sim-result-label">Cost per unit:</td><td id="unit-wood" class="sim-resource-cell"></td><td id="unit-stone" class="sim-resource-cell"></td><td id="unit-iron" class="sim-resource-cell"></td><td id="unit-favor" class="sim-resource-cell"></td></tr>';
+            htmlHeroes += '<tr><td class="sim-result-label">Total cost:</td><td id="total-wood" class="sim-resource-cell"></td><td id="total-stone" class="sim-resource-cell"></td><td id="total-iron" class="sim-resource-cell"></td><td id="total-favor" class="sim-resource-cell"></td></tr>';
+            htmlHeroes += '<tr><td class="sim-result-label" style="color:#000;">⏱ Recruitment Time per Unit:</td><td class="sim-time-cell" colspan="4"><table class="sim-time-table"><colgroup><col class="sim-time-number-col"><col class="sim-time-unit-col"><col class="sim-time-number-col"><col class="sim-time-unit-col"><col class="sim-time-number-col"><col class="sim-time-unit-col"></colgroup><tbody><tr><td id="sim-time-hours">0</td><td>h</td><td id="sim-time-minutes">18</td><td>m</td><td id="sim-time-seconds">00</td><td>s</td></tr></tbody></table><span id="sim-time-value" data-seconds="1080" style="display:none;">0h 18m 0s</span></td></tr>';
+            htmlHeroes += '<tr><td class="sim-result-label" style="color:#000;">⏱ Total Recruitment Time:</td><td class="sim-time-cell" colspan="4"><table class="sim-time-table"><colgroup><col class="sim-time-number-col"><col class="sim-time-unit-col"><col class="sim-time-number-col"><col class="sim-time-unit-col"><col class="sim-time-number-col"><col class="sim-time-unit-col"></colgroup><tbody><tr><td id="total-time-hours">0</td><td>h</td><td id="total-time-minutes">00</td><td>m</td><td id="total-time-seconds">00</td><td>s</td></tr></tbody></table><span id="txt-tiempo-total" style="display:none;">...</span></td></tr>';
+            htmlHeroes += '</tbody></table>';
+            htmlHeroes += '</div>';
+
+            panel.innerHTML = (htmlTitulo + htmlCostRes + htmlInvestigaciones + htmlHechizos + htmlUnidades + htmlHeroes);
+
+            const refreshSimulatorPopulationFromPlan=()=>{
+                const select=document.getElementById('sim-unit-select');
+                if(!select)return;
+                refreshPopulationForUnit(select.value,!simulatorAmountManuallyEdited);
+                updateInfo();
+            };
+            const openSimulator=()=>{
+                openRecruitmentWindow(panel);
+                // Apply the current "Nach Planung" value immediately when the
+                // simulator opens. Repeat briefly because Grepolis can finish
+                // rendering the attached recruitment panel a few frames later.
+                refreshSimulatorPopulationFromPlan();
+                [0,50,150,350,750].forEach(delay=>window.setTimeout(()=>{
+                    if(findRecruitmentWindowRoot()?.style.display!=='none'){
+                        refreshSimulatorPopulationFromPlan();
+                    }
+                },delay));
+            };
+            btnMas.onclick=openSimulator;
+            recruitmentSimulatorOpen=openSimulator;
+            window.GrepolisRecruitmentTools.openSimulator=openSimulator;
+
+            document.body.appendChild(btnMas);
+            document.body.appendChild(panel);
+
+
+            // Gespeicherte Einstellungen laden
+            ['sim-mil', 'sim-mat', 'sim-ner', 'sim-inst', 'sim-const', 'sim-pob'].forEach(id => {
+                loadCheckboxState(id);
+                document.getElementById(id).addEventListener('change', () => {
+                    saveCheckboxState(id);
+                    updateInfo();
+                });
+            });
+
+            const unitSelectElement = document.getElementById('sim-unit-select');
+            const unitPickerButton=document.getElementById('sim-unit-selected');
+            const unitOptions=document.getElementById('sim-unit-options');
+            detachPicker(unitOptions);
+            unitPickerButton.addEventListener('click',event=>{
+                event.preventDefault();event.stopPropagation();
+                openDetachedPicker(unitPickerButton,unitOptions);
+            });
+            unitOptions.querySelectorAll('.sim-unit-option').forEach(option=>option.addEventListener('mousedown',event=>{
+                if(event.button!==0)return;
+                event.preventDefault();event.stopPropagation();
+                const selectedUnitId=option.dataset.unitId;
+                unitSelectElement.value=selectedUnitId;
+                simulatorAmountManuallyEdited=false;
+                simulatorAmountUnitId='';
+                refreshPopulationForUnit(selectedUnitId,true);
+                unitOptions.hidden=true;
+                unitOptions.style.display='none';
+                unitSelectElement.dispatchEvent(new Event('change',{bubbles:true}));
+            }));
+            document.addEventListener('mousedown',closeDetachedPickers);
+            unitSelectElement.addEventListener('change', () => {
+                const selectedUnitId=unitSelectElement.value;
+                updateUnitPickerDisplay();
+                updateRecommendedHeroMarker();
+                refreshPopulationForUnit(selectedUnitId,!simulatorAmountManuallyEdited);
+                const opt = unitSelectElement.options[unitSelectElement.selectedIndex];
+                const defTime=getOfficialBaseUnitTime(opt.value,parseFloat(opt.getAttribute('data-time')));
+                opt.dataset.baseWorldSeconds=String(defTime);
+                const naval=opt.getAttribute('data-naval')==='true';
+                const levelId=naval?'sim-docks-level':'sim-barracks-level';
+                const selectedLevel=Number(document.getElementById(levelId).value);
+                const previewTime=naval&&selectedLevel===0?Infinity:defTime*buildingTimeFactor(selectedLevel)/Math.max(.1,Number(document.getElementById('sim-game-speed').value)||1);
+                setInputsFromSeconds(previewTime);
+                updateInfo();
+            });
+
+            updateUnitPickerDisplay();
+            updateHeroPortrait('none');
+            const heroSelectElement = document.getElementById('sim-hero-select');
+            const heroPickerButton=document.getElementById('sim-hero-selected');
+            const heroOptions=document.getElementById('sim-hero-options');
+            detachPicker(heroOptions);
+            heroPickerButton.addEventListener('click',event=>{
+                event.preventDefault();event.stopPropagation();
+                updateRecommendedHeroMarker();
+                openDetachedPicker(heroPickerButton,heroOptions);
+            });
+            const repositionDetachedPickers=()=>{
+                if(unitOptions.style.display==='block')placeDetachedPicker(unitPickerButton,unitOptions);
+                if(heroOptions.style.display==='block')placeDetachedPicker(heroPickerButton,heroOptions);
+            };
+            window.addEventListener('resize',repositionDetachedPickers);
+            window.addEventListener('scroll',repositionDetachedPickers,true);
+            heroOptions.querySelectorAll('.sim-hero-option').forEach(option=>option.addEventListener('click',event=>{
+                event.preventDefault();event.stopPropagation();
+                heroSelectElement.value=option.dataset.heroId;
+                heroOptions.hidden=true;
+                heroOptions.style.display='none';
+                heroSelectElement.dispatchEvent(new Event('change',{bubbles:true}));
+            }));
+            document.addEventListener('mousedown',closeDetachedPickers);
+            heroSelectElement.addEventListener('change', () => {
+                const opt = heroSelectElement.options[heroSelectElement.selectedIndex];
+                updateHeroPickerDisplay();
+                updateHeroDetails();
+                const selectedId = heroSelectElement.value;
+                if (selectedId !== 'none') {
+                    const ownedLevels=readHeroDataWithoutCouncil().levels;
+                    const knownLevel=ownedLevels[selectedId]||1;
+                    document.getElementById('sim-hero-level').value=Math.max(1,Math.min(20,knownLevel));
+                    if(ownedLevels[selectedId])rememberHeroLevel(selectedId,knownLevel);
+                } else {
+                    document.getElementById('sim-hero-level').value=1;
+                }
+                updateHeroDetails();
+                prefillMaximumTroops();
+                updateInfo();
+            });
+
+            document.getElementById('sim-hero-level').addEventListener('input',()=>{
+                const id=heroSelectElement.value;
+                if(id!=='none')rememberHeroLevel(id,document.getElementById('sim-hero-level').value);
+                updateHeroDetails();
+                prefillMaximumTroops();
+                updateInfo();
+            });
+            updateHeroPickerDisplay();
+            updateHeroDetails();
+            updateRecommendedHeroMarker();
+            function updateInfo() {
+                const unitSelect = document.getElementById('sim-unit-select');
+                const opt = unitSelect.options[unitSelect.selectedIndex];
+
+                let baseW = parseInt(opt.getAttribute('data-w'), 10);
+                let baseS = parseInt(opt.getAttribute('data-s'), 10);
+                let baseM = parseInt(opt.getAttribute('data-m'), 10);
+                let baseF = parseInt(opt.getAttribute('data-f'), 10);
+                const isNaval = opt.getAttribute('data-naval') === 'true';
+                const amount = Math.max(0, parseInt(document.getElementById('sim-unit-amount').value, 10) || 0);
+
+                const enteredTime=getOfficialBaseUnitTime(opt.value,Number(opt.dataset.baseWorldSeconds||opt.getAttribute('data-time')));
+                const speed = Math.max(0.1,Number(document.getElementById('sim-game-speed').value)||1);
+                const levelId=isNaval?'sim-docks-level':'sim-barracks-level';
+                const rawLevel=Number(document.getElementById(levelId).value);
+                const level=isNaval?Math.max(0,rawLevel||0):Math.max(1,rawLevel||1);
+                let timePerUnit = isNaval&&level===0 ? Infinity : enteredTime * buildingTimeFactor(level) / speed;
+                if(Number.isFinite(timePerUnit)&&document.getElementById('sim-const').checked&&isNaval)timePerUnit*=0.90;
+                if(Number.isFinite(timePerUnit)&&document.getElementById('sim-inst').checked&&!isNaval)timePerUnit*=0.90;
+                // Every recruitment-time effect gets its own factor.
+                // Percentages are no longer added together.
+                let recruitmentTimeMultiplier=1;
+                document.querySelectorAll('.sim-spell:checked').forEach(cb=>{
+                    const spell=spells.find(x=>x.id===cb.dataset.id);
+                    if(!spell||(spell.navalOnly&&!isNaval)||(spell.terrestrialOnly&&isNaval))return;
+                    // "Reduced recruitment time" is a direct time reduction, not a
+                    // production-speed bonus: 25% means time * 0.75 and 50% means time * 0.50.
+                    if(spell.id==='reduccion_rara'){
+                        recruitmentTimeMultiplier*=0.75;
+                        return;
+                    }
+                    if(spell.id==='reduccion_epica'){
+                        recruitmentTimeMultiplier*=0.50;
+                        return;
+                    }
+                    if(spell.id==='llamada_mar'){
+                        recruitmentTimeMultiplier/=2;
+                        return;
+                    }
+                    if(spell.id==='crecimiento_poblacion'){
+                        recruitmentTimeMultiplier/=2;
+                        return;
+                    }
+                    if(spell.id==='entrenamiento_espartano'){
+                        recruitmentTimeMultiplier/=1.70;
+                        return;
+                    }
+                    if(spell.id==='furia_ares'){
+                        const furyBonus=Math.floor(Math.min(5000,Math.max(0,Number(document.getElementById('sim-fury-input').value)||0))/100);
+                        recruitmentTimeMultiplier/=1+furyBonus/100;
+                    }
+                });
+                const heroId=document.getElementById('sim-hero-select').value;
+                const heroLevel=Math.max(1,Number(document.getElementById('sim-hero-level').value)||1);
+                const unitId=opt.value;
+                const mythicalUnits=new Set(['harpy','pegasus','manticore','medusa','cerberus','cyclops','centaur','minotaur','godsent','espartoi','ladon','griffin','boar','erinyes','siren','hydra','satyr']);
+                const isMythical=mythicalUnits.has(unitId);
+                const heroEffect=getHeroRecruitmentEffect(heroId,heroLevel,unitId,isNaval,isMythical);
+                // Hero bonuses such as Aristotle directly reduce construction time.
+                // Example: a 60% time reduction means time * 0.40, not time / 1.60.
+                // Produktionsboni aus Spellsn bleiben dagegen additive Geschwindigkeitsboni.
+                if(Number.isFinite(timePerUnit)){
+                    timePerUnit*=recruitmentTimeMultiplier;
+                    // Only one hero can be assigned at a time. Their effect
+                    // is applied as a separate time factor after all spells.
+                    timePerUnit*=Math.max(0,1-heroEffect.timePercent/100);
+                }
+                const hasMat = document.getElementById('sim-mat').checked;
+                const hasNer = document.getElementById('sim-ner').checked;
+                const hasMil = document.getElementById('sim-mil').checked;
+                const hasPob = document.getElementById('sim-pob').checked;
+
+                let discountW = 1.0, discountS = 1.0, discountM = 1.0;
+                const seaActive = !!document.querySelector('.sim-spell[data-id="llamada_mar"]:checked');
+                const birthActive = !!document.querySelector('.sim-spell[data-id="crecimiento_poblacion"]:checked');
+                const nereidsActive=hasNer&&seaActive&&isNaval;
+                const sufferingActive=hasPob&&birthActive&&!isNaval;
+                if(nereidsActive||sufferingActive){
+                    // Nereids + Call of the Ocean, or Suffering + Population Growth,
+                    // set the base cost to 70%. Further matching discounts
+                    // (for example Conscription for land units) still apply
+                    // multiplicatively afterwards: 70% * 90% = 63%.
+                    discountW=discountS=discountM=.70;
+                    if(hasMat&&isNaval)discountW*=.90,discountS*=.90,discountM*=.90;
+                    if(hasMil&&!isNaval)discountW*=.90,discountS*=.90,discountM*=.90;
+                    if(heroEffect.resourcePercent>0){
+                        const heroResourceFactor=1-(heroEffect.resourcePercent/100);
+                        discountW*=heroResourceFactor;
+                        discountS*=heroResourceFactor;
+                        discountM*=heroResourceFactor;
+                    }
+                } else {
+                    if(hasMat&&isNaval)discountW=discountS=discountM=.90;
+                    if(hasMil&&!isNaval)discountW=discountS=discountM=.90;
+                    if(heroEffect.resourcePercent>0){
+                        const heroResourceFactor=1-(heroEffect.resourcePercent/100);
+                        discountW*=heroResourceFactor;
+                        discountS*=heroResourceFactor;
+                        discountM*=heroResourceFactor;
+                    }
+                }
+
+                const unitW = Math.max(0, Math.ceil(baseW * discountW));
+                const unitS = Math.max(0, Math.ceil(baseS * discountS));
+                const unitM = Math.max(0, Math.ceil(baseM * discountM));
+                const unitF=Math.max(0,Math.ceil(baseF*(1-heroEffect.favorPercent/100)));
+
+                const totalW = unitW * amount;
+                const totalS = unitS * amount;
+                const totalM = unitM * amount;
+                const totalF = unitF * amount;
+
+                // Grepolis rounds the recruitment time of one unit to full seconds first.
+                // The queue time is then this rounded per-unit time multiplied by the amount.
+                const roundedTimePerUnit = Number.isFinite(timePerUnit)
+                    ? Math.max(0, Math.round(timePerUnit + 1e-9))
+                    : Infinity;
+                const totalBaseTime = roundedTimePerUnit * amount;
+                setInputsFromSeconds(roundedTimePerUnit);
+
+                const RESOURCE_ICONS={
+                    wood:'https://gpde.innogamescdn.com/images/game/res/wood.png',
+                    stone:'https://gpde.innogamescdn.com/images/game/res/stone.png',
+                    iron:'https://gpde.innogamescdn.com/images/game/res/iron.png',
+                    favor:'https://gpde.innogamescdn.com/images/game/res/favor.png'
+                };
+                const formatNumber=value=>Math.round(Number(value)||0).toLocaleString();
+                const setResourceCell=(id,type,value,label)=>{
+                    const cell=document.getElementById(id);
+                    if(cell)cell.innerHTML=`<span>${formatNumber(value)}</span><img src="${RESOURCE_ICONS[type]}" alt="${label}" title="${label}">`;
+                };
+                setResourceCell('unit-wood','wood',unitW,'Wood');
+                setResourceCell('unit-stone','stone',unitS,'Stone');
+                setResourceCell('unit-iron','iron',unitM,'Silver');
+                setResourceCell('unit-favor','favor',unitF,'Favor');
+                setResourceCell('total-wood','wood',totalW,'Wood');
+                setResourceCell('total-stone','stone',totalS,'Stone');
+                setResourceCell('total-iron','iron',totalM,'Silver');
+                setResourceCell('total-favor','favor',totalF,'Favor');
+                document.getElementById('txt-tiempo-total').innerText = formatTime(totalBaseTime);
+                writeTimeTable('total-time',totalBaseTime);
+            }
+
+            const epicReduction=document.querySelector('.sim-spell[data-id="reduccion_epica"]');
+            const rareReduction=document.querySelector('.sim-spell[data-id="reduccion_rara"]');
+            const enforceExclusiveReduction=(changed)=>{
+                if(!changed||!changed.checked)return;
+                const other=changed===epicReduction?rareReduction:epicReduction;
+                if(other)other.checked=false;
+            };
+            [epicReduction,rareReduction].forEach(control=>{
+                if(control)control.addEventListener('change',()=>{enforceExclusiveReduction(control);updateInfo();});
+            });
+            const seaParent=document.querySelector('.sim-spell[data-id="llamada_mar"]');
+            const birthParent=document.querySelector('.sim-spell[data-id="crecimiento_poblacion"]');
+            const spartanParent=document.querySelector('.sim-spell[data-id="entrenamiento_espartano"]');
+            [seaParent,birthParent,spartanParent].forEach(parent=>{if(parent)parent.addEventListener('change',()=>{syncDependentSpells();updateInfo();});});
+            function refreshUnitOptionData() {
+                hydrateUnitsFromGameData();
+                document.querySelectorAll('#sim-unit-select option').forEach(option=>{
+                    const unit=units.find(entry=>entry.id===option.value);
+                    if(!unit)return;
+                    option.dataset.time=String(unit.time);
+                    option.dataset.w=String(unit.w);
+                    option.dataset.s=String(unit.s);
+                    option.dataset.m=String(unit.m);
+                    option.dataset.f=String(unit.f);
+                    option.dataset.naval=String(unit.naval);
+                });
+            }
+            function reloadDetectedData() {
+                // Snapshot the selected town once. Delayed passes may only run while this town is still active.
+                const requestToken=++reloadRequestToken;
+                const lockedTownId=currentTownId();
+                const lockedTownName=getCurrentTownName();
+                const stillValid=()=>requestToken===reloadRequestToken && currentTownId()===lockedTownId;
+                const updateLockedTitle=()=>{
+                    const title=lockedTownName ? `Recruitment Simulator - ${lockedTownName}` : 'Recruitment Simulator';
+                    const titleElement=findRecruitmentWindowRoot()?.querySelector('.wnd_border_t .title');
+                    if(titleElement)titleElement.textContent=title;
+                    const taskbarCaption=document.querySelector('#recruitment_simulator_taskbar_item .caption');
+                    if(taskbarCaption)taskbarCaption.textContent=title;
+                };
+                refreshUnitOptionData();
+                const opt=unitSelectElement.options[unitSelectElement.selectedIndex];
+                document.getElementById('sim-game-speed').value=getDetectedGameSpeed();
+                const detectedBarracks=getDetectedBuildingLevel(false);
+                const detectedDocks=getDetectedBuildingLevel(true);
+                document.getElementById('sim-barracks-level').value=detectedBarracks===null?1:detectedBarracks;
+                document.getElementById('sim-docks-level').value=detectedDocks===null?0:detectedDocks;
+                opt.dataset.baseWorldSeconds=String(getOfficialBaseUnitTime(opt.value,opt.getAttribute('data-time')));
+                rememberDetectedHeroLevels();
+                document.getElementById('sim-hero-select').value='none';
+                readCurrentGameData();
+                updateLockedTitle();
+                syncDependentSpells();
+                prefillMaximumTroops();
+                updateInfo();
+                [250,750].forEach(delay=>setTimeout(()=>{
+                    if(!stillValid())return;
+                    readCurrentGameData();
+                    updateLockedTitle();
+                    rememberDetectedHeroLevels();
+                    const assigned=readAssignedHero();
+                    if(assigned)setHeroSelection(assigned);
+                    else {
+                        document.getElementById('sim-hero-select').value='none';
+                        document.getElementById('sim-hero-level').value=1;
+                        updateHeroPickerDisplay();
+                        updateHeroDetails();
+                    }
+                    syncDependentSpells();
+                    prefillMaximumTroops();
+                    updateInfo();
+                },delay));
+            }
+            document.getElementById('sim-reload-data').addEventListener('mousedown',e=>e.stopPropagation());
+            document.getElementById('sim-reload-data').onclick=e=>{e.preventDefault();e.stopPropagation();reloadDetectedData();};
+            ['sim-game-speed','sim-barracks-level','sim-docks-level'].forEach(id=>document.getElementById(id).addEventListener('input',updateInfo));
+            document.getElementById('sim-unit-amount').addEventListener('input',()=>{
+                simulatorAmountManuallyEdited=true;
+                simulatorAmountUnitId=String(document.getElementById('sim-unit-select').value||'');
+                refreshPopulationForUnit(simulatorAmountUnitId,false);
+                updateInfo();
+            });
+            const applyPlanButton=document.getElementById('sim-apply-to-plan');
+            applyPlanButton.addEventListener('click',()=>{
+                const unitId=document.getElementById('sim-unit-select').value;
+                const amount=Math.max(0,Number.parseInt(document.getElementById('sim-unit-amount').value,10)||0);
+                if(amount<=0)return;
+                const applied=window.GrepolisRecruitmentTools?.addToCurrentTarget?.(unitId,amount);
+                if(!applied){
+                    applyPlanButton.title=`Open the corresponding Harbor or Barracks window`;
+                    return;
+                }
+                applyPlanButton.title=`${amount.toLocaleString()} units were added to the target value`;
+                window.setTimeout(()=>refreshPopulationForUnit(unitId,true),50);
+            });
+            updateInfoGlobal=updateInfo;
+            window.addEventListener('egeltools:recruitment-plan-population-updated',()=>{
+                if(findRecruitmentWindowRoot()?.style.display==='none')return;
+                refreshSimulatorPopulationFromPlan();
+            });
+            document.querySelectorAll('input[type=checkbox], #sim-fury-input, #sim-hero-level, #sim-hero-select').forEach(e=>{e.addEventListener('input',updateInfo);e.addEventListener('change',updateInfo);});
+            updateInfoGlobal=updateInfo;
+            panel.addEventListener('input',()=>{syncDependentSpells();updateInfo();});
+            panel.addEventListener('change',()=>{syncDependentSpells();updateInfo();});
+            reloadDetectedData();
+        }
+    }
+
+    setTimeout(()=>{
+        registerRecruitmentWindow();
+        injectSimulator();
+    },1000);
+
+
+})();
+
+// Recruit Optimizer integration
+(function () {
+    'use strict';
+
+    const TARGET_EFFECT_IDS = new Set([
+        'unit_training_boost',
+        'passionate_training',
+        'passionate_training_boost'
+    ]);
+    const STORAGE_KEY = 'grepo_unit_targets_scoped_v2';
+    const draftTargets = {};
+    function getTownId() {
+        return Number(window.Game?.townId || window.ITowns?.getCurrentTown?.()?.id || 0);
+    }
+
+    function isValidGroupId(groupId) {
+        return groupId !== undefined && groupId !== null && String(groupId) !== '' && String(groupId) !== '-1';
+    }
+
+    function getGroupId() {
+        const townId = String(getTownId());
+
+        try {
+            const models = MM.getModels?.() || {};
+            for (const modelGroup of Object.values(models)) {
+                for (const model of Object.values(modelGroup || {})) {
+                    const a = model.attributes || {};
+                    const modelTownId = a.town_id || a.townId || a.townid;
+                    const modelGroupId = a.town_group_id || a.group_id || a.groupId || a.townGroupId;
+
+                    if (String(modelTownId) === townId && isValidGroupId(modelGroupId)) {
+                        return String(modelGroupId);
+                    }
+                }
+            }
+        } catch {}
+
+        try {
+            const collections = MM.getCollections?.() || {};
+            for (const collectionGroup of Object.values(collections)) {
+                for (const collection of Object.values(collectionGroup || {})) {
+                    for (const model of collection.models || []) {
+                        const a = model.attributes || {};
+                        const modelTownId = a.town_id || a.townId || a.townid;
+                        const modelGroupId = a.town_group_id || a.group_id || a.groupId || a.townGroupId;
+
+                        if (String(modelTownId) === townId && isValidGroupId(modelGroupId)) {
+                            return String(modelGroupId);
+                        }
+                    }
+                }
+            }
+        } catch {}
+
+        return 'default';
+    }
+
+    function getTargets() {
+        try {
+            const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+            data.all ||= {};
+            data.groups ||= {};
+            data.cities ||= {};
+            data.customGroups ||= {};
+            data.cityCustomGroups ||= {};
+            data.cityTargetGroups ||= {};
+            data.grepolisGroupNames ||= {};
+            data.townNames ||= {};
+            return data;
+        } catch {
+            return { all: {}, groups: {}, cities: {}, customGroups: {}, cityCustomGroups: {}, cityTargetGroups: {}, grepolisGroupNames: {}, townNames: {} };
+        }
+    }
+
+    function saveTargets(data) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    function getTargetData(unit) {
+        const data = getTargets();
+        rememberCurrentTownName(data);
+        const townId = String(getTownId());
+        const groupId = String(getGroupId());
+
+        const assignment = data.cityTargetGroups?.[townId] || ('grepo:' + groupId);
+        if (assignment === 'none' && data.cities?.[townId]?.[unit] !== undefined) {
+            return { value: Number(data.cities[townId][unit]) || 0, scope: 'city' };
+        }
+
+        if (assignment.startsWith('custom:')) {
+            const customGroupId = assignment.slice(7);
+            if (data.customGroups?.[customGroupId]?.targets?.[unit] !== undefined) {
+                return { value: Number(data.customGroups[customGroupId].targets[unit]) || 0, scope: 'custom-group' };
+            }
+        }
+
+        if (assignment === 'none') return { value: 0, scope: 'none' };
+        const assignedGrepolisGroupId = assignment.startsWith('grepo:') ? assignment.slice(6) : groupId;
+        if (data.groups?.[assignedGrepolisGroupId]?.[unit] !== undefined) {
+            return { value: Number(data.groups[assignedGrepolisGroupId][unit]) || 0, scope: 'group' };
+        }
+
+        return { value: 0, scope: 'none' };
+    }
+
+    function setDraft(unit, value) {
+        const townId = String(getTownId());
+        draftTargets[townId] ||= {};
+        draftTargets[townId][unit] = value;
+    }
+
+    function getDraft(unit) {
+        return draftTargets[String(getTownId())]?.[unit];
+    }
+
+    function saveAllVisibleTargets(scope) {
+        const data = getTargets();
+        const townId = String(getTownId());
+        const groupId = String(getGroupId());
+
+        const assignment = data.cityTargetGroups?.[townId] || ('grepo:' + groupId);
+        if (scope === 'city') data.cities[townId] ||= {};
+        if (scope === 'group' && assignment === 'none') return;
+        const selectedCustomGroupId = assignment.startsWith('custom:') ? assignment.slice(7) : '';
+        const selectedGrepolisGroupId = assignment.startsWith('grepo:') ? assignment.slice(6) : groupId;
+        if (scope === 'group' && selectedCustomGroupId && data.customGroups?.[selectedCustomGroupId]) {
+            data.customGroups[selectedCustomGroupId].targets ||= {};
+        } else if (scope === 'group') {
+            data.groups[selectedGrepolisGroupId] ||= {};
+        }
+
+        getTabs().forEach(tab => {
+            const input = tab.querySelector('.uti-target');
+            if (!input) return;
+
+            const value = Number(input.value) || 0;
+
+            if (scope === 'city') data.cities[townId][tab.id] = value;
+            if (scope === 'group' && selectedCustomGroupId && data.customGroups?.[selectedCustomGroupId]) {
+                data.customGroups[selectedCustomGroupId].targets[tab.id] = value;
+            } else if (scope === 'group') {
+                data.groups[selectedGrepolisGroupId][tab.id] = value;
+            }
+
+            input.dataset.dirty = '0';
+            input.classList.remove('dirty');
+            setDraft(tab.id, input.value);
+        });
+
+        saveTargets(data);
+        refreshTotalsOnly();
+        if (typeof window.EgelToolsRecruitDriveUpload === 'function') {
+            void window.EgelToolsRecruitDriveUpload().catch((error) => {
+                console.error('[EgelTools] Google Drive POST failed:', error);
+            });
+        } else {
+            console.error('[EgelTools] Google Drive uploader is unavailable.');
+        }
+    }
+
+    function getActiveTargetInfo() {
+        const data = getTargets();
+        const townId = String(getTownId());
+        if (Object.prototype.hasOwnProperty.call(data.cities || {}, townId)) {
+            return { type: 'city', label: getCurrentTownLabel() };
+        }
+        const assignment = data.cityTargetGroups?.[townId] || '';
+        if (assignment.startsWith('custom:')) {
+            const customGroupId = assignment.slice(7);
+            if (data.customGroups?.[customGroupId]) {
+                return { type: 'custom-group', label: data.customGroups[customGroupId].name || customGroupId };
+            }
+        }
+        const actualGroupId = String(getGroupId());
+        const selectedGroupId = assignment.startsWith('grepo:') ? assignment.slice(6) : actualGroupId;
+        if (Object.prototype.hasOwnProperty.call(data.groups || {}, selectedGroupId)) {
+            return { type: 'group', label: getGrepolisTargetGroups().find(group => group.id === selectedGroupId)?.name || selectedGroupId };
+        }
+        return { type: 'none', label: '' };
+    }
+
+    function rememberCurrentTownName(data) {
+        const townId=String(getTownId());
+        const townName=getCurrentTownLabel();
+        data.townNames ||= {};
+        if(townId&&townName)data.townNames[townId]=townName;
+    }
+
+    function pruneObsoleteGrepolisGroups(data, validGroupIds) {
+        const valid=new Set((validGroupIds||[]).map(String));
+        let changed=false;
+        Object.keys(data.groups||{}).forEach(id=>{
+            if(!valid.has(String(id))){delete data.groups[id];changed=true;}
+        });
+        Object.keys(data.grepolisGroupNames||{}).forEach(id=>{
+            if(!valid.has(String(id))){delete data.grepolisGroupNames[id];changed=true;}
+        });
+        Object.entries(data.cityTargetGroups||{}).forEach(([townId,assignment])=>{
+            if(String(assignment).startsWith('grepo:')&&!valid.has(String(assignment).slice(6))){
+                data.cityTargetGroups[townId]='none';
+                changed=true;
+            }
+        });
+        return changed;
+    }
+
+    function getGrepolisTargetGroups() {
+        const found = new Map();
+        const add = (id, name) => {
+            const cleanId = String(id ?? '').trim();
+            const cleanName = String(name ?? '').trim();
+            // Grepolis reserves -1 for "All" and -2 for "No group".
+            if (!isValidGroupId(cleanId) || cleanId === '-2' || !cleanName) return;
+            found.set(cleanId, cleanName);
+        };
+
+        try {
+            const models = MM.getModels?.() || {};
+            const collections = MM.getCollections?.() || {};
+            const townGroupBuckets = [
+                models.TownGroup,
+                collections.TownGroup,
+            ];
+
+            for (const bucket of townGroupBuckets) {
+                if (!bucket) continue;
+                const entries = Array.isArray(bucket) ? bucket : Object.values(bucket);
+                for (const entry of entries) {
+                    const groupModels = Array.isArray(entry?.models) ? entry.models : [entry];
+                    for (const model of groupModels) {
+                        const attributes = model?.attributes || model?.toJSON?.() || model || {};
+                        add(
+                            attributes.id ?? attributes.group_id ?? attributes.town_group_id,
+                            attributes.name ?? attributes.group_name ?? attributes.title,
+                        );
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('[EgelTools] Could not read Grepolis town groups:', error);
+        }
+
+        const currentId = String(getGroupId());
+        if (currentId !== '-1' && currentId !== '-2') add(currentId, getCurrentGroupLabel());
+
+        const targetData = getTargets();
+        targetData.grepolisGroupNames ||= {};
+        let namesChanged = false;
+        found.forEach((name, id) => {
+            if (targetData.grepolisGroupNames[id] !== name) {
+                targetData.grepolisGroupNames[id] = name;
+                namesChanged = true;
+            }
+        });
+        rememberCurrentTownName(targetData);
+        // Do not prune while the game is starting. TownGroup models are populated
+        // incrementally and an incomplete early list must never delete cloud assignments.
+        if (namesChanged) saveTargets(targetData);
+
+        return [...found.entries()]
+            .map(([id, name]) => ({ id, name }))
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    }
+
+    function buildGrepolisTownGroupMembershipMap() {
+        const membershipMap=new Map();
+        const visited=new Set();
+        const add=(townIdValue,groupIdValue)=>{
+            const townId=String(townIdValue??'').trim();
+            const groupId=String(groupIdValue??'').trim();
+            if(!townId||!isValidGroupId(groupId)||groupId==='-2')return;
+            if(!membershipMap.has(townId))membershipMap.set(townId,new Set());
+            membershipMap.get(townId).add(groupId);
+        };
+        const inspect=node=>{
+            if(!node||typeof node!=='object'||visited.has(node))return;
+            visited.add(node);
+            const a=node.attributes||node.toJSON?.()||null;
+            if(a&&typeof a==='object'){
+                add(
+                    a.town_id??a.townId??a.townid??a.id_town,
+                    a.town_group_id??a.group_id??a.groupId??a.townGroupId??a.id_group,
+                );
+            }
+            if(Array.isArray(node)){
+                node.forEach(inspect);
+                return;
+            }
+            if(Array.isArray(node.models))node.models.forEach(inspect);
+            if(node._byId&&typeof node._byId==='object')Object.values(node._byId).forEach(inspect);
+            if(node.models_by_id&&typeof node.models_by_id==='object')Object.values(node.models_by_id).forEach(inspect);
+            Object.entries(node).forEach(([key,value])=>{
+                if(['attributes','models','_byId','models_by_id'].includes(key))return;
+                if(value&&typeof value==='object')inspect(value);
+            });
+        };
+        try{inspect(MM.getModels?.()||{});}catch(_){}
+        try{inspect(MM.getCollections?.()||{});}catch(_){}
+        return membershipMap;
+    }
+
+    function getTownGrepolisMemberships(townIdValue,membershipMap=null) {
+        const map=membershipMap||buildGrepolisTownGroupMembershipMap();
+        return new Set(map.get(String(townIdValue))||[]);
+    }
+
+    function getOrderedGrepolisGroups() {
+        const known=getGrepolisTargetGroups();
+        const byId=new Map(known.map(group=>[String(group.id),group]));
+        const ordered=[];
+        const add=id=>{
+            const cleanId=String(id??'');
+            if(byId.has(cleanId)&&!ordered.some(group=>group.id===cleanId))ordered.push(byId.get(cleanId));
+        };
+        document.querySelectorAll('[data-group-id],[data-town-group-id],[data-group_id]').forEach(node=>{
+            add(node.dataset?.groupId??node.dataset?.townGroupId??node.dataset?.group_id
+                ??node.getAttribute?.('data-group-id')??node.getAttribute?.('data-town-group-id'));
+        });
+        known.forEach(group=>add(group.id));
+        return ordered;
+    }
+
+    let completeCityAssignmentRunning=false;
+    function completeAllMissingCityAssignments({upload=true}={}) {
+        if(completeCityAssignmentRunning)return false;
+        completeCityAssignmentRunning=true;
+        try{
+            const data=getTargets();
+            data.cityTargetGroups||={};
+            data.townNames||={};
+            const orderedGroups=getOrderedGrepolisGroups();
+            data.grepolisGroupNames ||= {};
+            orderedGroups.forEach(group=>{
+                data.grepolisGroupNames[String(group.id)]=String(group.name||group.id);
+            });
+            const membershipMap=buildGrepolisTownGroupMembershipMap();
+            const townsObject=window.ITowns?.getTowns?.()||{};
+            const towns=Array.isArray(townsObject)?townsObject:Object.values(townsObject);
+            let changed=false;
+            towns.forEach(town=>{
+                const townId=String(town?.getId?.()??town?.id??town?.attributes?.id??'');
+                if(!townId)return;
+                const townName=town?.getName?.()??town?.attributes?.name;
+                if(townName&&data.townNames[townId]!==String(townName)){
+                    data.townNames[townId]=String(townName);
+                    changed=true;
+                }
+                // Existing assignments from the JSON/script always remain authoritative.
+                if(Object.prototype.hasOwnProperty.call(data.cityTargetGroups,townId))return;
+                const memberships=getTownGrepolisMemberships(townId,membershipMap);
+                const selected=orderedGroups.find(group=>memberships.has(String(group.id)));
+                data.cityTargetGroups[townId]=selected?'grepo:'+selected.id:'none';
+                changed=true;
+            });
+            if(!changed)return false;
+            saveTargets(data);
+            if(upload&&typeof window.EgelToolsRecruitDriveUpload==='function'){
+                void window.EgelToolsRecruitDriveUpload().catch(error=>console.error('[EgelTools] Google Drive POST failed after completing city assignments:',error));
+            }
+            return true;
+        }finally{
+            completeCityAssignmentRunning=false;
+        }
+    }
+
+    window.EgelToolsAssignMissingCitiesNow = () => {
+        const changed=completeAllMissingCityAssignments({upload:true});
+        const status=window.EgelToolsCityAssignmentStatus?.();
+        return {changed,status};
+    };
+
+    window.EgelToolsCityAssignmentStatus = () => {
+        const data=getTargets();
+        const townsObject=window.ITowns?.getTowns?.()||{};
+        const towns=Array.isArray(townsObject)?townsObject:Object.values(townsObject);
+        const assigned=new Set(Object.keys(data.cityTargetGroups||{}));
+        const missing=towns.map(town=>({
+            id:String(town?.getId?.()??town?.id??town?.attributes?.id??''),
+            name:String(town?.getName?.()??town?.attributes?.name??''),
+        })).filter(town=>town.id&&!assigned.has(town.id));
+        const result={towns:towns.length,assigned:assigned.size,missing:missing.length,missingCities:missing};
+        console.log('[EgelTools] City assignment status:',result);
+        return result;
+    };
+
+    function refreshTargetSourceUi(panel) {
+        if (!panel) return;
+        const info=getActiveTargetInfo();
+        panel.querySelector('.uti-target-source-status')?.remove();
+        const select=panel.querySelector('.uti-target-group-select');
+        if(select){
+            const data=getTargets();
+            const townId=String(getTownId());
+            const actualGroupId=String(getGroupId());
+            const selected=data.cityTargetGroups?.[townId]||('grepo:'+actualGroupId);
+            select.replaceChildren(new Option('No group','none'));
+            const grepoOptionGroup=document.createElement('optgroup');
+            grepoOptionGroup.label='Grepolis city groups';
+            getGrepolisTargetGroups().forEach(group=>grepoOptionGroup.append(new Option(group.name,'grepo:'+group.id)));
+            select.append(grepoOptionGroup);
+            const customEntries=Object.entries(data.customGroups||{});
+            if(customEntries.length){
+                const customOptionGroup=document.createElement('optgroup');
+                customOptionGroup.label='Custom groups';
+                customEntries.forEach(([id,group])=>customOptionGroup.append(new Option(group.name||id,'custom:'+id)));
+                select.append(customOptionGroup);
+            }
+            select.value=selected;
+            if(!select.value)select.value='none';
+            const groupSaveButton=panel.querySelector('.uti-save-group');
+            const citySaveButton=panel.querySelector('.uti-save-city');
+            const noGroup=select.value==='none';
+            if(groupSaveButton){
+                groupSaveButton.disabled=noGroup;
+                groupSaveButton.style.opacity=groupSaveButton.disabled?'0.45':'1';
+                groupSaveButton.style.cursor=groupSaveButton.disabled?'not-allowed':'pointer';
+            }
+            if(citySaveButton){
+                citySaveButton.disabled=false;
+                citySaveButton.style.opacity='1';
+                citySaveButton.style.cursor='pointer';
+            }
+            const deleteButton=panel.querySelector('.uti-delete-custom-group');
+            if(deleteButton){
+                const canDelete=select.value.startsWith('custom:');
+                deleteButton.disabled=!canDelete;
+                deleteButton.style.opacity=canDelete?'1':'0.45';
+                deleteButton.style.cursor=canDelete?'pointer':'not-allowed';
+            }
+        }
+
+    }
+
+    function createCustomTargetGroup(panel) {
+        const name=window.prompt('Name of the custom target group:','');
+        if(!name?.trim())return;
+        const data=getTargets();
+        rememberCurrentTownName(data);
+        const id='custom_'+Date.now().toString(36);
+        const targets={};
+        getTabs().forEach(tab=>{
+            const input=tab.querySelector('.uti-target');
+            if(input)targets[tab.id]=Number(input.value)||0;
+        });
+        data.customGroups[id]={name:name.trim(),targets};
+        data.cityTargetGroups[String(getTownId())]='custom:'+id;
+        delete data.cities[String(getTownId())];
+        saveTargets(data);
+        createMissingUi(true);
+        refreshTotalsOnly();
+        refreshTargetSourceUi(panel);
+        if(typeof window.EgelToolsRecruitDriveUpload==='function')void window.EgelToolsRecruitDriveUpload();
+    }
+
+    function removeCurrentCityTargets() {
+        const data = getTargets();
+        const townId = String(getTownId());
+        if (!Object.prototype.hasOwnProperty.call(data.cities || {}, townId)) return false;
+
+        delete data.cities[townId];
+        delete draftTargets[townId];
+        saveTargets(data);
+        refreshTotalsOnly();
+        refreshTargetSourceUi(document.querySelector('.uti-recruitment-summary'));
+
+        if (typeof window.EgelToolsRecruitDriveUpload === 'function') {
+            void window.EgelToolsRecruitDriveUpload().catch(error => {
+                console.error('[EgelTools] Google Drive POST failed after removing city targets:', error);
+            });
+        }
+        return true;
+    }
+
+    function getBaseAmount(tab, unit) {
+        const totalEl = tab.querySelector('.unit_order_total');
+        if (totalEl) return Number(totalEl.textContent.trim()) || 0;
+
+        const img = tab.querySelector(`[data-unit_id="${unit}"]`);
+        return Number(img?.getAttribute('data-unit_count') || 0);
+    }
+
+    function calculateRemainingOrder(order) {
+        const now = Math.floor(Date.now() / 1000);
+        const a = order.attributes || {};
+
+        if (!a.count) return 0;
+        if (now < a.created_at) return Number(a.count || 0);
+        if (now >= a.to_be_completed_at) return 0;
+
+        const duration = a.to_be_completed_at - a.created_at;
+        const timePerUnit = duration / a.count;
+        const elapsed = now - a.created_at;
+        const completed = Math.floor(elapsed / timePerUnit);
+
+        return Math.max(Number(a.count || 0) - completed, 0);
+    }
+
+    function getQueuedUnits() {
+        const townId = getTownId();
+        const queued = {};
+        const orders = MM.getModels?.().UnitOrder || {};
+
+        Object.values(orders).forEach(order => {
+            const a = order.attributes || {};
+            if (Number(a.town_id) !== townId) return;
+
+            const unit = order.getUnitId?.() || a.unit_type || a.unit_id || a.type;
+            if (!unit) return;
+
+            const remaining = calculateRemainingOrder(order);
+            if (remaining <= 0) return;
+
+            queued[unit] = (queued[unit] || 0) + remaining;
+        });
+
+        return queued;
+    }
+
+    function getBoostUnits() {
+        const townId = getTownId();
+        const boosted = {};
+        const collections = MM.getCollections?.() || {};
+
+        Object.values(collections).forEach(groups => {
+            Object.values(groups || {}).forEach(collection => {
+                (collection.models || []).forEach(model => {
+                    const a = model.attributes || {};
+
+                    const powerId = String(a.power_id || a.powerId || a.id || '').toLowerCase();
+                    if (!TARGET_EFFECT_IDS.has(powerId)) return;
+                    if (Number(a.town_id) !== townId) return;
+
+                    const type = a.configuration?.type;
+                    const amount = Number(a.configuration?.amount || 0);
+                    const endAt = Number(a.end_at || 0);
+
+                    if (!type || !amount || !endAt) return;
+
+                    const seconds = Math.max(0, endAt - Math.floor(Date.now() / 1000));
+                    const remaining = Math.ceil(seconds / 3600) * amount;
+
+                    boosted[type] = (boosted[type] || 0) + remaining;
+                });
+            });
+        });
+
+        return boosted;
+    }
+
+    function injectStyle() {
+        if (document.getElementById('uti-bottom-clean-style')) return;
+
+        const style = document.createElement('style');
+        style.id = 'uti-bottom-clean-style';
+
+        style.textContent = `
+            #units {
+                position: relative !important;
+                overflow: visible !important;
+                margin-top: 70px !important;
+            }
+
+            #units .unit_tab {
+                position: relative !important;
+                overflow: visible !important;
+            }
+
+            .uti-bottom-box {
+                position: absolute;
+                left: 0;
+                top: -68px;
+                width: 57px;
+                text-align: center;
+                z-index: 50;
+                font-family: Arial, sans-serif;
+            }
+
+            .uti-row,
+            .uti-target,
+            .uti-missing {
+                width: 57px;
+                height: 20px;
+                box-sizing: border-box;
+                border: 1px solid #8a672c;
+                font-size: 11px;
+                font-weight: bold;
+                text-align: center;
+            }
+
+            .uti-row {
+                line-height: 20px;
+                color: #000;
+            }
+
+            .uti-target {
+                margin-top: 2px;
+                background: #fff0bd;
+                color: #000;
+                padding: 0;
+                outline: none;
+            }
+            .uti-target.dirty {
+                background: #fff6d0;
+                border-color: #b36b00;
+            }
+
+            .uti-missing {
+                line-height: 20px;
+                margin-top: 2px;
+                font-size: 12px;
+            }
+
+            .uti-missing.need {
+                background: #f2b59d;
+                color: #990000;
+            }
+
+            .uti-missing.done {
+                background: #c7eca0;
+                color: #2b7807;
+            }
+
+            .uti-missing.extra {
+                background: #f7c97b;
+                color: #8a4b00;
+            }
+
+
+            .classic_window:has(#unit_order), .js-window-main-container:has(#unit_order), .ui-dialog:has(#unit_order) { overflow:visible !important; }
+            .uti-recruitment-summary { position:absolute; top:38px; left:auto; right:auto; z-index:10002; display:flex; align-items:flex-start; color:#2c1c0e; font:11px Arial,sans-serif; }
+            .uti-recruitment-summary[data-side="right"] { left:calc(100% + 4px); right:auto; flex-direction:row; }
+            .uti-recruitment-summary[data-side="left"] { right:calc(100% + 4px); left:auto; flex-direction:row-reverse; }
+            .uti-recruitment-summary-toggle { box-sizing:border-box; width:34px; min-height:108px; padding:8px 6px; border:2px solid #4c351c; border-radius:5px 0 0 5px; color:#f3d58d; background:linear-gradient(#57432b,#332416); box-shadow:0 3px 9px rgba(0,0,0,.42); font:bold 11px/17px Arial,sans-serif; text-shadow:0 1px #000; cursor:pointer; writing-mode:vertical-rl; }
+            .uti-recruitment-summary[data-side="left"] .uti-recruitment-summary-toggle { border-radius:0 5px 5px 0; }
+            .uti-recruitment-summary-toggle:hover { background:linear-gradient(#6a5032,#3d2b19); }
+            .uti-recruitment-summary-window { box-sizing:border-box; width:345px; overflow:hidden; border:2px solid #4c351c; border-left:0; border-radius:0 5px 5px 0; background:#d6bd82; box-shadow:0 5px 18px rgba(0,0,0,.55),inset 0 0 0 1px #f3dda4; }
+            .uti-recruitment-summary[data-side="left"] .uti-recruitment-summary-window { border-right:0; border-left:2px solid #4c351c; border-radius:5px 0 0 5px; }
+            .uti-recruitment-summary[data-collapsed="true"] .uti-recruitment-summary-window { display:none; }
+            .uti-recruitment-summary .uti-summary-header { height:32px; display:flex; align-items:center; padding:0 5px 0 10px; color:#f3d58d; background:linear-gradient(#57432b,#332416); text-shadow:0 1px #000; }
+            .uti-recruitment-summary .uti-summary-title { flex:1; min-width:0; font-size:12px; font-weight:bold; }
+            .uti-recruitment-summary .uti-open-simulator { flex:0 0 auto; min-width:38px; height:22px; margin-left:6px; padding:0 7px; border:1px solid #26190d; border-radius:3px; color:#fff1b9; background:linear-gradient(#76592f,#433018); box-shadow:inset 0 1px rgba(255,255,255,.25); font:bold 10px Arial,sans-serif; text-shadow:0 1px #000; cursor:pointer; }
+            .uti-recruitment-summary .uti-open-simulator:hover { background:linear-gradient(#8d6b39,#523a1d); }
+            .uti-recruitment-summary .uti-save-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; padding:5px 7px; background:#efd99f; border-bottom:1px solid #b99553; }
+            .uti-recruitment-summary .uti-save-column { min-width:0; }
+            .uti-recruitment-summary .uti-save-caption { height:14px; padding:0 2px 2px; color:#5a3c11; font-size:9px; font-weight:bold; line-height:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:center; }
+            .uti-recruitment-summary .uti-side-save { width:100%; height:21px; padding:0 4px; border:1px solid #49341c; border-radius:3px; color:#fff3c5; background:linear-gradient(#587d35,#35551f); font:bold 10px Arial,sans-serif; text-shadow:0 1px #1b260f; cursor:pointer; }
+            .uti-recruitment-summary .uti-side-save:hover { background:linear-gradient(#6c9641,#416827); }
+            .uti-recruitment-summary .uti-summary-town { padding:0; }
+            .uti-recruitment-summary .uti-population-info { display:flex; justify-content:space-between; gap:8px; padding:5px 8px; border-bottom:1px solid #b99553; background:#f7e8b9; color:#4a351c; font-size:10px; font-weight:bold; }
+            .uti-recruitment-summary .uti-population-info .uti-pop-negative { color:#a11008; }
+            .uti-recruitment-summary .uti-summary-total-title { padding:6px 9px 2px; border-top:2px solid #8f6b32; background:#e4c986; color:#49300f; font-weight:bold; }
+            .uti-recruitment-summary .uti-summary-resources { display:flex; align-items:center; justify-content:space-between; flex-wrap:nowrap; gap:7px; padding:7px 9px; background:rgba(255,250,226,.82); font-weight:bold; }
+            .uti-recruitment-summary .uti-resource { display:inline-flex; align-items:center; gap:5px; min-width:0; white-space:nowrap; }
+            .uti-recruitment-summary .uti-resource-icon { display:block; width:20px; height:20px; flex:0 0 20px; object-fit:contain; }
+            .uti-recruitment-summary .uti-summary-time { padding:6px 9px; border-top:1px solid rgba(92,65,29,.25); border-bottom:1px solid rgba(92,65,29,.25); background:#eed79c; font-weight:bold; }
+            .uti-recruitment-summary .uti-summary-city-incoming-title { padding:6px 9px 2px; border-top:2px solid #8f6b32; background:#e4c986; color:#49300f; font-weight:bold; }
+            .uti-recruitment-summary .uti-summary-city-incoming { padding:6px 9px; background:#f4e5b8; color:#49300f; font-weight:bold; }
+            .uti-recruitment-summary .uti-summary-city-incoming-resources { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+            .uti-recruitment-summary .uti-summary-city-incoming .uti-resource { min-width:0; }
+            .uti-recruitment-summary .uti-summary-city-incoming .uti-resource span { white-space:nowrap; }
+            .uti-recruitment-summary .uti-summary-units { min-height:40px; max-height:255px; padding:6px 7px; overflow-y:auto; line-height:15px; background:rgba(255,250,226,.72); }
+            .uti-recruitment-summary .uti-unit-card { pointer-events:auto; cursor:pointer; user-select:none; margin:0 0 6px; padding:6px; border:1px solid #c7a564; border-radius:3px; background:#fff3cc; }
+            .uti-recruitment-summary .uti-unit-card:last-child { margin-bottom:0; }
+            .uti-recruitment-summary .uti-unit-card.uti-unresearched { border-color:#9a6b23; background:#f4e4b0; }
+            .uti-recruitment-summary .uti-unresearched-note { margin-left:4px; padding:1px 4px; border-radius:3px; background:#9a6b23; color:#fff5cf; font-size:8px; font-weight:bold; white-space:nowrap; }
+            .uti-recruitment-summary .uti-summary-town { display:none !important; }
+            .uti-recruitment-summary .uti-unit-head { display:flex; align-items:center; gap:6px; margin-bottom:5px; color:#49300f; font-weight:bold; }
+            .uti-recruitment-summary .uti-unit-icon-wrap { width:27px; height:27px; flex:0 0 27px; display:flex; align-items:center; justify-content:center; overflow:visible; }
+            .uti-recruitment-summary .uti-unit-icon-wrap .unit_icon25x25 { display:block; width:25px !important; height:25px !important; flex:0 0 25px; }
+            .uti-recruitment-summary .uti-unit-name { flex:1; min-width:0; }
+            .uti-recruitment-summary .uti-unit-amount { color:#8a260d; white-space:nowrap; }
+            .uti-recruitment-summary .uti-unit-details { display:grid; grid-template-columns:1fr auto; gap:3px 7px; align-items:center; }
+            .uti-recruitment-summary .uti-unit-costs { display:flex; align-items:center; flex-wrap:nowrap; gap:3px 7px; min-width:0; }
+            .uti-recruitment-summary .uti-unit-costs .uti-resource { font-size:10px; gap:2px; }
+            .uti-recruitment-summary .uti-unit-costs .uti-resource-icon { width:15px; height:15px; flex-basis:15px; }
+            .uti-recruitment-summary .uti-unit-duration { color:#4a351c; font-weight:bold; white-space:nowrap; }
+            .uti-recruitment-summary .uti-summary-complete { color:#2b7807; font-weight:bold; }
+        `;
+
+        document.head.appendChild(style);
+    }
+
+    function getTabs() {
+        return [...document.querySelectorAll('#units .unit_tab')]
+            .filter(tab => tab.id && tab.style.display !== 'none');
+    }
+
+    function createMissingUi(loadSaved = false) {
+        injectStyle();
+
+        getTabs().forEach(tab => {
+            let box = tab.querySelector('.uti-bottom-box');
+
+            if (!box) {
+                box = document.createElement('div');
+                box.className = 'uti-bottom-box';
+                box.innerHTML = `
+                    <div class="uti-row">0</div>
+                    <input class="uti-target" type="text">
+                    <div class="uti-missing done">0</div>
+                `;
+                tab.appendChild(box);
+
+                const input = box.querySelector('.uti-target');
+
+                input.dataset.dirty = '0';
+
+                input.addEventListener('input', () => {
+                    input.dataset.dirty = '1';
+                    input.classList.add('dirty');
+                    setDraft(tab.id, input.value);
+                    refreshTotalsOnly();
+                });
+
+                ['click', 'mousedown', 'mouseup', 'keydown', 'keyup', 'keypress'].forEach(evt => {
+                    input.addEventListener(evt, e => e.stopPropagation());
+                });
+            }
+
+            const input = box.querySelector('.uti-target');
+
+            if (loadSaved) {
+                const saved = getTargetData(tab.id).value;
+                input.value = saved || '';
+                input.dataset.dirty = '0';
+                input.classList.remove('dirty');
+                setDraft(tab.id, input.value);
+            } else {
+                const draft = getDraft(tab.id);
+                if (draft !== undefined && document.activeElement !== input) {
+                    input.value = draft;
+                }
+            }
+        });
+
+    }
+
+    window.addEventListener('egeltools:recruit-cloud-loaded',()=>{
+        Object.keys(draftTargets).forEach(townId=>delete draftTargets[townId]);
+        createMissingUi(true);
+        refreshTotalsOnly();
+        const panel=document.querySelector('.uti-recruitment-summary');
+        if(panel)refreshTargetSourceUi(panel);
+    });
+
+    function refreshTotalsOnly() {
+        const queued = getQueuedUnits();
+        const boosted = getBoostUnits();
+        const calculatedUnits = {};
+
+        getTabs().forEach(tab => {
+            const box = tab.querySelector('.uti-bottom-box');
+            if (!box) return;
+
+            const totalEl = box.querySelector('.uti-row');
+            const input = box.querySelector('.uti-target');
+            const missingEl = box.querySelector('.uti-missing');
+
+            if (!totalEl || !input || !missingEl) return;
+
+            const unit = tab.id;
+            const base = getBaseAmount(tab, unit);
+            const total = base + (queued[unit] || 0) + (boosted[unit] || 0);
+            calculatedUnits[unit] = {
+                trained: base,
+                queued: Math.max(0, total - base),
+                total,
+            };
+            const target = Number(input.value) || 0;
+
+            const missing = Math.max(target - total, 0);
+            const extra = Math.max(total - target, 0);
+
+            const totalText = String(total);
+            if (totalEl.textContent !== totalText) {
+                totalEl.textContent = totalText;
+            }
+
+            let text;
+            let cls;
+
+            if (!target || target <= 0) {
+                text = '0';
+                cls = 'uti-missing done';
+            } else if (extra > 0) {
+                text = `+${extra}`;
+                cls = 'uti-missing extra';
+            } else if (missing > 0) {
+                text = String(missing);
+                cls = 'uti-missing need';
+            } else {
+                text = '✓';
+                cls = 'uti-missing done';
+            }
+
+            if (missingEl.textContent !== text) {
+                missingEl.textContent = text;
+            }
+
+            if (missingEl.className !== cls) {
+                missingEl.className = cls;
+            }
+        });
+
+        if (Object.keys(calculatedUnits).length
+            && typeof window.EgelToolsRecruitCacheStoreCalculation === 'function') {
+            window.EgelToolsRecruitCacheStoreCalculation({
+                townId: String(getTownId()),
+                townName: getCurrentTownLabel(),
+                units: calculatedUnits,
+            });
+        }
+    }
+
+
+    function formatOptimizerDuration(totalSeconds) {
+        if(totalSeconds===Infinity)return 'infinite';
+        const value=Math.max(0,Math.round(Number(totalSeconds)||0));
+        const h=Math.floor(value/3600),m=Math.floor(value%3600/60),s=value%60;
+        return h?`${h}h ${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`:`${m}m ${String(s).padStart(2,'0')}s`;
+    }
+    const NAVAL_RECRUIT_UNITS=new Set(['big_transporter','bireme','attack_ship','demolition_ship','small_transporter','trireme','colonize_ship','hydra','siren']);
+    function getRecruitmentWindowHosts() {
+        return [...document.querySelectorAll('#unit_order')].map(order=>{
+            const host=order.closest('.js-window-main-container.classic_window')
+                || order.closest('.classic_window')
+                || order.closest('.ui-dialog')
+                || order.closest('[id^="gpwnd_"]');
+            if(!host)return null;
+            const tabs=[...host.querySelectorAll('#units .unit_tab')].filter(tab=>tab.id&&tab.style.display!=='none');
+            if(!tabs.length)return null;
+            const navalCount=tabs.filter(tab=>NAVAL_RECRUIT_UNITS.has(tab.id)).length;
+            const type=navalCount>tabs.length/2?'naval':'land';
+            return {host,order,tabs,type};
+        }).filter(Boolean).filter((entry,index,array)=>array.findIndex(other=>other.host===entry.host)===index);
+    }
+    function getCurrentTownLabel(){
+        try{return ITowns?.getCurrentTown?.()?.getName?.()||String(getTownId());}catch(e){return String(getTownId());}
+    }
+    function getCurrentGroupLabel(){
+        const groupId=String(getGroupId());
+        const selectors=['#town_group_select .caption','.town_group_select .caption','.group_towns .caption','[data-group-id="'+groupId+'"] .name'];
+        for(const selector of selectors){
+            const value=document.querySelector(selector)?.textContent?.trim();
+            if(value)return value;
+        }
+        try{
+            const groups=MM.getModels?.()||{};
+            for(const [name,models] of Object.entries(groups)){
+                if(!/group/i.test(name))continue;
+                for(const model of Object.values(models||{})){
+                    const a=model.attributes||model.toJSON?.()||{};
+                    const id=String(a.id??a.group_id??a.town_group_id??'');
+                    if(id===groupId){
+                        const label=String(a.name??a.group_name??a.title??'').trim();
+                        if(label)return label;
+                    }
+                }
+            }
+        }catch(e){}
+        return groupId==='default'?('Current group'):('Group ')+groupId;
+    }
+    function panelKey(type){return type==='naval'?'docks':'barracks';}
+    function ensureRecruitmentSummaryPanel(context) {
+        const {host,type}=context;
+        const key=panelKey(type);
+        const panelId='uti-recruitment-summary-'+key;
+        let panel=document.getElementById(panelId);
+        if(!panel){
+            panel=document.createElement('aside');
+            panel.id=panelId;
+            panel.className='uti-recruitment-summary';
+            panel.dataset.recruitmentType=type;
+            panel.dataset.collapsed=localStorage.getItem('uti_recruitment_summary_collapsed_'+key)==='1'?'true':'false';
+            panel.innerHTML=`
+                <button class="uti-recruitment-summary-toggle" type="button" aria-expanded="true">${(type==='naval'?'Harbor':'Barracks')}</button>
+                <div class="uti-recruitment-summary-window">
+                    <div class="uti-summary-header"><div class="uti-summary-title">${(type==='naval'?'Harbor':'Barracks')}: Recruitment requirements</div><button type="button" class="uti-open-simulator" title="Open full simulator">Sim</button></div>
+                    <div class="uti-save-grid">
+                        <div class="uti-save-column"><div class="uti-save-caption uti-city-caption"></div><button type="button" class="uti-side-save uti-save-city">Save City</button></div>
+                        <div class="uti-save-column"><div class="uti-save-caption uti-group-caption"></div><button type="button" class="uti-side-save uti-save-group">Save Group</button></div>
+                    </div>
+                    <div class="uti-summary-town"></div>
+                    <div class="uti-population-info"><span class="uti-pop-current"></span><span class="uti-pop-planned"></span></div>
+                    <div class="uti-summary-units"></div>
+                    <div class="uti-summary-total-title">Total</div>
+                    <div class="uti-summary-resources"></div>
+                    <div class="uti-summary-time"></div>
+                    <div class="uti-summary-city-incoming-title">Available / required</div>
+                    <div class="uti-summary-city-incoming"><span class="uti-summary-city-incoming-resources"></span></div>
+                </div>`;
+            const toggle=panel.querySelector('.uti-recruitment-summary-toggle');
+            const syncCollapsed=()=>{
+                const collapsed=panel.dataset.collapsed==='true';
+                toggle.setAttribute('aria-expanded',String(!collapsed));
+                toggle.title=collapsed?`Recruitment requirements show`:`Recruitment requirements hide`;
+            };
+            syncCollapsed();
+            toggle.addEventListener('click',event=>{
+                event.preventDefault();event.stopPropagation();
+                panel.dataset.collapsed=String(panel.dataset.collapsed!=='true');
+                localStorage.setItem('uti_recruitment_summary_collapsed_'+key,panel.dataset.collapsed==='true'?'1':'0');
+                const summaryWindow=panel.querySelector('.uti-recruitment-summary-window');
+                if(summaryWindow)summaryWindow.style.removeProperty('display');
+                syncCollapsed();
+            });
+            const citySaveButton=panel.querySelector('.uti-save-city');
+            const cityCaption=citySaveButton?.closest('.uti-save-column')?.querySelector('.uti-city-caption');
+            if(cityCaption)cityCaption.style.display='none';
+            panel.querySelector('.uti-remove-city')?.remove();
+            const saveGrid=panel.querySelector('.uti-save-grid');
+            if(saveGrid&&!panel.querySelector('.uti-target-group-select')){
+                panel.querySelector('.uti-target-source-status')?.remove();
+                const groupSaveButton=panel.querySelector('.uti-save-group');
+                const groupColumn=groupSaveButton?.closest('.uti-save-column');
+                const groupCaption=groupColumn?.querySelector('.uti-group-caption');
+                if(groupCaption)groupCaption.style.display='none';
+                const customRow=document.createElement('div');
+                customRow.className='uti-custom-group-row';
+                customRow.style.cssText='display:grid;grid-template-columns:minmax(0,1fr) 28px 28px auto;gap:4px;align-items:center;width:100%;margin:5px 0 4px;padding:0 4px;box-sizing:border-box;';
+                customRow.innerHTML='<select class="uti-target-group-select" style="display:block;width:100%;min-width:0;height:22px;box-sizing:border-box;font-size:11px;"></select><button type="button" class="uti-side-save uti-create-custom-group" title="New custom group" style="width:28px;min-width:28px;height:22px;padding:0;">+</button><button type="button" class="uti-side-save uti-delete-custom-group" title="Delete custom group" style="width:28px;min-width:28px;height:22px;padding:0;">−</button><button type="button" class="uti-side-save uti-reset-city-group" title="Reset this town and assign it to its next Grepolis group" style="height:22px;margin-right:0;padding:0 8px;white-space:nowrap;">Reset</button>';
+                customRow.style.gridColumn='1 / -1';
+                saveGrid.parentElement.insertBefore(customRow,saveGrid);
+                customRow.querySelector('.uti-create-custom-group').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();createCustomTargetGroup(panel);});
+                customRow.querySelector('.uti-delete-custom-group').addEventListener('click',event=>{
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const select=panel.querySelector('.uti-target-group-select');
+                    const selected=String(select?.value||'');
+                    if(!selected.startsWith('custom:'))return;
+                    const customId=selected.slice(7);
+                    const data=getTargets();
+                    delete data.customGroups[customId];
+                    Object.keys(data.cityTargetGroups||{}).forEach(townId=>{
+                        if(data.cityTargetGroups[townId]===selected)data.cityTargetGroups[townId]='none';
+                    });
+                    saveTargets(data);
+                    createMissingUi(true);
+                    refreshTotalsOnly();
+                    refreshTargetSourceUi(panel);
+                    if(typeof window.EgelToolsRecruitDriveUpload==='function'){
+                        void window.EgelToolsRecruitDriveUpload().catch(error=>console.error('[EgelTools] Google Drive POST failed after deleting group:',error));
+                    }
+                });
+                customRow.querySelector('.uti-reset-city-group').addEventListener('click',event=>{
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const data=getTargets();
+                    rememberCurrentTownName(data);
+                    const townId=String(getTownId());
+                    delete data.cityTargetGroups[townId];
+                    delete data.cities[townId];
+                    delete data.cityCustomGroups[townId];
+                    saveTargets(data);
+                    createMissingUi(true);
+                    refreshTotalsOnly();
+                    refreshTargetSourceUi(panel);
+                    const actualGroupId=String(getGroupId());
+                    const select=panel.querySelector('.uti-target-group-select');
+                    if(select){
+                        select.value='grepo:'+actualGroupId;
+                        select.blur();
+                    }
+                    if(typeof window.EgelToolsRecruitDriveUpload==='function'){
+                        void window.EgelToolsRecruitDriveUpload().catch(error=>console.error('[EgelTools] Google Drive POST failed after city reset:',error));
+                    }
+                });
+                const targetGroupSelect=customRow.querySelector('.uti-target-group-select');
+                targetGroupSelect.addEventListener('keydown',event=>{
+                    if(!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
+                    // The dropdown must never consume arrow keys after selection.
+                    event.preventDefault();
+                    event.stopImmediatePropagation();
+                    targetGroupSelect.blur();
+                    const forwarded=new KeyboardEvent('keydown',{
+                        key:event.key,
+                        code:event.code,
+                        bubbles:true,
+                        cancelable:true,
+                        repeat:event.repeat,
+                    });
+                    document.dispatchEvent(forwarded);
+                },true);
+                targetGroupSelect.addEventListener('change',event=>{
+                    const selectElement=event.currentTarget;
+                    // Remove focus before rebuilding the values. The select remains
+                    // clickable, but is no longer the active keyboard element.
+                    selectElement.blur();
+                    selectElement.tabIndex=-1;
+                    const data=getTargets();
+                    rememberCurrentTownName(data);
+                    const townId=String(getTownId());
+                    data.cityTargetGroups[townId]=event.target.value;
+                    delete data.cityCustomGroups[townId];
+                    if(event.target.value!=='none')delete data.cities[townId];
+                    saveTargets(data);
+                    // Immediately replace all visible target inputs with the values
+                    // of the newly selected group (or the city's own values for "none").
+                    createMissingUi(true);
+                    refreshTotalsOnly();
+                    refreshTargetSourceUi(panel);
+                    targetGroupSelect.blur();
+                    document.body.focus({preventScroll:true});
+                    if(typeof window.EgelToolsRecruitDriveUpload==='function'){
+                        void window.EgelToolsRecruitDriveUpload().catch(error=>console.error('[EgelTools] Google Drive POST failed after group assignment:',error));
+                    }
+                });
+            }
+            citySaveButton?.addEventListener('click',event=>{
+                event.preventDefault();
+                event.stopPropagation();
+                const data=getTargets();
+                const townId=String(getTownId());
+                data.cityTargetGroups[townId]='none';
+                delete data.cityCustomGroups[townId];
+                saveTargets(data);
+                saveAllVisibleTargets('city');
+                refreshTargetSourceUi(panel);
+            });
+            panel.querySelector('.uti-save-group').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();saveAllVisibleTargets('group');refreshTargetSourceUi(panel);});
+            panel.querySelector('.uti-open-simulator').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();window.GrepolisRecruitmentTools?.openSimulator?.();});
+            // The unit cards are rebuilt continuously. A normal click can be lost when
+            // the card is replaced between mousedown and mouseup, so handle pointerdown
+            // on the persistent list container instead.
+            const unitList=panel.querySelector('.uti-summary-units');
+            unitList.addEventListener('pointerdown',event=>{
+                if(event.button!==undefined&&event.button!==0)return;
+                const card=event.target instanceof Element?event.target.closest('.uti-unit-action[data-recruit-select-unit]'):null;
+                if(!card||!unitList.contains(card))return;
+                event.preventDefault();
+                event.stopPropagation();
+                selectRecruitmentUnitAndAmount(
+                    context,
+                    String(card.dataset.recruitSelectUnit||''),
+                    Number(card.dataset.recruitMissing)||0
+                );
+            },true);
+        }
+        if(panel.parentElement!==host)host.appendChild(panel);
+        if(getComputedStyle(host).position==='static')host.style.position='relative';
+        host.style.setProperty('overflow','visible','important');
+        const bounds=host.getBoundingClientRect();
+        const rightSpace=window.innerWidth-bounds.right;
+        panel.dataset.side=rightSpace>=390||rightSpace>=bounds.left?'right':'left';
+        panel.style.display='flex';
+        panel.style.top='38px';panel.style.left='';panel.style.right='';
+        const windowHeight=Math.max(220,Math.floor(bounds.height));
+        const summaryWindow=panel.querySelector('.uti-recruitment-summary-window');
+        if(summaryWindow){
+            summaryWindow.style.maxHeight=windowHeight+'px';
+            // Do not force display:flex inline. The collapsed CSS must be able to
+            // hide the complete window and leave only the vertical side tab visible.
+            summaryWindow.style.removeProperty('display');
+            summaryWindow.style.flexDirection='column';
+        }
+        const unitList=panel.querySelector('.uti-summary-units');
+        if(unitList){
+            const reserved=233;
+            unitList.style.maxHeight=Math.max(40,windowHeight-reserved)+'px';
+        }
+        return panel;
+    }
+    function calculatePlannedPopulation() {
+        const seen=new Set();
+        let required=0;
+        getRecruitmentWindowHosts().forEach(context=>context.tabs.forEach(tab=>{
+            if(seen.has(tab.id))return;
+            seen.add(tab.id);
+            const total=Number(tab.querySelector('.uti-row')?.textContent)||0;
+            const target=Number(tab.querySelector('.uti-target')?.value)||0;
+            const missing=Math.max(0,target-total);
+            required+=missing*(window.GrepolisRecruitmentTools?.getUnitPopulation?.(tab.id)||1);
+        }));
+        return required;
+    }
+    window.GrepolisRecruitmentTools=window.GrepolisRecruitmentTools||{};
+    window.GrepolisRecruitmentTools.getPlannedPopulation=calculatePlannedPopulation;
+    window.GrepolisRecruitmentTools.addToCurrentTarget=(unitId,amount)=>{
+        const add=Math.max(0,Math.floor(Number(amount)||0));
+        if(!unitId||!add)return false;
+        const tab=getTabs().find(candidate=>candidate.id===String(unitId));
+        const input=tab?.querySelector('.uti-target');
+        if(!input)return false;
+        const current=Math.max(0,Number(input.value)||0);
+        const next=current+add;
+        input.value=String(next);
+        input.dataset.dirty='0';
+        input.classList.remove('dirty');
+        setDraft(String(unitId),String(next));
+        const data=getTargets();
+        const townId=String(getTownId());
+        data.cities[townId]||={};
+        data.cities[townId][String(unitId)]=next;
+        saveTargets(data);
+        refreshTotalsOnly();
+        getRecruitmentWindowHosts().forEach(updateRecruitmentSummaryPanel);
+        return true;
+    };
+    function getRecruitmentTownResourcesWithIncoming() {
+        const result={stock:{wood:0,stone:0,iron:0},incoming:{wood:0,stone:0,iron:0},total:{wood:0,stone:0,iron:0}};
+        const townId=String(getTownId());
+        try{
+            const town=ITowns?.getTown?.(townId)||ITowns?.getCurrentTown?.();
+            const resources=town?.resources?.()||town?.getResources?.()||town?.getCurrentResources?.()||{};
+            ['wood','stone','iron'].forEach(resource=>{
+                result.stock[resource]=Math.max(0,Number(resources[resource]??resources.attributes?.[resource]??0)||0);
+            });
+        }catch(e){}
+        try{
+            const groups=MM?.getModels?.()||{};
+            const models=[];
+            Object.values(groups).forEach(group=>{
+                if(Array.isArray(group))models.push(...group);
+                else if(group&&typeof group==='object')models.push(...Object.values(group));
+            });
+            models.forEach(model=>{
+                const a=model?.attributes||model?.toJSON?.()||{};
+                const destination=a.destination_town_id??a.target_town_id??a.destinationTownId??a.targetTownId??model?.getDestinationTownId?.()??model?.getTargetTownId?.();
+                if(destination==null||String(destination)!==townId)return;
+                const direction=String(a.direction||a.type||'').toLowerCase();
+                if(['return','returning'].includes(direction)||[true,1,'true'].includes(a.returning))return;
+                const bag=a.resources||a.resource_amounts||a.resourceAmounts||{};
+                ['wood','stone','iron'].forEach(resource=>{
+                    result.incoming[resource]+=Math.max(0,Number(a[resource]??a[resource+'_amount']??bag[resource]??0)||0);
+                });
+            });
+        }catch(e){}
+        ['wood','stone','iron'].forEach(resource=>result.total[resource]=result.stock[resource]+result.incoming[resource]);
+        return result;
+    }
+    function setNativeRecruitmentInput(input,value) {
+        if(!input)return false;
+        const amount=String(Math.max(0,Math.floor(Number(value)||0)));
+        try{
+            const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
+            if(setter)setter.call(input,amount);else input.value=amount;
+            input.dispatchEvent(new Event('input',{bubbles:true}));
+            input.dispatchEvent(new Event('change',{bubbles:true}));
+            input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'Enter',code:'Enter'}));
+            return true;
+        }catch(_){input.value=amount;return false;}
+    }
+    function selectRecruitmentUnitAndAmount(context,unitId,missing) {
+        const escaped=window.CSS?.escape?CSS.escape(String(unitId)):String(unitId).replace(/[^a-zA-Z0-9_-]/g,'');
+        const scope=context?.host||document;
+        const unitImage=scope.querySelector(`#unit_order_tab_${escaped} .unit_order_unit_image`)
+            || document.querySelector(`#unit_order_tab_${escaped} .unit_order_unit_image`);
+        if(!unitImage)return false;
+        unitImage.click();
+        setTimeout(()=>{
+            const order=unitImage.closest('#unit_order')||scope.querySelector('#unit_order')||document.querySelector('#unit_order');
+            const selectedUnit=order?.querySelector('#unit_order_unit_hidden')?.value;
+            const input=order?.querySelector('#unit_order_input');
+            if(selectedUnit!==String(unitId)||!input)return;
+            // The native Grepolis click fills this field with the currently
+            // recruitable maximum. Read that value before replacing it.
+            const maximum=Math.max(0,Math.floor(Number(input.value)||0));
+            const required=Math.max(0,Math.floor(Number(missing)||0));
+            const amount=Math.min(required,maximum);
+            if(amount<=0)return;
+            setNativeRecruitmentInput(input,amount);
+        },150);
+        return true;
+    }
+    function updateRecruitmentSummaryPanel(context) {
+        const panel=ensureRecruitmentSummaryPanel(context);
+        if(!panel)return;
+        const api=window.GrepolisRecruitmentTools;
+        const rows=[];
+        let wood=0,stone=0,iron=0,favor=0,seconds=0;
+        const resourceIcons={wood:'https://gpde.innogamescdn.com/images/game/res/wood.png',stone:'https://gpde.innogamescdn.com/images/game/res/stone.png',iron:'https://gpde.innogamescdn.com/images/game/res/iron.png',favor:'https://gpde.innogamescdn.com/images/game/res/favor.png'};
+        const resourceHtml=(type,value,label)=>`<span class="uti-resource"><img class="uti-resource-icon" src="${resourceIcons[type]}" alt="${label}" title="${label}"><span>${Number(value||0).toLocaleString()}</span></span>`;
+        const combined=getRecruitmentTownResourcesWithIncoming();
+        const combinedTitle=panel.querySelector('.uti-summary-city-incoming-title');
+        const combinedResources=panel.querySelector('.uti-summary-city-incoming-resources');
+        if(combinedTitle)combinedTitle.textContent=`Available / required`;
+        context.tabs.forEach(tab=>{
+            const total=Number(tab.querySelector('.uti-row')?.textContent)||0;
+            const target=Number(tab.querySelector('.uti-target')?.value)||0;
+            const missing=Math.max(0,target-total);
+            if(!missing)return;
+            const result=api?.calculateCurrentRecruitment?.(tab.id,missing);
+            if(!result)return;
+            const unresearched=tab.classList.contains('unavailable');
+            // Unresearched units are calculated completely on an individual basis,
+            // but deliberately left out of the resource and time totals.
+            if(!unresearched){
+                wood+=result.wood;stone+=result.stone;iron+=result.iron;favor+=result.favor;
+                seconds=seconds===Infinity||result.seconds===Infinity?Infinity:seconds+result.seconds;
+            }
+            const englishUnitNames={sword:'Swordsman',slinger:'Slinger',archer:'Archer',hoplite:'Hoplite',rider:'Horseman',chariot:'Chariot',catapult:'Catapult',godsent:'Divine Envoy',big_transporter:'Transport Boat',bireme:'Bireme',attack_ship:'Light Ship',demolition_ship:'Fire Ship',small_transporter:'Fast Transport Ship',trireme:'Trireme',colonize_ship:'Colony Ship',minotaur:'Minotaur',manticore:'Manticore',harpy:'Harpy',medusa:'Medusa',cyclops:'Cyclops',hydra:'Hydra',centaur:'Centaur',pegasus:'Pegasus',cerberus:'Cerberus',erinyes:'Erinyes',griffin:'Griffin',calydonian_boar:'Calydonian Boar',boar:'Calydonian Boar',siren:'Siren',satyr:'Satyrs',spartoi:'Spartoi',ladon:'Ladon'};
+            const name=englishUnitNames[tab.id]||tab.id.replaceAll('_',' ');
+            const iconId={cyclops:'zyklop',hydra:'sea_monster',boar:'calydonian_boar',espartoi:'spartoi',erinyes:'fury'}[tab.id]||tab.id;
+            const costs=[result.wood?resourceHtml('wood',result.wood,'Wood'):'',result.stone?resourceHtml('stone',result.stone,'Stone'):'',result.iron?resourceHtml('iron',result.iron,'Silver'):'',result.favor?resourceHtml('favor',result.favor,'Favor'):''].filter(Boolean).join('');
+            rows.push(`<button type="button" class="uti-unit-card uti-unit-action${unresearched?' uti-unresearched':''}" data-recruit-select-unit="${tab.id}" data-recruit-missing="${missing}" title="Select this unit and enter the missing amount, capped at the recruitable maximum" style="display:block;width:100%;padding:0;border:1px solid #8a672c;border-radius:3px;background:#f3dfab;color:#2d1b08;font:inherit;text-align:left;cursor:pointer;pointer-events:auto;appearance:none"><div class="uti-unit-head"><span class="uti-unit-icon-wrap"><span class="unit_icon25x25 ${iconId}"></span></span><span class="uti-unit-name">${name}${unresearched?'<span class="uti-unresearched-note">NOT RESEARCHED</span>':''}</span><span class="uti-unit-amount">${missing.toLocaleString()} units</span></div><div class="uti-unit-details"><div class="uti-unit-costs">${costs||'<span>No resource costs</span>'}</div><div class="uti-unit-duration">⏱ ${formatOptimizerDuration(result.seconds)}</div></div></button>`);
+        });
+        const townLabel=getCurrentTownLabel();
+        const groupLabel=getCurrentGroupLabel();
+        panel.querySelector('.uti-city-caption').textContent=townLabel;
+        panel.querySelector('.uti-group-caption').textContent=groupLabel;
+        refreshTargetSourceUi(panel);
+        panel.querySelector('.uti-summary-town').textContent='';
+        const freePopulation=Number(api?.getAvailablePopulation?.()||0);
+        const plannedPopulation=calculatePlannedPopulation();
+        const afterPlan=freePopulation-plannedPopulation;
+        panel.querySelector('.uti-pop-current').textContent=`Available population: ${freePopulation.toLocaleString()}`;
+        const plannedElement=panel.querySelector('.uti-pop-planned');
+        plannedElement.textContent=`After planning: ${afterPlan.toLocaleString()} (${plannedPopulation.toLocaleString()} required)`;
+        plannedElement.classList.toggle('uti-pop-negative',afterPlan<0);
+        window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-population-updated',{detail:{freePopulation,plannedPopulation,afterPlan}}));
+        panel.querySelector('.uti-summary-units').innerHTML=rows.length?rows.join(''):`<div class="uti-summary-complete">No outstanding recruitment requirements</div>`;
+        panel.querySelector('.uti-summary-resources').innerHTML=`${resourceHtml('wood',wood,'Wood')}${resourceHtml('stone',stone,'Stone')}${resourceHtml('iron',iron,'Silver')}${favor?resourceHtml('favor',favor,'Favor'):''}`;
+        panel.querySelector('.uti-summary-time').textContent=`Total time: ${formatOptimizerDuration(seconds)}`;
+        if(combinedResources){
+            const labels={wood:'Wood',stone:'Stone',iron:'Silver'};
+            const required={wood,stone,iron};
+            combinedResources.innerHTML=['wood','stone','iron'].map(resource=>{
+                const available=Math.max(0,Number(combined.total[resource])||0);
+                const target=Math.max(0,Number(required[resource])||0);
+                const value=`${available.toLocaleString()} / ${target.toLocaleString()}`;
+                return `<span class="uti-resource" title="${labels[resource]}: ${value}"><img class="uti-resource-icon" src="${resourceIcons[resource]}" alt="${labels[resource]}"><span>${value}</span></span>`;
+            }).join('');
+            combinedResources.title=('Available = town stock + incoming resources. Required = recruitment resources. ')+['wood','stone','iron'].map(resource=>`${labels[resource]}: ${combined.stock[resource].toLocaleString()} + ${combined.incoming[resource].toLocaleString()} = ${combined.total[resource].toLocaleString()} / ${required[resource].toLocaleString()}`).join(' | ');
+        }
+        // Make the current recruitment resource target available to the marketplace bridge.
+        try {
+            const townId=String(getTownId());
+            const plans=JSON.parse(localStorage.getItem('egeltools_recruitment_resource_plans_v1')||'{}');
+            const unitPlan=context.tabs.flatMap(tab=>{
+                const total=Number(tab.querySelector('.uti-row')?.textContent)||0;
+                const target=Number(tab.querySelector('.uti-target')?.value)||0;
+                const count=Math.max(0,target-total);
+                if(!count)return [];
+                const result=api?.calculateCurrentRecruitment?.(tab.id,count);
+                return result?[{id:tab.id,count,wood:result.wood||0,stone:result.stone||0,iron:result.iron||0}]:[];
+            });
+            plans[townId]={townId,wood:Math.max(0,Math.round(wood)),stone:Math.max(0,Math.round(stone)),iron:Math.max(0,Math.round(iron)),units:unitPlan,updatedAt:Date.now()};
+            localStorage.setItem('egeltools_recruitment_resource_plans_v1',JSON.stringify(plans));
+            window.dispatchEvent(new CustomEvent('egeltools:recruitment-plan-updated',{detail:plans[townId]}));
+        } catch (_) {}
+    }
+    let lastTownId = null;
+    let lastGroupId = null;
+    let lastUnitOrderExists = false;
+    let lastVisibleUnits = '';
+
+    function watcher() {
+        const contexts=getRecruitmentWindowHosts();
+        if(!contexts.length){
+            document.querySelectorAll('.uti-recruitment-summary:not(.uti-academy-summary)').forEach(panel=>panel.remove());
+            lastUnitOrderExists=false;
+            return;
+        }
+        const currentTownId=getTownId();
+        const currentGroupId=getGroupId();
+        const allTabs=contexts.flatMap(context=>context.tabs);
+        const visibleUnits=allTabs.map(tab=>tab.id).join('|');
+        const townChanged=lastTownId!==currentTownId;
+        const groupChanged=lastGroupId!==currentGroupId;
+        const windowOpened=!lastUnitOrderExists;
+        const unitListChanged=lastVisibleUnits!==visibleUnits;
+        const uiMissing=allTabs.some(tab=>!tab.querySelector('.uti-bottom-box'));
+        if(windowOpened||townChanged||groupChanged||unitListChanged)createMissingUi(true);
+        else if(uiMissing)createMissingUi(false);
+        refreshTotalsOnly();
+        const activeKeys=new Set(contexts.map(context=>panelKey(context.type)));
+        document.querySelectorAll('.uti-recruitment-summary:not(.uti-academy-summary)').forEach(panel=>{
+            const key=panel.id.replace('uti-recruitment-summary-','');
+            if(!activeKeys.has(key))panel.remove();
+        });
+        contexts.forEach(updateRecruitmentSummaryPanel);
+        lastTownId=currentTownId;lastGroupId=currentGroupId;lastVisibleUnits=visibleUnits;lastUnitOrderExists=true;
+    }
+    // Recruitment logic is only activated while a barracks/harbor recruitment window exists.
+    // Outside those windows there is no recurring recruitment check.
+    let recruitmentWatcherQueued=false;
+    const queueRecruitmentWatcher=()=>{
+        if(recruitmentWatcherQueued)return;
+        recruitmentWatcherQueued=true;
+        setTimeout(()=>{recruitmentWatcherQueued=false;watcher();},80);
+    };
+    new MutationObserver(mutations=>{
+        for(const mutation of mutations){
+            const nodes=[mutation.target,...mutation.addedNodes,...mutation.removedNodes];
+            if(nodes.some(node=>node instanceof Element&&(
+                node.matches?.('#unit_order,.uti-recruitment-summary')||
+                node.querySelector?.('#unit_order,.uti-recruitment-summary')||
+                node.closest?.('#unit_order,.uti-recruitment-summary')
+            ))){queueRecruitmentWatcher();return;}
+        }
+    }).observe(document.documentElement,{childList:true,subtree:true});
+    document.addEventListener('click',event=>{
+        if(event.target instanceof Element&&event.target.closest('#unit_order,.barracks,.docks,[data-window-type="barracks"],[data-window-type="docks"]'))queueRecruitmentWatcher();
+    },true);
+    watcher();
+})();
+
+// Recruitment overview: show saved target, current total and missing units per town.
+(() => {
+  'use strict';
+
+  const TARGET_STORAGE_KEY = 'grepo_unit_targets_scoped_v2';
+  const STYLE_ID = 'egeltools-recruit-overview-target-style';
+  const STATUS_CLASS = 'egeltools-recruit-overview-target';
+  const TARGET_EFFECT_IDS = new Set(['unit_training_boost', 'passionate_training', 'passionate_training_boost']);
+  let refreshQueued = false;
+
+  const readTargets = () => {
+    try {
+      const data = JSON.parse(localStorage.getItem(TARGET_STORAGE_KEY) || '{}');
+      data.groups ||= {};
+      data.cities ||= {};
+      data.customGroups ||= {};
+      data.cityTargetGroups ||= {};
+      return data;
+    } catch (_) {
+      return { groups: {}, cities: {}, customGroups: {}, cityTargetGroups: {} };
+    }
+  };
+
+  const decodeDetails = element => {
+    try {
+      const encoded = element?.getAttribute?.('details');
+      if (!encoded) return null;
+      const binary = atob(encoded);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      return JSON.parse(new TextDecoder().decode(bytes));
+    } catch (_) {
+      return null;
+    }
+  };
+
+  // Grepolis town.units() and town.unitsOuter() may return plain objects.
+  // Preserve those values instead of treating only Backbone models as valid.
+  const attrs = model => {
+    if (!model) return {};
+    if (model.attributes && typeof model.attributes === 'object') return model.attributes;
+    if (typeof model.toJSON === 'function') return model.toJSON() || {};
+    return typeof model === 'object' ? model : {};
+  };
+
+  function groupIdForTown(townId) {
+    const wanted = String(townId);
+    const inspect = model => {
+      const a = attrs(model);
+      const modelTownId = a.town_id ?? a.townId ?? a.townid;
+      const groupId = a.town_group_id ?? a.group_id ?? a.groupId ?? a.townGroupId;
+      if (String(modelTownId) !== wanted || groupId == null || String(groupId) === '' || String(groupId) === '-1') return null;
+      return String(groupId);
+    };
+    try {
+      for (const modelGroup of Object.values(MM.getModels?.() || {})) {
+        for (const model of Object.values(modelGroup || {})) {
+          const found = inspect(model);
+          if (found) return found;
+        }
+      }
+    } catch (_) {}
+    try {
+      for (const collectionGroup of Object.values(MM.getCollections?.() || {})) {
+        for (const collection of Object.values(collectionGroup || {})) {
+          for (const model of collection?.models || []) {
+            const found = inspect(model);
+            if (found) return found;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  function targetFor(townId, unitId, targets) {
+    const id = String(townId);
+    const assignment = targets.cityTargetGroups?.[id];
+
+    if (assignment === 'none') {
+      const cityValue = targets.cities?.[id]?.[unitId];
+      return cityValue !== undefined
+        ? { value: Math.max(0, Number(cityValue) || 0), scope: 'city' }
+        : { value: 0, scope: 'none' };
+    }
+
+    if (String(assignment || '').startsWith('custom:')) {
+      const customId = String(assignment).slice(7);
+      const customValue = targets.customGroups?.[customId]?.targets?.[unitId];
+      return customValue !== undefined
+        ? { value: Math.max(0, Number(customValue) || 0), scope: 'custom-group' }
+        : { value: 0, scope: 'custom-group' };
+    }
+
+    const assignedGroupId = String(assignment || '').startsWith('grepo:')
+      ? String(assignment).slice(6)
+      : groupIdForTown(id);
+    const groupValue = assignedGroupId == null
+      ? undefined
+      : targets.groups?.[assignedGroupId]?.[unitId];
+    if (groupValue !== undefined) {
+      return { value: Math.max(0, Number(groupValue) || 0), scope: 'group' };
+    }
+
+    // Legacy fallback for old local data without an explicit city assignment.
+    const cityValue = targets.cities?.[id]?.[unitId];
+    if (cityValue !== undefined) return { value: Math.max(0, Number(cityValue) || 0), scope: 'city' };
+    return { value: 0, scope: 'none' };
+  }
+
+  function remainingOrder(order) {
+    const a = attrs(order);
+    const count = Math.max(0, Number(a.count) || 0);
+    const createdAt = Number(a.created_at) || 0;
+    const completedAt = Number(a.to_be_completed_at) || 0;
+    const now = Math.floor(Date.now() / 1000);
+    if (!count) return 0;
+    if (!createdAt || !completedAt || now < createdAt) return count;
+    if (now >= completedAt) return 0;
+    const secondsPerUnit = (completedAt - createdAt) / count;
+    if (!(secondsPerUnit > 0)) return count;
+    return Math.max(count - Math.floor((now - createdAt) / secondsPerUnit), 0);
+  }
+
+  function queuedByTownAndUnit() {
+    const queued = {};
+    try {
+      for (const order of Object.values(MM.getModels?.().UnitOrder || {})) {
+        const a = attrs(order);
+        const townId = String(a.town_id ?? a.townId ?? '');
+        const unitId = String(order?.getUnitId?.() || a.unit_type || a.unit_id || a.type || '');
+        if (!townId || !unitId) continue;
+        const remaining = remainingOrder(order);
+        if (!remaining) continue;
+        queued[townId] ||= {};
+        queued[townId][unitId] = (queued[townId][unitId] || 0) + remaining;
+      }
+    } catch (_) {}
+    return queued;
+  }
+
+  function ownedUnitsByTownAndUnit() {
+    const owned = {};
+    try {
+      const townBag = window.ITowns?.getTowns?.() || {};
+      for (const [fallbackId, town] of Object.entries(townBag)) {
+        const townId = String(town?.getId?.() ?? attrs(town).id ?? attrs(town).town_id ?? fallbackId);
+        if (!townId) continue;
+        const present = attrs(town?.units?.() || {});
+        const outside = attrs(town?.unitsOuter?.() || {});
+        owned[townId] ||= {};
+        for (const unitId of new Set([...Object.keys(present), ...Object.keys(outside)])) {
+          owned[townId][unitId] = Math.max(0, Number(present[unitId]) || 0)
+            + Math.max(0, Number(outside[unitId]) || 0);
+        }
+      }
+    } catch (_) {}
+    return owned;
+  }
+
+  const RECRUIT_TOTAL_CACHE_KEY = 'egeltools_recruit_final_totals_v1';
+
+  function readRecruitTotalCache() {
+    try {
+      const value = JSON.parse(localStorage.getItem(RECRUIT_TOTAL_CACHE_KEY) || '{}');
+      value.towns ||= {};
+      return value;
+    } catch (_) {
+      return { towns: {} };
+    }
+  }
+
+  let recruitCacheDriveUploadTimer = 0;
+  let recruitCacheDriveUploadState = {
+    requestedAt: null,
+    startedAt: null,
+    finishedAt: null,
+    success: null,
+    error: null,
+  };
+
+  async function uploadRecruitCacheToDriveNow() {
+    recruitCacheDriveUploadState.startedAt = Date.now();
+    recruitCacheDriveUploadState.error = null;
+    try {
+      if (typeof window.EgelToolsRecruitDriveUpload !== 'function') {
+        throw new Error('EgelToolsRecruitDriveUpload is unavailable');
+      }
+      const success = await window.EgelToolsRecruitDriveUpload();
+      recruitCacheDriveUploadState.finishedAt = Date.now();
+      recruitCacheDriveUploadState.success = success !== false;
+      return success;
+    } catch (error) {
+      recruitCacheDriveUploadState.finishedAt = Date.now();
+      recruitCacheDriveUploadState.success = false;
+      recruitCacheDriveUploadState.error = String(error?.message || error);
+      console.error('[EgelTools] Google Drive POST failed after cache update:', error);
+      return false;
+    }
+  }
+
+  function scheduleRecruitCacheDriveUpload() {
+    recruitCacheDriveUploadState.requestedAt = Date.now();
+    // Keep the first pending timer. Repeated identical calculations must not
+    // postpone the POST forever by continuously restarting the 250 ms delay.
+    if (recruitCacheDriveUploadTimer) return;
+    recruitCacheDriveUploadTimer = window.setTimeout(() => {
+      recruitCacheDriveUploadTimer = 0;
+      void uploadRecruitCacheToDriveNow();
+    }, 250);
+  }
+
+  function writeRecruitTotalCache(cache, { upload = true } = {}) {
+    localStorage.setItem(RECRUIT_TOTAL_CACHE_KEY, JSON.stringify(cache));
+    if (upload) scheduleRecruitCacheDriveUpload();
+  }
+
+  let recruitCacheRefreshArmed = false;
+
+  function syncRecruitCacheFreePopulation(response, { upload = true, missingOnly = false } = {}) {
+    const towns = response?.json?.data?.towns;
+    if (!Array.isArray(towns)) return { changed: false, updated: 0, missing: 0 };
+    const cache = readRecruitTotalCache();
+    cache.towns ||= {};
+    const changedAt = Date.now();
+    let changed = false;
+    let updated = 0;
+    let missing = 0;
+
+    for (const town of towns) {
+      const townId = String(town?.id ?? '');
+      const freePopulation = Number(town?.buildable_units);
+      if (!townId || !Number.isFinite(freePopulation)) {
+        missing += 1;
+        continue;
+      }
+      const previous = cache.towns[townId] || {};
+      const normalized = Math.max(0, freePopulation);
+      if (missingOnly && Object.prototype.hasOwnProperty.call(previous, 'freePopulation')) continue;
+      if (Number(previous.freePopulation) === normalized
+          && Object.prototype.hasOwnProperty.call(previous, 'freePopulation')) continue;
+      cache.towns[townId] = {
+        ...previous,
+        name: String(town?.name || previous.name || townId),
+        freePopulation: normalized,
+        freePopulationCapturedAt: changedAt,
+      };
+      changed = true;
+      updated += 1;
+    }
+
+    if (changed) {
+      cache.updatedAt = changedAt;
+      writeRecruitTotalCache(cache, { upload });
+    }
+    return { changed, updated, missing };
+  }
+
+  function reconcileRecruitCacheWithOverview(response) {
+    const towns = response?.json?.data?.towns;
+    if (!Array.isArray(towns)) return { changed: false, reviewed: 0, pendingDecreases: 0 };
+
+    const cache = readRecruitTotalCache();
+    cache.towns ||= {};
+    cache.reconcileCandidates ||= {};
+    const capturedAt = Date.now();
+    const serverTime = Number(response?._srvtime) || null;
+    let changed = false;
+    let reviewed = 0;
+    let pendingDecreases = 0;
+
+    for (const town of towns) {
+      const townId = String(town?.id ?? '');
+      if (!townId) continue;
+      const serverTrained = {};
+      const serverQueued = {};
+      const serverTotals = {};
+
+      for (const unit of Array.isArray(town.units) ? town.units : []) {
+        const unitId = String(unit?.id ?? '');
+        if (!unitId) continue;
+        serverTrained[unitId] = Math.max(0, Number(unit.total) || 0);
+      }
+      for (const orderType of ['barracks', 'docks']) {
+        const orders = Array.isArray(town?.orders?.[orderType]) ? town.orders[orderType] : [];
+        for (const order of orders) {
+          const unitId = String(order?.unit_type ?? '');
+          if (!unitId) continue;
+          serverQueued[unitId] = (serverQueued[unitId] || 0)
+            + Math.max(0, Number(order?.units_left) || 0);
+        }
+      }
+      const unitIds = new Set([
+        ...Object.keys(serverTrained),
+        ...Object.keys(serverQueued),
+        ...Object.keys(cache.towns[townId]?.totals || {}),
+      ]);
+      unitIds.forEach(unitId => {
+        serverTotals[unitId] = (serverTrained[unitId] || 0) + (serverQueued[unitId] || 0);
+      });
+
+      const previous = cache.towns[townId];
+      if (!previous) {
+        cache.towns[townId] = {
+          name: String(town?.name || townId),
+          capturedAt,
+          serverTime,
+          source: 'recruit-overview-initial',
+          freePopulation: Number.isFinite(Number(town?.buildable_units))
+            ? Math.max(0, Number(town.buildable_units))
+            : null,
+          trained: serverTrained,
+          queued: serverQueued,
+          totals: serverTotals,
+        };
+        changed = true;
+        reviewed += unitIds.size;
+        continue;
+      }
+
+      const serverFreePopulation = Number(town?.buildable_units);
+      const cachedFreePopulation = Number(previous.freePopulation);
+      const hasServerFreePopulation = Number.isFinite(serverFreePopulation);
+      const hasCachedFreePopulation = Number.isFinite(cachedFreePopulation);
+      const freePopulationChanged = hasServerFreePopulation
+        && hasCachedFreePopulation
+        && serverFreePopulation !== cachedFreePopulation;
+
+      // A changed free-population value makes the current server snapshot
+      // authoritative for the whole town, as requested. Replace all unit totals
+      // and the stored BHP value together so both belong to the same snapshot.
+      if (freePopulationChanged) {
+        cache.towns[townId] = {
+          ...previous,
+          name: String(town?.name || previous.name || townId),
+          capturedAt,
+          serverTime,
+          source: 'recruit-overview-free-population-changed',
+          freePopulation: Math.max(0, serverFreePopulation),
+          trained: serverTrained,
+          queued: serverQueued,
+          totals: serverTotals,
+        };
+        delete cache.reconcileCandidates[townId];
+        changed = true;
+        reviewed += unitIds.size;
+        continue;
+      }
+
+      const trained = { ...(previous.trained || {}) };
+      const queued = { ...(previous.queued || {}) };
+      const totals = { ...(previous.totals || {}) };
+      cache.reconcileCandidates[townId] ||= {};
+
+      // Migrate older cache entries that do not yet contain freePopulation,
+      // without replacing their troop totals merely because the field was absent.
+      let resolvedFreePopulation = previous.freePopulation;
+      if (!hasCachedFreePopulation && hasServerFreePopulation) {
+        resolvedFreePopulation = Math.max(0, serverFreePopulation);
+        changed = true;
+      }
+
+      unitIds.forEach(unitId => {
+        reviewed += 1;
+        const cachedTotal = Math.max(0, Number(totals[unitId]) || 0);
+        const serverTotal = Math.max(0, Number(serverTotals[unitId]) || 0);
+        const candidate = cache.reconcileCandidates[townId][unitId];
+
+        const difference = serverTotal - cachedTotal;
+
+        // Grepolis can briefly report one unit less while a completed order moves
+        // from the queue into the trained stock. Keep the frozen cache within this
+        // one-unit tolerance so 110 does not temporarily become 109.
+        if (Math.abs(difference) <= 1) {
+          delete cache.reconcileCandidates[townId][unitId];
+          return;
+        }
+
+        if (serverTotal > cachedTotal) {
+          // Mobile/other-device recruitment or another external increase.
+          trained[unitId] = serverTrained[unitId] || 0;
+          queued[unitId] = serverQueued[unitId] || 0;
+          totals[unitId] = serverTotal;
+          delete cache.reconcileCandidates[townId][unitId];
+          changed = true;
+          return;
+        }
+
+        const freePopulationMatches = hasCachedFreePopulation
+          && hasServerFreePopulation
+          && cachedFreePopulation === serverFreePopulation;
+
+        // Matching free population is sufficient confirmation that no population-
+        // consuming troop change occurred. Keep the authoritative cached total.
+        if (freePopulationMatches) {
+          delete cache.reconcileCandidates[townId][unitId];
+          return;
+        }
+
+        // Never reduce the authoritative cache from recruit_overview alone. Record
+        // the discrepancy together with free population for a targeted verification.
+        cache.reconcileCandidates[townId][unitId] = {
+          cachedTotal,
+          serverTrained: serverTrained[unitId] || 0,
+          serverQueued: serverQueued[unitId] || 0,
+          serverTotal,
+          difference: cachedTotal - serverTotal,
+          cachedFreePopulation: Number.isFinite(cachedFreePopulation) ? cachedFreePopulation : null,
+          serverFreePopulation: Number.isFinite(serverFreePopulation) ? serverFreePopulation : null,
+          freePopulationMatches,
+          firstSeenAt: candidate?.firstSeenAt || capturedAt,
+          lastSeenAt: capturedAt,
+          occurrences: (Number(candidate?.occurrences) || 0) + 1,
+          townName: String(town?.name || townId),
+        };
+        pendingDecreases += 1;
+      });
+
+      cache.towns[townId] = {
+        ...previous,
+        name: String(town?.name || previous.name || townId),
+        capturedAt: changed ? capturedAt : previous.capturedAt,
+        serverTime,
+        source: changed ? 'recruit-overview-reconciled' : previous.source,
+        freePopulation: resolvedFreePopulation,
+        trained,
+        queued,
+        totals,
+      };
+    }
+
+    cache.updatedAt = changed ? capturedAt : cache.updatedAt;
+    cache.serverTime = serverTime;
+    // Persist candidates locally, but upload only when a total was committed.
+    writeRecruitTotalCache(cache, { upload: changed });
+    return { changed, reviewed, pendingDecreases, tolerance: 1, lowerValuesPolicy: 'server-if-free-population-changed' };
+  }
+
+  function cachedFinalTotal(townIdValue, unitIdValue) {
+    const townId = String(townIdValue);
+    const unitId = String(unitIdValue);
+    const cacheTown = readRecruitTotalCache().towns?.[townId];
+    if (!cacheTown || !Object.prototype.hasOwnProperty.call(cacheTown.totals || {}, unitId)) {
+      return null;
+    }
+    return Math.max(0, Number(cacheTown.totals[unitId]) || 0);
+  }
+
+  function cachedOwnedByTownAndUnit() {
+    const cache = readRecruitTotalCache();
+    return Object.fromEntries(Object.entries(cache.towns || {}).map(([townId, town]) => [
+      townId,
+      town.trained || {},
+    ]));
+  }
+
+  function cachedQueuedByTownAndUnit() {
+    const cache = readRecruitTotalCache();
+    return Object.fromEntries(Object.entries(cache.towns || {}).map(([townId, town]) => [
+      townId,
+      town.queued || {},
+    ]));
+  }
+
+  function cachedTotalsByTownAndUnit() {
+    const cache = readRecruitTotalCache();
+    return Object.fromEntries(Object.entries(cache.towns || {}).map(([townId, town]) => [
+      townId,
+      town.totals || {},
+    ]));
+  }
+
+  const recruitOverviewServerOwned = {};
+  const recruitOverviewServerQueued = {};
+  let recruitOverviewServerCapturedAt = null;
+
+  function updateRecruitOverviewFromServerResponse(response) {
+    const towns = response?.json?.data?.towns;
+    if (!Array.isArray(towns)) return false;
+
+    for (const town of towns) {
+      const townId = String(town?.id ?? '');
+      if (!townId) continue;
+      recruitOverviewServerOwned[townId] = {};
+      recruitOverviewServerQueued[townId] = {};
+
+      for (const unit of Array.isArray(town.units) ? town.units : []) {
+        const unitId = String(unit?.id ?? '');
+        if (!unitId) continue;
+        // This is the value Grepolis uses for .unit_order_total in barracks/docks.
+        recruitOverviewServerOwned[townId][unitId] = Math.max(0, Number(unit.total) || 0);
+      }
+
+      for (const orderType of ['barracks', 'docks']) {
+        const orders = Array.isArray(town?.orders?.[orderType]) ? town.orders[orderType] : [];
+        for (const order of orders) {
+          const unitId = String(order?.unit_type ?? '');
+          if (!unitId) continue;
+          recruitOverviewServerQueued[townId][unitId] =
+            (recruitOverviewServerQueued[townId][unitId] || 0)
+            + Math.max(0, Number(order?.units_left) || 0);
+        }
+      }
+    }
+    recruitOverviewServerCapturedAt = Date.now();
+    return true;
+  }
+
+  function exactOwnedByTownAndUnit() {
+    // The recruitment overview uses the cached final total directly.
+    return cachedTotalsByTownAndUnit();
+  }
+
+  function exactQueuedByTownAndUnit() {
+    // Queue is already included in cached totals, so it must not be added again.
+    return {};
+  }
+
+  function boostsByTownAndUnit() {
+    const boosted = {};
+    const now = Math.floor(Date.now() / 1000);
+    try {
+      for (const collectionGroup of Object.values(MM.getCollections?.() || {})) {
+        for (const collection of Object.values(collectionGroup || {})) {
+          for (const model of collection?.models || []) {
+            const a = attrs(model);
+            const powerId = String(a.power_id || a.powerId || a.id || '').toLowerCase();
+            if (!TARGET_EFFECT_IDS.has(powerId)) continue;
+            const townId = String(a.town_id ?? a.townId ?? '');
+            const unitId = String(a.configuration?.type || '');
+            const amount = Math.max(0, Number(a.configuration?.amount) || 0);
+            const endAt = Number(a.end_at) || 0;
+            if (!townId || !unitId || !amount || endAt <= now) continue;
+            const remaining = Math.ceil((endAt - now) / 3600) * amount;
+            boosted[townId] ||= {};
+            boosted[townId][unitId] = (boosted[townId][unitId] || 0) + remaining;
+          }
+        }
+      }
+    } catch (_) {}
+    return boosted;
+  }
+
+  function ensureStyle() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = `
+      #recruit_overview .table_recruit_units .unit_box .lbl_unit_number {
+        height: 18px !important;
+        min-height: 18px !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 0 !important;
+        text-align: center !important;
+      }
+
+      /* Unit boxes without a recruit input must reserve the same upper space.
+         This keeps their actual value level with the values below input fields. */
+      #recruit_overview .table_recruit_units .unit_box:not(:has(.textbox)) .lbl_unit_number {
+        position: relative !important;
+        top: 18px !important;
+      }
+
+      #recruit_overview .lbl_unit_number.egeltools-target-number {
+        width: 28px !important;
+        min-width: 28px !important;
+        max-width: 28px !important;
+        height: 18px !important;
+        min-height: 18px !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+        font-size: 9px !important;
+        font-weight: 700;
+        line-height: 8px !important;
+        letter-spacing: 0;
+        white-space: normal !important;
+        overflow: visible;
+        display: block !important;
+        text-align: center;
+        cursor: default;
+      }
+      #recruit_overview .lbl_unit_number.egeltools-target-number.is-missing {
+        color: #c20d0d !important;
+        cursor: pointer;
+      }
+      #recruit_overview .lbl_unit_number.egeltools-target-number.is-done {
+        color: #177326 !important;
+      }
+      #recruit_overview .lbl_unit_number.egeltools-target-number.is-extra {
+        color: #b55a00 !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function setRecruitInput(unitBox, amount, maximum) {
+    const input = unitBox.querySelector('.textbox input');
+    if (!input || unitBox.classList.contains('inactive')) return;
+
+    const requested = Math.max(0, Math.floor(Number(amount) || 0));
+    const recruitable = Math.max(0, Math.floor(Number(maximum) || 0));
+    const capped = Math.min(requested, recruitable);
+    if (!capped) return;
+
+    // Let Grepolis initialize its own row state first. This is the same native
+    // path as clicking the green +MAX value and also activates the row checkmark.
+    const maxButton = unitBox.querySelector('.btn_set_max');
+    if (maxButton) maxButton.click();
+
+    const value = String(capped);
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: value.slice(-1), code: 'Digit' + value.slice(-1) }));
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (setter) setter.call(input, value); else input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: value.slice(-1), code: 'Digit' + value.slice(-1) }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.blur();
+
+    // Grepolis uses jQuery handlers in some client versions.
+    try {
+      window.jQuery?.(input).val(value).trigger('input').trigger('keyup').trigger('change').trigger('blur');
+    } catch (_) {}
+  }
+
+  function clearRecruitInput(unitBox) {
+    const input = unitBox.querySelector('.textbox input');
+    if (!input) return;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (setter) setter.call(input, ''); else input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.blur();
+    try {
+      window.jQuery?.(input).val('').trigger('input').trigger('keyup').trigger('change').trigger('blur');
+    } catch (_) {}
+  }
+
+  function toggleRecruitInput(unitBox, amount, maximum) {
+    const input = unitBox.querySelector('.textbox input');
+    if (!input || unitBox.classList.contains('inactive')) return;
+    if ((Number(input.value) || 0) > 0 || input.dataset.egeltoolsFilled === '1') {
+      clearRecruitInput(unitBox);
+      input.dataset.egeltoolsFilled = '0';
+      return;
+    }
+    setRecruitInput(unitBox, amount, maximum);
+    input.dataset.egeltoolsFilled = '1';
+  }
+
+  function spinnerValue(id) {
+    return Math.max(0, Number(document.querySelector(`#${id} input`)?.value) || 0);
+  }
+
+  function townModel(townId) {
+    try { return window.ITowns?.getTown?.(townId) || window.ITowns?.getTowns?.()?.[townId] || null; }
+    catch (_) { return null; }
+  }
+
+  function townBudget(townId) {
+    const town = townModel(townId);
+    const resources = attrs(town?.resources?.() || town?.getResources?.() || town?.getCurrentResources?.() || {});
+    let population = 0;
+    try { population = Number(town?.getAvailablePopulation?.()) || 0; } catch (_) {}
+    let favor = Number(town?.getAvailableGodsFavor?.()) || 0;
+    if (!favor) {
+      try { favor = Number(town?.getGodsFavor?.() || town?.getFavor?.() || 0) || 0; } catch (_) {}
+    }
+    return {
+      wood: Math.max(0, (Number(resources.wood) || 0) - spinnerValue('sp_recruit_wood')),
+      stone: Math.max(0, (Number(resources.stone) || 0) - spinnerValue('sp_recruit_stone')),
+      iron: Math.max(0, (Number(resources.iron) || 0) - spinnerValue('sp_recruit_iron')),
+      population: Math.max(0, population - spinnerValue('sp_recruit_population')),
+      favor: Math.max(0, favor)
+    };
+  }
+
+  function unitCost(unitId) {
+    const unit = window.GameData?.units?.[unitId] || {};
+    const resources = unit.resources || unit.costs || {};
+    return {
+      wood: Math.max(0, Number(resources.wood ?? unit.wood) || 0),
+      stone: Math.max(0, Number(resources.stone ?? unit.stone) || 0),
+      iron: Math.max(0, Number(resources.iron ?? unit.iron) || 0),
+      population: Math.max(0, Number(unit.population) || 0),
+      favor: Math.max(0, Number(resources.favor ?? unit.favor) || 0)
+    };
+  }
+
+  function canPay(budget, cost) {
+    return ['wood', 'stone', 'iron', 'population', 'favor'].every(key => budget[key] >= cost[key]);
+  }
+
+  function pay(budget, cost) {
+    ['wood', 'stone', 'iron', 'population', 'favor'].forEach(key => { budget[key] -= cost[key]; });
+  }
+
+  function setRecruitInputDirect(unitBox, amount) {
+    const input = unitBox.querySelector('.textbox input');
+    if (!input || unitBox.classList.contains('inactive')) return;
+    const value = String(Math.max(0, Math.floor(Number(amount) || 0)));
+    if (!value || value === '0') return;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    input.focus();
+    if (setter) setter.call(input, value); else input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: value.slice(-1) }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.blur();
+    try { window.jQuery?.(input).val(value).trigger('input').trigger('keyup').trigger('change').trigger('blur'); } catch (_) {}
+  }
+
+  function fillVisibleBalanced(processedTownIds = new Set()) {
+    const root = document.querySelector('#recruit_overview');
+    if (!root) return;
+    const targets = readTargets();
+    const owned = exactOwnedByTownAndUnit();
+    const queued = exactQueuedByTownAndUnit();
+    const boosted = boostsByTownAndUnit();
+    const towns = new Map();
+
+    root.querySelectorAll('.unit_box:not(.inactive)').forEach(unitBox => {
+      const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
+      const details = decodeDetails(source);
+      if (!details?.town_id || !details?.unit_id) return;
+      const townId = String(details.town_id);
+      const unitId = String(details.unit_id);
+      unitBox.dataset.egeltoolsRenderSignature = `${townId}:${unitId}`;
+      if (processedTownIds.has(townId)) return;
+      const target = targetFor(townId, unitId, targets);
+      if (target.scope === 'none' || target.value <= 0) return;
+      const cachedTotal = cachedFinalTotal(townId, unitId);
+      const fallbackBase = owned[townId]?.[unitId] ?? Math.max(0, Number(details.unit_number) || 0);
+      const total = cachedTotal ?? (
+        fallbackBase + (queued[townId]?.[unitId] || 0) + (boosted[townId]?.[unitId] || 0)
+      );
+      const missing = Math.max(target.value - total, 0);
+      const maximum = Math.max(0, Number(details.unit_max) || 0);
+      const limit = Math.min(missing, maximum);
+      if (!limit) return;
+      if (!towns.has(townId)) towns.set(townId, { budget: townBudget(townId), candidates: [] });
+      towns.get(townId).candidates.push({ unitBox, unitId, missing, limit, amount: 0, cost: unitCost(unitId) });
+    });
+
+    towns.forEach(({ budget, candidates }, townId) => {
+      // Grepolis-like fair filling: always give the next unit to the troop type
+      // with the lowest fulfilled share of its current shortage.
+      let progressed = true;
+      while (progressed) {
+        progressed = false;
+        const ordered = candidates
+          .filter(item => item.amount < item.limit && canPay(budget, item.cost))
+          .sort((a, b) => (a.amount / a.missing) - (b.amount / b.missing) || a.unitId.localeCompare(b.unitId));
+        for (const item of ordered) {
+          if (item.amount >= item.limit || !canPay(budget, item.cost)) continue;
+          item.amount += 1;
+          pay(budget, item.cost);
+          progressed = true;
+        }
+      }
+      candidates.filter(item => item.amount > 0).forEach(item => setRecruitInputDirect(item.unitBox, item.amount));
+      processedTownIds.add(townId);
+    });
+
+    keepRecruitTownButtonsClearOfScrollbar();
+    queueRender();
+  }
+
+  const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+  let recruitScrollbarButtonObserver = null;
+
+  function observeRecruitScrollbarButtons() {
+    const root = document.querySelector('#recruit_overview');
+    if (!root || recruitScrollbarButtonObserver) return;
+    recruitScrollbarButtonObserver = new MutationObserver(() => {
+      requestAnimationFrame(keepRecruitTownButtonsClearOfScrollbar);
+    });
+    recruitScrollbarButtonObserver.observe(root, { childList: true, subtree: true });
+    root.addEventListener('scroll', keepRecruitTownButtonsClearOfScrollbar, true);
+    keepRecruitTownButtonsClearOfScrollbar();
+  }
+
+  function keepRecruitTownButtonsClearOfScrollbar() {
+    const list = document.querySelector('#recruit_overview #recruit_town_list');
+    if (!list) return;
+
+    // Reserve a fixed 5 px on the right for the vertical scrollbar.
+    // Only the row action buttons are moved; the overview width stays unchanged.
+    list.querySelectorAll('.town_buttons').forEach((buttons) => {
+      buttons.style.setProperty('transform', 'translateX(-5px)', 'important');
+      buttons.style.setProperty('z-index', '20', 'important');
+    });
+  }
+
+  function visibleTownIds() {
+    observeRecruitScrollbarButtons();
+    keepRecruitTownButtonsClearOfScrollbar();
+    const ids = new Set();
+    document.querySelectorAll('#recruit_overview .unit_box [details]').forEach(element => {
+      const details = decodeDetails(element);
+      if (details?.town_id) ids.add(String(details.town_id));
+    });
+    return [...ids];
+  }
+
+  function findRecruitScrollHost() {
+    const list = document.querySelector('#recruit_overview #recruit_town_list');
+    if (!list) return null;
+    const candidates = [list, ...list.querySelectorAll('*'), ...(() => {
+      const result = [];
+      let parent = list.parentElement;
+      while (parent && parent !== document.body) { result.push(parent); parent = parent.parentElement; }
+      return result;
+    })()];
+    return candidates.find(element => element.scrollHeight > element.clientHeight + 20
+      && ['auto', 'scroll'].includes(getComputedStyle(element).overflowY)) || list;
+  }
+
+  async function autoFillBalanced() {
+    const root = document.querySelector('#recruit_overview');
+    const list = root?.querySelector('#recruit_town_list');
+    if (!root || !list) return;
+
+    const button = document.getElementById('egeltools-recruit-fill-all');
+    button?.classList.add('disabled');
+    const processedTownIds = new Set();
+    const scrollHost = findRecruitScrollHost();
+    const originalScrollTop = scrollHost?.scrollTop || 0;
+    let unchangedRounds = 0;
+    let previousSignature = '';
+
+    try {
+      if (scrollHost) {
+        scrollHost.scrollTop = 0;
+        scrollHost.dispatchEvent(new Event('scroll', { bubbles: true }));
+      }
+      list.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -100000 }));
+      await sleep(180);
+
+      // The overview virtualizes its rows. Fill the current rows, scroll one
+      // viewport, wait for Grepolis to recycle them, then continue until the end.
+      for (let step = 0; step < 500; step += 1) {
+        fillVisibleBalanced(processedTownIds);
+        await sleep(90);
+
+        const before = visibleTownIds().join(',');
+        const maxScroll = Math.max(0, (scrollHost?.scrollHeight || 0) - (scrollHost?.clientHeight || 0));
+        const oldTop = scrollHost?.scrollTop || 0;
+        if (scrollHost && maxScroll > 0) {
+          scrollHost.scrollTop = Math.min(maxScroll, oldTop + Math.max(120, Math.floor(scrollHost.clientHeight * 0.75)));
+          scrollHost.dispatchEvent(new Event('scroll', { bubbles: true }));
+        }
+        list.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 420 }));
+        await sleep(180);
+
+        const after = visibleTownIds().join(',');
+        const signature = `${scrollHost?.scrollTop || 0}|${after}`;
+        unchangedRounds = signature === previousSignature || (before === after && (scrollHost?.scrollTop || 0) === oldTop)
+          ? unchangedRounds + 1 : 0;
+        previousSignature = signature;
+        if (unchangedRounds >= 3 || (maxScroll > 0 && (scrollHost?.scrollTop || 0) >= maxScroll && before === after)) break;
+      }
+      fillVisibleBalanced(processedTownIds);
+    } finally {
+      if (scrollHost) {
+        scrollHost.scrollTop = originalScrollTop;
+        scrollHost.dispatchEvent(new Event('scroll', { bubbles: true }));
+      }
+      button?.classList.remove('disabled');
+      queueRender();
+    }
+  }
+
+  function ensureAutoFillButton() {
+    const recruitButton = document.querySelector('#recruit_overview #btn_recruit_units');
+    if (!recruitButton || document.getElementById('egeltools-recruit-fill-all')) return;
+    const button = recruitButton.cloneNode(true);
+    button.id = 'egeltools-recruit-fill-all';
+    button.querySelector('.js-caption span').textContent = 'Fill troops';
+    button.style.marginRight = '8px';
+    button.style.transform = 'translateY(4.5px)';
+    button.title = 'Fill every missing target unit evenly, up to the resource and population limit.';
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      autoFillBalanced();
+    });
+    recruitButton.parentElement.insertBefore(button, recruitButton);
+  }
+
+  function render() {
+    const root = document.querySelector('#recruit_overview');
+    if (!root) return;
+    ensureStyle();
+    ensureAutoFillButton();
+    const targets = readTargets();
+    const owned = exactOwnedByTownAndUnit();
+    const queued = exactQueuedByTownAndUnit();
+    const boosted = boostsByTownAndUnit();
+
+    root.querySelectorAll('.unit_box').forEach(unitBox => {
+      const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
+      const details = decodeDetails(source);
+      if (!details?.town_id || !details?.unit_id) return;
+      const townId = String(details.town_id);
+      const unitId = String(details.unit_id);
+      const target = targetFor(townId, unitId, targets);
+      const cachedTotal = cachedFinalTotal(townId, unitId);
+      const modelOwned = owned[townId]?.[unitId];
+      const fallbackOwned = Math.max(0, Number(details.unit_number) || 0);
+      const fallbackBase = modelOwned === undefined ? fallbackOwned : modelOwned;
+      // If a cache value exists, it is the complete final value and is displayed unchanged.
+      const total = cachedTotal ?? (
+        fallbackBase + (queued[townId]?.[unitId] || 0) + (boosted[townId]?.[unitId] || 0)
+      );
+      const missing = Math.max(target.value - total, 0);
+      const extra = Math.max(total - target.value, 0);
+      const numberElement = unitBox.querySelector('.lbl_unit_number');
+      if (!numberElement) return;
+      numberElement.classList.remove('egeltools-target-number', 'is-missing', 'is-done', 'is-extra');
+      numberElement.onclick = null;
+      numberElement.dataset.missing = String(missing);
+
+      if (target.scope === 'none' || target.value === 0) {
+        numberElement.textContent = String(total);
+        numberElement.title = target.scope === 'none' ? 'Kein Sollwert gespeichert' : 'Sollwert 0';
+        return;
+      }
+
+      numberElement.classList.add('egeltools-target-number');
+      numberElement.innerHTML = `${total}<br>/${target.value}`;
+      const scopeLabel = target.scope === 'city' ? 'Town'
+        : target.scope === 'custom-group' ? 'Custom group'
+        : 'Group';
+      numberElement.title = `${scopeLabel}: have ${total}, target ${target.value}`;
+
+      if (missing > 0) {
+        numberElement.classList.add('is-missing');
+        const recruitableNow = Math.max(0, Number(details.unit_max) || 0);
+        const fillAmount = Math.min(missing, recruitableNow);
+        numberElement.title += `, missing ${missing}. Recruitable now: ${fillAmount}. Click to enter; click again to clear.`;
+        numberElement.onclick = event => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleRecruitInput(unitBox, missing, details.unit_max);
+        };
+      } else if (extra > 0) {
+        numberElement.classList.add('is-extra');
+        numberElement.title += `, extra ${extra}`;
+      } else {
+        numberElement.classList.add('is-done');
+        numberElement.title += ', target reached';
+      }
+    });
+  }
+
+  function queueRender() {
+    if (refreshQueued) return;
+    refreshQueued = true;
+    setTimeout(() => { refreshQueued = false; render(); }, 80);
+  }
+
+  const renderedRecruitOverviews = new WeakSet();
+  let virtualRowsCheckQueued = false;
+  const visibleRecruitRowsNeedRender = () => {
+    const overview = document.querySelector('#recruit_overview');
+    if (!overview) return false;
+    return [...overview.querySelectorAll('.unit_box')].some(unitBox => {
+      const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
+      const details = decodeDetails(source);
+      if (!details?.town_id || !details?.unit_id) return false;
+      return unitBox.dataset.egeltoolsRenderSignature !== `${details.town_id}:${details.unit_id}`;
+    });
+  };
+  const renderNewVirtualRows = () => {
+    if (virtualRowsCheckQueued) return;
+    virtualRowsCheckQueued = true;
+    window.requestAnimationFrame(() => {
+      virtualRowsCheckQueued = false;
+      if (visibleRecruitRowsNeedRender()) render();
+    });
+  };
+  const initializeRecruitOverview = () => {
+    const overview = document.querySelector('#recruit_overview');
+    if (!overview) return;
+    if (!renderedRecruitOverviews.has(overview)) {
+      renderedRecruitOverviews.add(overview);
+      // Initial fixed cache calculation for the first visible rows.
+      window.setTimeout(render, 120);
+      overview.addEventListener('scroll', renderNewVirtualRows, { passive: true, capture: true });
+      const scrollHost = overview.querySelector('.js-scrollbar-viewport, .scrollbar, .viewport, .js-scrollbar-content');
+      scrollHost?.addEventListener('scroll', renderNewVirtualRows, { passive: true });
+    }
+    renderNewVirtualRows();
+  };
+  new MutationObserver(initializeRecruitOverview)
+    .observe(document.documentElement, { childList: true, subtree: true });
+  initializeRecruitOverview();
+
+  function currentTownIdForRecruitCache() {
+    return String(
+      window.Game?.townId
+      ?? window.Game?.town_id
+      ?? window.ITowns?.getCurrentTown?.()?.getId?.()
+      ?? ''
+    );
+  }
+
+  window.EgelToolsRecruitCacheStoreCalculation = ({ townId, townName, units }) => {
+    const id = String(townId || '');
+    if (!id || !units || typeof units !== 'object') return false;
+    const cache = readRecruitTotalCache();
+    cache.towns ||= {};
+    const previous = cache.towns[id] || {};
+    const trained = { ...(previous.trained || {}) };
+    const queued = { ...(previous.queued || {}) };
+    const totals = { ...(previous.totals || {}) };
+
+    Object.entries(units).forEach(([unitId, values]) => {
+      trained[unitId] = Math.max(0, Number(values?.trained) || 0);
+      queued[unitId] = Math.max(0, Number(values?.queued) || 0);
+      totals[unitId] = Math.max(0, Number(values?.total) || 0);
+    });
+
+    const nextName = String(townName || previous.name || id);
+    let detectedFreePopulation = previous.freePopulation;
+    try {
+      const changeTownModel = window.ITowns?.getTown?.(Number(id))
+        || window.ITowns?.getTowns?.()?.[id]
+        || (String(window.ITowns?.getCurrentTown?.()?.getId?.()) === id
+          ? window.ITowns.getCurrentTown()
+          : null);
+      const freeValue = Number(changeTownModel?.getAvailablePopulation?.());
+      if (Number.isFinite(freeValue)) detectedFreePopulation = Math.max(0, freeValue);
+    } catch (_) {}
+
+    const valuesChanged = previous.name !== nextName
+      || Number(previous.freePopulation) !== Number(detectedFreePopulation)
+      || JSON.stringify(previous.trained || {}) !== JSON.stringify(trained)
+      || JSON.stringify(previous.queued || {}) !== JSON.stringify(queued)
+      || JSON.stringify(previous.totals || {}) !== JSON.stringify(totals);
+    if (!valuesChanged) return false;
+
+    const changedAt = Date.now();
+    const freePopulation = detectedFreePopulation;
+
+    cache.towns[id] = {
+      ...previous,
+      name: nextName,
+      capturedAt: changedAt,
+      source: 'recruit-optimizer-calculation',
+      freePopulation,
+      trained,
+      queued,
+      totals,
+    };
+    cache.updatedAt = changedAt;
+    writeRecruitTotalCache(cache);
+    return true;
+  };
+
+  const RECRUIT_CACHE_NAVAL_UNITS = new Set([
+    'big_transporter', 'bireme', 'attack_ship', 'demolition_ship',
+    'small_transporter', 'trireme', 'colonize_ship', 'hydra', 'siren',
+  ]);
+
+  function captureCurrentBuildingIntoRecruitCache() {
+    // Cache values are written only by refreshTotalsOnly(), using the Recruit
+    // Optimizer's own trained + queued + boosted calculation.
+    return false;
+  }
+
+  window.EgelToolsRecruitBuildingPreview = () => {
+    const townId=currentTownIdForRecruitCache();
+    const town=readRecruitTotalCache().towns?.[townId]||null;
+    console.log('[EgelTools] Building cache preview:',town);
+    return town;
+  };
+
+  function collectRecruitOverviewInputAdditions(scope = document.querySelector('#recruit_overview')) {
+    const additions = [];
+    if (!scope) return additions;
+    scope.querySelectorAll('.unit_box').forEach(unitBox => {
+      const detailsElement = unitBox.querySelector(
+        '.textbox[details], .lbl_unit_number[details], .btn_set_max[details]'
+      );
+      const input = unitBox.querySelector('.textbox input');
+      const details = decodeDetails(detailsElement);
+      const amount = Math.max(0, Math.floor(Number(input?.value) || 0));
+      const townId = String(details?.town_id ?? '');
+      const unitId = String(details?.unit_id ?? '');
+      if (!amount || !townId || !unitId) return;
+      additions.push({ townId, unitId, amount });
+    });
+    return additions;
+  }
+
+  function addRecruitOverviewInputsToCache(additions) {
+    if (!Array.isArray(additions) || !additions.length) return false;
+    const cache = readRecruitTotalCache();
+    cache.towns ||= {};
+    const appliedAt = Date.now();
+
+    additions.forEach(({ townId, unitId, amount }) => {
+      const town = cache.towns[townId] ||= {
+        name: townId,
+        capturedAt: appliedAt,
+        source: 'recruit-optimizer-calculation',
+        trained: {},
+        queued: {},
+        totals: {},
+      };
+      town.trained ||= {};
+      town.queued ||= {};
+      town.totals ||= {};
+      town.queued[unitId] = (Number(town.queued[unitId]) || 0) + amount;
+      town.totals[unitId] = (Number(town.totals[unitId]) || 0) + amount;
+      town.capturedAt = appliedAt;
+      town.source = 'recruit-overview-recruited';
+    });
+
+    cache.updatedAt = appliedAt;
+    writeRecruitTotalCache(cache, { upload: false });
+    void uploadRecruitCacheToDriveNow();
+    return true;
+  }
+
+  let buildingCacheTimer = 0;
+  const scheduleBuildingCacheCapture = () => {};
+  const buildingCacheObserver = new MutationObserver(mutations => {
+    if (mutations.some(mutation => (
+      mutation.target instanceof Element
+      && mutation.target.closest('#unit_order, #unit_orders_queue')
+    ))) scheduleBuildingCacheCapture();
+  });
+  buildingCacheObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+  function getRecruitOverviewTownRow(element) {
+    if (!(element instanceof Element)) return null;
+    const overview = element.closest('#recruit_overview');
+    if (!overview) return null;
+    let node = element;
+    while (node && node !== overview) {
+      if (node.querySelectorAll?.('.unit_box').length
+        && node.querySelector?.('.textbox input')) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function isRecruitOverviewTownConfirm(element) {
+    if (!(element instanceof Element)) return false;
+    const button = element.closest('.button_new, button, a');
+    if (!button || !button.closest('#recruit_overview')) return false;
+    if (button.closest('#btn_recruit_units, #egeltools-recruit-fill-all')) return false;
+    const row = getRecruitOverviewTownRow(button);
+    if (!row) return false;
+    const signature = [button.id, button.className, button.getAttribute('title')]
+      .filter(Boolean).join(' ').toLowerCase();
+    if (/cancel|remove|clear|reset|delete|close|cross|red|abort/.test(signature)) return false;
+    // The per-town green check is the positive action button in a row containing inputs.
+    return /confirm|recruit|submit|check|accept|green|yes/.test(signature)
+      || button.matches('.confirm, .btn_confirm, .js-confirm, .town_recruit');
+  }
+
+  document.addEventListener('click', event => {
+    if (event.target instanceof Element && event.target.closest('#unit_order_confirm')) {
+      window.setTimeout(scheduleBuildingCacheCapture, 250);
+    }
+    if (event.target instanceof Element && isRecruitOverviewTownConfirm(event.target)) {
+      const row = getRecruitOverviewTownRow(event.target);
+      const additions = collectRecruitOverviewInputAdditions(row);
+      if (additions.length) {
+        window.setTimeout(() => {
+          if (addRecruitOverviewInputsToCache(additions)) {
+            row?.querySelectorAll('.unit_box').forEach(box => {
+              delete box.dataset.egeltoolsRenderSignature;
+            });
+            renderNewVirtualRows();
+          }
+        }, 0);
+      }
+      return;
+    }
+    if (event.target instanceof Element && event.target.closest('#recruit_overview #btn_recruit_units')) {
+      // Capture the entered quantities before Grepolis clears/rebuilds the rows.
+      const additions = collectRecruitOverviewInputAdditions();
+      if (!additions.length) return;
+      // Apply after the native click has been accepted. The overview itself never
+      // recalculates the cache; only the quantities actually submitted are added.
+      window.setTimeout(() => {
+        if (addRecruitOverviewInputsToCache(additions)) {
+          document.querySelectorAll('#recruit_overview .unit_box').forEach(box => {
+            delete box.dataset.egeltoolsRenderSignature;
+          });
+          renderNewVirtualRows();
+        }
+      }, 0);
+    }
+  }, true);
+  window.EgelToolsRecruitCacheCaptureCurrent = captureCurrentBuildingIntoRecruitCache;
+
+  if (window.jQuery) {
+    window.jQuery(document)
+      .off('ajaxComplete.egeltoolsExactRecruitOverview')
+      .on('ajaxComplete.egeltoolsExactRecruitOverview', (event, xhr, settings) => {
+        const requestUrl = String(settings?.url || '');
+        if (!/\/game\/town_overviews(?:\?|$)/.test(requestUrl)
+          || !/[?&]action=recruit_overview(?:&|$)/.test(requestUrl)) return;
+        try {
+          const response = JSON.parse(xhr.responseText || '{}');
+          window.__egeltoolsRecruitOverviewResponse = response;
+          recruitCacheRefreshArmed = false;
+          // Compare against the previously cached free population first. Updating
+          // freePopulation before reconciliation would hide every BHP deviation.
+          const reconciliation = reconcileRecruitCacheWithOverview(response);
+          window.__egeltoolsLastRecruitReconciliation = reconciliation;
+          const freePopulationSync = syncRecruitCacheFreePopulation(response, {
+            upload: false,
+            missingOnly: true,
+          });
+          window.__egeltoolsLastRecruitFreePopulationSync = freePopulationSync;
+          if (reconciliation.changed) {
+            document.querySelectorAll('#recruit_overview .unit_box').forEach(box => {
+              delete box.dataset.egeltoolsRenderSignature;
+            });
+            renderNewVirtualRows();
+          }
+        } catch (error) {
+          console.error('[EgelTools] recruit_overview response could not be parsed:', error);
+        }
+      });
+  }
+
+  window.EgelToolsRecruitRowButtons = () => [...document.querySelectorAll('#recruit_overview .button_new, #recruit_overview button, #recruit_overview a')]
+    .map(button => ({
+      id: button.id || '',
+      className: String(button.className || ''),
+      title: button.getAttribute('title') || '',
+      isTownConfirm: isRecruitOverviewTownConfirm(button),
+    }))
+    .filter(item => item.isTownConfirm || /confirm|recruit|check|accept|green/i.test(`${item.id} ${item.className} ${item.title}`));
+
+  window.EgelToolsRecruitCacheTown = townIdValue => {
+    const townId = String(townIdValue);
+    return readRecruitTotalCache().towns?.[townId] || null;
+  };
+
+  window.EgelToolsRecruitFreePopulationSyncNow = () => {
+    const response = window.__egeltoolsRecruitOverviewResponse;
+    const result = syncRecruitCacheFreePopulation(response, { upload: true });
+    window.__egeltoolsLastRecruitFreePopulationSync = result;
+    console.log('[EgelTools] Free population cache sync:', result);
+    return result;
+  };
+
+  window.EgelToolsRecruitFreePopulationStatus = () => {
+    const cache = readRecruitTotalCache();
+    const rows = Object.entries(cache.towns || {}).map(([townId, town]) => ({
+      TownID: townId,
+      Town: town.name || townId,
+      FreePopulation: Object.prototype.hasOwnProperty.call(town, 'freePopulation')
+        ? town.freePopulation
+        : null,
+      ErfasstAm: town.freePopulationCapturedAt || null,
+      Quelle: town.source || '',
+    }));
+    console.table(rows);
+    return {
+      lastSync: window.__egeltoolsLastRecruitFreePopulationSync || null,
+      towns: rows.length,
+      withFreePopulation: rows.filter(row => Number.isFinite(Number(row.FreePopulation))).length,
+      rows,
+    };
+  };
+
+  window.EgelToolsRecruitFillPreview = () => {
+    const targets = readTargets();
+    const cache = readRecruitTotalCache();
+    const rows = [];
+    document.querySelectorAll('#recruit_overview .unit_box').forEach(unitBox => {
+      const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
+      const details = decodeDetails(source);
+      if (!details?.town_id || !details?.unit_id) return;
+      const townId = String(details.town_id);
+      const unitId = String(details.unit_id);
+      const target = targetFor(townId, unitId, targets);
+      const cacheTown = cache.towns?.[townId] || {};
+      const total = Math.max(0, Number(cacheTown.totals?.[unitId]) || 0);
+      const requested = Math.max(0, target.value - total);
+      const maximum = Math.max(0, Number(details.unit_max) || 0);
+      rows.push({
+        TownID: townId,
+        Unit: unitId,
+        CacheFreePopulation: cacheTown.freePopulation ?? null,
+        CacheTotal: total,
+        Target: target.value,
+        Offen: requested,
+        JetztBaubar: maximum,
+        EingabemengeBeiKlick: Math.min(requested, maximum),
+        CacheQuelle: cacheTown.source || '',
+      });
+    });
+    console.table(rows.filter(row => row.Offen > 0));
+    return rows;
+  };
+
+  window.EgelToolsRecruitLowerThanCache = () => {
+    const response = window.__egeltoolsRecruitOverviewResponse;
+    const towns = response?.json?.data?.towns;
+    if (!Array.isArray(towns)) {
+      console.warn('[EgelTools] No saved recruit_overview response yet.');
+      return [];
+    }
+
+    const cache = readRecruitTotalCache();
+    const rows = [];
+    for (const town of towns) {
+      const townId = String(town?.id ?? '');
+      const cachedTown = cache.towns?.[townId];
+      if (!townId || !cachedTown) continue;
+
+      const queued = {};
+      for (const orderType of ['barracks', 'docks']) {
+        for (const order of Array.isArray(town?.orders?.[orderType]) ? town.orders[orderType] : []) {
+          const unitId = String(order?.unit_type ?? '');
+          if (!unitId) continue;
+          queued[unitId] = (queued[unitId] || 0) + Math.max(0, Number(order?.units_left) || 0);
+        }
+      }
+
+      const serverTrained = {};
+      for (const unit of Array.isArray(town?.units) ? town.units : []) {
+        const unitId = String(unit?.id ?? '');
+        if (!unitId) continue;
+        serverTrained[unitId] = Math.max(0, Number(unit?.total) || 0);
+      }
+
+      const unitIds = new Set([
+        ...Object.keys(cachedTown.totals || {}),
+        ...Object.keys(serverTrained),
+        ...Object.keys(queued),
+      ]);
+      unitIds.forEach(unitId => {
+        const cacheTotal = Math.max(0, Number(cachedTown.totals?.[unitId]) || 0);
+        const trained = Math.max(0, Number(serverTrained[unitId]) || 0);
+        const inQueue = Math.max(0, Number(queued[unitId]) || 0);
+        const serverTotal = trained + inQueue;
+        if (serverTotal >= cacheTotal) return;
+        rows.push({
+          TownID: townId,
+          Town: String(town?.name || cachedTown.name || townId),
+          Unit: unitId,
+          ServerTrained: trained,
+          ServerQueued: inQueue,
+          ServerTotal: serverTotal,
+          CacheSum: cacheTotal,
+          Difference: cacheTotal - serverTotal,
+          WithinTolerance: Math.abs(cacheTotal - serverTotal) <= 1,
+          CacheFreePopulation: Number.isFinite(Number(cachedTown.freePopulation))
+            ? Number(cachedTown.freePopulation)
+            : null,
+          ServerFreePopulation: Number.isFinite(Number(town?.buildable_units))
+            ? Number(town.buildable_units)
+            : null,
+          FreePopulationMatches: Number.isFinite(Number(cachedTown.freePopulation))
+            && Number.isFinite(Number(town?.buildable_units))
+            && Number(cachedTown.freePopulation) === Number(town.buildable_units),
+        });
+      });
+    }
+
+    rows.sort((a, b) => b.Difference - a.Difference || a.Town.localeCompare(b.Town));
+    console.table(rows);
+    console.log(`[EgelTools] ${rows.length} values are below the cache.`);
+    return rows;
+  };
+
+  window.EgelToolsRecruitOverviewResponseStatus = () => {
+    const response = window.__egeltoolsRecruitOverviewResponse;
+    return {
+      available: Boolean(response?.json?.data?.towns),
+      serverTime: Number(response?._srvtime) || null,
+      towns: Array.isArray(response?.json?.data?.towns) ? response.json.data.towns.length : 0,
+    };
+  };
+
+  window.EgelToolsRecruitReconciliationStatus = () => (
+    window.__egeltoolsLastRecruitReconciliation || null
+  );
+
+  window.EgelToolsRecruitCacheUploadNow = uploadRecruitCacheToDriveNow;
+  window.EgelToolsRecruitCacheUploadStatus = () => ({
+    ...recruitCacheDriveUploadState,
+    pending: Boolean(recruitCacheDriveUploadTimer),
+  });
+
+  window.EgelToolsRecruitCacheStatus = () => {
+    const cache = readRecruitTotalCache();
+    return {
+      updatedAt: cache.updatedAt || null,
+      serverTime: cache.serverTime || null,
+      towns: Object.keys(cache.towns || {}).length,
+      data: cache.towns || {},
+    };
+  };
+
+  window.EgelToolsRecruitCacheReset = () => {
+    writeRecruitTotalCache({ towns: {}, updatedAt: Date.now() });
+    queueRender();
+    return true;
+  };
+
+  window.EgelToolsRecruitCacheRefreshNext = () => (
+    'The cache is saved only in the barracks and harbor. The recruitment overview does not overwrite it.'
+  );
+
+  window.EgelToolsRecruitExactStatus = (townIdValue, unitIdValue) => {
+    const townId = String(townIdValue);
+    const unitId = String(unitIdValue);
+    const cacheTown = readRecruitTotalCache().towns?.[townId] || {};
+    const trained = Number(cacheTown.trained?.[unitId]) || 0;
+    const queued = Number(cacheTown.queued?.[unitId]) || 0;
+    const total = Number(cacheTown.totals?.[unitId]) || 0;
+    return {
+      source: 'persistent-cache-total',
+      townId,
+      unitId,
+      trained,
+      queued,
+      total,
+      overviewValue: cachedFinalTotal(townId, unitId),
+      cacheLocked: true,
+    };
+  };
+
+  window.addEventListener('storage', event => {
+    if (event.key === TARGET_STORAGE_KEY) queueRender();
+  });
+  window.addEventListener('egeltools:recruitment-plan-population-updated', queueRender);
+  document.addEventListener('click', event => {
+    if (event.target instanceof Element && event.target.closest('#recruit_overview')) queueRender();
+  }, true);
+  queueRender();
+})();
+
+// Recruitment plan -> marketplace resource bridge.
+(() => {
+  'use strict';
+  const PLAN_KEY='egeltools_recruitment_resource_plans_v1';
+  const AUTO_KEY='egeltools_recruitment_trade_auto_fill_v1';
+  const WAREHOUSE_KEY='egeltools_recruitment_trade_warehouse_fill_v1';
+  const STATE_KEY='egeltools_recruitment_trade_calculations_v1';
+  const RATIO_KEY='egeltools_recruitment_trade_ratio_units_v1';
+  const BOX_CLASS='egeltools-recruitment-trade-bridge';
+  const FEATURE_KEY='egeltools_recruitment_trade_bridge_enabled';
+  const FEATURE_EVENT='egeltools:recruitment-trade-bridge-changed';
+  const RESOURCES=['wood','stone','iron'];
+  const DELIVERY_NOTIFICATION_KEY='egeltools_recruitment_delivery_notifications_v1';
+  const DELIVERY_NOTIFICATION_RETENTION_MS=7*24*60*60*1000;
+  const DELIVERY_NOTIFICATION_ARRIVAL_GRACE_SECONDS=0;
+  // Trade IDs are evaluated only once per page session. This freezes the decision
+  // at the moment a new trade appears and prevents later recruitment, FV collections
+  // or resource changes from turning older trades into new boundary alerts.
+  const evaluatedRecruitmentTradeIds=new Set();
+  let recruitmentTradeSnapshotReady=false;
+  const featureEnabled=()=>localStorage.getItem(FEATURE_KEY)!=='off';
+  const attrs=model=>model?.attributes||(typeof model?.toJSON==='function'?model.toJSON():{})||{};
+  const getValue=(object,methods,keys)=>{for(const method of methods){try{const value=object?.[method]?.();if(value!=null)return value;}catch(_){}}const a=attrs(object);for(const key of keys)if(a[key]!=null)return a[key];return null;};
+  const townIdOf=town=>getValue(town,['getId'],['id','town_id','townId']);
+  const towns=()=>{try{const bag=window.ITowns?.getTowns?.()||{};return Object.values(bag).map(model=>({model,id:String(townIdOf(model)),name:String(getValue(model,['getName'],['name'])||'')})).filter(t=>t.id&&t.id!=='null');}catch(_){return[];}};
+  const plans=()=>{try{return JSON.parse(localStorage.getItem(PLAN_KEY)||'{}')||{};}catch(_){return{};}};
+  const autoEnabled=()=>localStorage.getItem(AUTO_KEY)==='on';
+  const setAutoEnabled=value=>localStorage.setItem(AUTO_KEY,value?'on':'off');
+  const warehouseEnabled=()=>localStorage.getItem(WAREHOUSE_KEY)==='on';
+  const setWarehouseEnabled=value=>localStorage.setItem(WAREHOUSE_KEY,value?'on':'off');
+  const rememberedStates=()=>{try{return JSON.parse(localStorage.getItem(STATE_KEY)||'{}')||{};}catch(_){return{};}};
+  const rememberState=(target,state)=>{try{const saved=rememberedStates();saved[String(target.id)]={...state,targetId:String(target.id),targetName:String(target.name||''),updatedAt:Date.now()};localStorage.setItem(STATE_KEY,JSON.stringify(saved));}catch(_){}};
+  const fmt=value=>Math.max(0,Math.round(Number(value)||0)).toLocaleString();
+  const unitName=id=>String(window.GameData?.units?.[id]?.name_plural||window.GameData?.units?.[id]?.name||id).replaceAll('_',' ');
+  function ratioSelections(){try{return JSON.parse(localStorage.getItem(RATIO_KEY)||'{}')||{};}catch(_){return {};}}
+  function selectedUnitIds(target,plan){
+    const available=(Array.isArray(plan?.units)?plan.units:[]).map(unit=>String(unit.id));
+    if(!available.length)return [];
+    const saved=ratioSelections()[String(target.id)];
+    return Array.isArray(saved)?saved.filter(id=>available.includes(String(id))).map(String):available;
+  }
+  function saveSelectedUnitIds(target,ids){const saved=ratioSelections();saved[String(target.id)]=[...new Set(ids.map(String))];localStorage.setItem(RATIO_KEY,JSON.stringify(saved));}
+  function ratioNeed(plan,selected){
+    const chosen=(Array.isArray(plan?.units)?plan.units:[]).filter(unit=>selected.includes(String(unit.id)));
+    if(!chosen.length)return null;
+    return Object.fromEntries(RESOURCES.map(r=>[r,chosen.reduce((sum,unit)=>sum+Math.max(0,Number(unit[r])||0),0)]));
+  }
+  function windowRoot(input){return input.closest('.gpwindow,.window,.ui-dialog,[class*="gpwindow"]')||input.closest('form')||input.parentElement;}
+  function inferTargetTown(root){
+    const known=towns(),current=String(window.Game?.townId??''),resolve=id=>known.find(t=>t.id===String(id))||null,candidates=[];
+    const add=value=>{if(value==null||value==='')return;if(typeof value==='object')value=value.id??value.town_id??value.townId??value.target_town_id??value.targetTownId;const id=String(value??'').trim();if(/^\d+$/.test(id)&&!candidates.includes(id))candidates.push(id);};
+    const addObject=object=>{if(!object)return;const a=attrs(object);for(const key of ['target_town_id','targetTownId','destination_town_id','destinationTownId','town_id','townId','id']){try{add(typeof object?.get==='function'?object.get(key):null);}catch(_){}add(a[key]);add(object[key]);}for(const method of ['getTargetTownId','getDestinationTownId','getTownId','getId'])try{add(object?.[method]?.());}catch(_){}};
+    for(const el of [root,...root.querySelectorAll('*')]){for(const key of ['townId','town_id','targetTownId','target_town_id','destinationTownId','destination_town_id','id'])add(el?.dataset?.[key]);for(const key of ['data-town-id','data-town_id','data-target-town-id','data-target_town_id','data-destination-town-id','data-destination_town_id'])add(el?.getAttribute?.(key));try{const jq=window.jQuery?.(el);for(const key of ['town_id','townId','target_town_id','targetTownId','destination_town_id','destinationTownId'])add(jq?.data?.(key));}catch(_){}}
+    let node=root;while(node){addObject(node.controller);addObject(node.model);addObject(node.context);addObject(node.options);try{const jq=window.jQuery?.(node);for(const key of ['controller','model','context','window_model','gpwindow'])addObject(jq?.data?.(key));}catch(_){}node=node.parentElement;}
+    const titleText=[root.querySelector('.title')?.textContent,root.closest('.classic_window,.ui-dialog,.js-window-main-container')?.querySelector('.title,.ui-dialog-title')?.textContent,root.getAttribute('aria-label'),root.getAttribute('title')].filter(Boolean).join(' ').toLowerCase();
+    const byTitle=known.filter(t=>t.name&&titleText.includes(t.name.toLowerCase())).sort((a,b)=>b.name.length-a.name.length);if(byTitle.length)return byTitle[0];
+    for(const id of candidates){const town=resolve(id);if(town&&town.id!==current)return town;}for(const id of candidates){const town=resolve(id);if(town)return town;}
+    const text=(root.textContent||'').replace(/\s+/g,' ').toLowerCase();const byName=known.filter(t=>t.name&&text.includes(t.name.toLowerCase())).sort((a,b)=>b.name.length-a.name.length);return byName.find(t=>t.id!==current)||byName[0]||null;
+  }
+  function stockFor(town){const model=town?.model,raw=getValue(model,['resources','getResources'],['resources'])||{};return Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,Number(raw[r]??getValue(model,[`get${r[0].toUpperCase()+r.slice(1)}`],[r])??0)||0)]));}
+  function allModels(){const result=[],seen=new Set(),add=x=>{if(!x||seen.has(x))return;seen.add(x);result.push(x);};try{for(const group of Object.values(window.MM?.getModels?.()||{}))for(const model of Object.values(group||{}))add(model);}catch(_){}try{for(const group of Object.values(window.MM?.getCollections?.()||{}))for(const col of Object.values(group||{}))for(const model of col?.models||[])add(model);}catch(_){}return result;}
+  function incomingFor(targetId){const sum={wood:0,stone:0,iron:0};for(const model of allModels()){const a=attrs(model),bag=a.resources||a.resource_amounts||a.resourceAmounts||{},destination=getValue(model,['getDestinationTownId','getTargetTownId'],['destination_town_id','target_town_id','destinationTownId','targetTownId']);const trade=destination!=null&&(a.origin_town_id!=null||a.source_town_id!=null||a.arrival_at!=null||a.arrival_time!=null||typeof model?.getArrivalAt==='function'||typeof model?.getArrivalTime==='function');if(!trade||String(destination)!==String(targetId))continue;const direction=String(a.direction||a.type||'').toLowerCase();if(['return','returning'].includes(direction)||[true,1,'true'].includes(a.returning))continue;const amounts=Object.fromEntries(RESOURCES.map(r=>[r,Number(a[r]??a[`${r}_amount`]??bag[r]??0)||0]));if(!RESOURCES.some(r=>amounts[r]>0))continue;RESOURCES.forEach(r=>sum[r]+=Math.max(0,amounts[r]));}return sum;}
+  function inputsIn(root){const result={};for(const r of RESOURCES)result[r]=root.querySelector(`#trade_type_${r} input,#trade_overview_type_${r},input[name="${r}"],input[name*="${r}"],.trade_type_${r} input`);return result;}
+  function setInput(input,value){
+    if(!input)return;
+    const amount=String(Math.max(0,Math.floor(value)));
+    if(String(input.value??'')===amount)return;
+    // Never call select(), focus() or blur() here. The marketplace bridge is
+    // refreshed repeatedly and those calls stole the caret from recruitment
+    // target fields and from the simulator while the trade window was open.
+    try{
+      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
+      if(setter)setter.call(input,amount);else input.value=amount;
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+    }catch(_){input.value=amount;}
+  }
+  function warehouseCapacity(town){
+    const model=town?.model||town;
+    const value=getValue(model,['getStorage','getWarehouseCapacity','getStorageCapacity'],['storage','warehouse','storage_capacity','warehouse_capacity']);
+    return Math.max(0,Math.floor(Number(value)||0));
+  }
+  function warehouseRatioLimits(target,targetResources,ratio,open){
+    const storage=warehouseCapacity(target);
+    const weights=Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,Number(ratio?.[r])||0)]));
+    const highest=Math.max(...RESOURCES.map(r=>weights[r]),0);
+    if(storage<=0||highest<=0)return {...open};
+
+    // The most expensive resource(s) define the step. The next boundary is
+    // calculated only from the live target stock plus incoming deliveries:
+    // value < storage       -> storage
+    // value >= storage      -> storage * 2
+    // value >= storage * 2  -> storage * 3, etc.
+    // A stage is complete only when every resource used by the selected unit
+    // has reached its proportional target. The most expensive resource still
+    // defines the warehouse boundary, but it cannot unlock the next stage alone.
+    const active=RESOURCES.filter(r=>weights[r]>0);
+    const completedStages=Math.min(...active.map(r=>{
+      const perStage=storage*weights[r]/highest;
+      const current=Math.max(0,Number(targetResources?.[r])||0);
+      return Math.floor((current+1e-9)/perStage);
+    }));
+    const step=completedStages+1;
+    const boundary=step*storage;
+
+    return Object.fromEntries(RESOURCES.map(r=>{
+      const desired=Math.floor(boundary*weights[r]/highest);
+      const current=Math.max(0,Math.floor(Number(targetResources?.[r])||0));
+      const untilBoundary=Math.max(0,desired-current);
+      return [r,Math.min(Math.max(0,Math.floor(Number(open?.[r])||0)),untilBoundary)];
+    }));
+  }
+  const deliveryTimers=new Map();
+  function deliveryStorageKey(){return `${DELIVERY_NOTIFICATION_KEY}_${window.Game?.world_id||location.hostname}_${window.Game?.player_id||'unknown'}`;}
+  function loadDeliveryNotificationState(){
+    try{const parsed=JSON.parse(localStorage.getItem(deliveryStorageKey())||'{}');return parsed&&typeof parsed==='object'&&!Array.isArray(parsed)?parsed:{};}catch(_){return {};}
+  }
+  function saveDeliveryNotificationState(state){
+    try{
+      const cutoff=Date.now()-DELIVERY_NOTIFICATION_RETENTION_MS;
+      for(const [tradeId,delivery] of Object.entries(state))if(delivery?.notified&&Number(delivery.savedAt||0)<cutoff)delete state[tradeId];
+      localStorage.setItem(deliveryStorageKey(),JSON.stringify(state));
+    }catch(_){}
+  }
+  function normalizeDeliveryTimestamp(value){const number=Number(value);if(!Number.isFinite(number)||number<=0)return null;return number>1e12?Math.floor(number/1000):Math.floor(number);}
+  function getDeliveryTradeCollection(){
+    try{return window.MM?.getOnlyCollectionByName?.('Trade')||window.MM?.getCollections?.()?.Trade?.[0]||window.MM?.getCollections?.()?.Trade||null;}catch(_){return null;}
+  }
+  function deliveryTradeModels(){
+    const result=[],seen=new Set(),add=model=>{if(!model||seen.has(model))return;seen.add(model);result.push(model);};
+    const collection=getDeliveryTradeCollection();
+    if(Array.isArray(collection))collection.forEach(item=>item?.models?item.models.forEach(add):add(item));else if(collection?.models)collection.models.forEach(add);
+    try{const models=window.MM?.getModels?.()?.Trade;if(Array.isArray(models))models.forEach(add);else if(models?.models)models.models.forEach(add);else Object.values(models||{}).forEach(add);}catch(_){}
+    return result;
+  }
+  function readDeliveryTrade(model){
+    const a=attrs(model),direction=String(a.direction||a.type||'').toLowerCase();
+    if(['return','returning'].includes(direction)||[true,1,'true'].includes(a.returning))return null;
+    const id=getValue(model,['getId'],['id']);
+    const sourceTownId=getValue(model,['getOriginTownId','getSourceTownId'],['origin_town_id','source_town_id','originTownId','sourceTownId']);
+    const targetTownId=getValue(model,['getDestinationTownId','getTargetTownId'],['destination_town_id','target_town_id','destinationTownId','targetTownId']);
+    const arrivalAt=normalizeDeliveryTimestamp(getValue(model,['getArrivalAt','getArrivalTime'],['arrival_at','arrival_time','arrives_at']));
+    if(id==null||targetTownId==null||arrivalAt==null)return null;
+    const bag=a.resources||a.resource_amounts||a.resourceAmounts||{};
+    const resources=Object.fromEntries(RESOURCES.map(resource=>[resource,Math.max(0,Math.floor(Number(a[resource]??a[`${resource}_amount`]??bag[resource]??0)||0))]));
+    if(!RESOURCES.some(resource=>resources[resource]>0))return null;
+    return {id:String(id),sourceTownId:sourceTownId==null?null:String(sourceTownId),targetTownId:String(targetTownId),arrivalAt,resources};
+  }
+  function deliveryRatioMatches(left,right){
+    if(!left||!right)return false;const active=RESOURCES.filter(resource=>Number(right[resource])>0);if(!active.length)return false;
+    const factors=active.map(resource=>Number(left[resource])/Number(right[resource]));if(factors.some(value=>!Number.isFinite(value)||value<=0))return false;
+    const factor=factors[0];return RESOURCES.every(resource=>{const expected=Number(right[resource])||0,actual=Number(left[resource])||0;return expected===0?actual===0:Math.abs(actual-factor*expected)<=2;});
+  }
+  function resolveDeliveryUnit(targetTownId,resources){
+    const plan=plans()[String(targetTownId)];if(!plan)return null;
+    const target={id:String(targetTownId),name:String(towns().find(town=>town.id===String(targetTownId))?.name||targetTownId)};
+    const selected=selectedUnitIds(target,plan),candidates=(Array.isArray(plan.units)?plan.units:[]).filter(unit=>selected.includes(String(unit.id)));if(!candidates.length)return null;
+    const exact=candidates.find(unit=>deliveryRatioMatches(resources,{wood:Number(unit.wood)||0,stone:Number(unit.stone)||0,iron:Number(unit.iron)||0}));
+    const ids=exact?[String(exact.id)]:selected;
+    const navalStates=ids.map(id=>Boolean(window.GameData?.units?.[id]?.is_naval));if(!navalStates.length||!navalStates.every(value=>value===navalStates[0]))return null;
+    return {unitId:ids.length===1?ids[0]:null,unitIds:ids,unitLabel:ids.map(unitName).join(', '),isNaval:navalStates[0]};
+  }
+  function getBoundaryForResources(target,plan,unitInfo,targetResources){
+    const ratio=ratioNeed(plan,unitInfo.unitIds);if(!ratio)return null;
+    const remaining=warehouseRatioLimits(target,targetResources,ratio,Object.fromEntries(RESOURCES.map(resource=>[resource,Number.MAX_SAFE_INTEGER])));
+    return {warehouseCapacity:warehouseCapacity(target),targetResources:{...targetResources},ratio:{...ratio},remaining};
+  }
+  function scheduleRecruitmentDelivery(delivery){
+    if(!delivery||delivery.notified)return;
+    const old=deliveryTimers.get(delivery.id);if(old)clearTimeout(old);
+    const due=Math.max(0,delivery.arrivalAt*1000-Date.now()+DELIVERY_NOTIFICATION_ARRIVAL_GRACE_SECONDS*1000),delay=Math.min(due,2147483000);
+    deliveryTimers.set(delivery.id,setTimeout(()=>{deliveryTimers.delete(delivery.id);if(due>2147483000)scheduleRecruitmentDelivery(delivery);else notifyRecruitmentDelivery(delivery.id);},delay));
+  }
+  function removeRecruitmentDeliveryAlarm(id,state){
+    const timer=deliveryTimers.get(String(id));if(timer)clearTimeout(timer);deliveryTimers.delete(String(id));
+    delete state[String(id)];window.GrepoAlerts?.storage?.removeAlert?.(`egel_delivery_${id}`);
+  }
+  function reconcileRecruitmentDeliveries(){
+    const state=loadDeliveryNotificationState();
+    if(!window.EgelToolsNotificationSettings?.isUnitResourceEnabled?.()){
+      for(const [id,delivery] of Object.entries(state))if(!delivery?.notified)removeRecruitmentDeliveryAlarm(id,state);
+      saveDeliveryNotificationState(state);return state;
+    }
+    const now=Math.floor(Date.now()/1000),trades=deliveryTradeModels().map(readDeliveryTrade).filter(trade=>trade&&trade.arrivalAt>now).sort((a,b)=>a.arrivalAt-b.arrivalAt||a.id.localeCompare(b.id));
+    const activeTradeIds=new Set(trades.map(trade=>String(trade.id)));
+    // On startup, existing movements are only a baseline. Their original send-time
+    // resource situation is no longer reconstructable, so they must not create alerts.
+    // Alarms already stored in state remain active and unchanged.
+    if(!recruitmentTradeSnapshotReady){
+      trades.forEach(trade=>evaluatedRecruitmentTradeIds.add(String(trade.id)));
+      recruitmentTradeSnapshotReady=true;
+      for(const delivery of Object.values(state))if(delivery&&!delivery.notified)scheduleRecruitmentDelivery(delivery);
+      saveDeliveryNotificationState(state);return state;
+    }
+    const qualifying=new Map(),groups=new Map();
+    for(const trade of trades){
+      const unitInfo=resolveDeliveryUnit(trade.targetTownId,trade.resources);if(!unitInfo)continue;
+      const key=`${trade.targetTownId}|${unitInfo.unitIds.join(',')}`;if(!groups.has(key))groups.set(key,{targetTownId:trade.targetTownId,unitInfo,trades:[]});groups.get(key).trades.push(trade);
+    }
+    for(const group of groups.values()){
+      const target=towns().find(town=>town.id===String(group.targetTownId)),plan=plans()[String(group.targetTownId)];if(!target||!plan)continue;
+      const simulated=stockFor(target);
+      for(const trade of group.trades){
+        const boundary=getBoundaryForResources(target,plan,group.unitInfo,simulated);if(!boundary)break;
+        const active=RESOURCES.filter(resource=>Number(boundary.ratio?.[resource])>0);
+        const missing=active.filter(resource=>Number(boundary.remaining?.[resource])>0);
+        const crosses=missing.length>0&&missing.every(resource=>Number(trade.resources?.[resource]||0)>=Number(boundary.remaining[resource]));
+        if(crosses&&!evaluatedRecruitmentTradeIds.has(String(trade.id)))qualifying.set(trade.id,{trade,unitInfo:group.unitInfo,boundary});
+        for(const resource of RESOURCES)simulated[resource]=(Number(simulated[resource])||0)+(Number(trade.resources?.[resource])||0);
+      }
+    }
+    // Freeze every currently visible trade after this one send-time evaluation.
+    trades.forEach(trade=>evaluatedRecruitmentTradeIds.add(String(trade.id)));
+    for(const [id,delivery] of Object.entries(state)){
+      if(delivery?.notified)continue;
+      if(qualifying.has(id))continue;
+      const arrivalMs=Number(delivery.arrivalAt)*1000;
+      // Once a delivery has qualified for a troop-resource boundary, keep that exact
+      // trade registered while it is still travelling. Resource changes from BDS,
+      // production or another delivery must not remove its notification.
+      if(activeTradeIds.has(String(id))){scheduleRecruitmentDelivery(delivery);continue;}
+      // At the arrival tick Grepolis removes the Trade model. Keep the alarm so its
+      // stored arrival timer can still fire. A genuine cancellation is handled by
+      // the Trade collection's remove listener below.
+      if(Number.isFinite(arrivalMs)&&Date.now()>=arrivalMs-1500){scheduleRecruitmentDelivery(delivery);continue;}
+      // Do not infer cancellation merely from a temporary model/read mismatch.
+      // The collection remove listener is the only place that may cancel the alarm.
+      scheduleRecruitmentDelivery(delivery);
+    }
+    for(const [id,item] of qualifying){
+      if(state[id]){state[id].arrivalAt=item.trade.arrivalAt;scheduleRecruitmentDelivery(state[id]);continue;}
+      const targetTown=towns().find(town=>town.id===item.trade.targetTownId),u=item.unitInfo;
+      const delivery=state[id]={...item.trade,targetTownName:String(targetTown?.name||item.trade.targetTownId),unitId:u.unitId,unitIds:u.unitIds,unitLabel:u.unitLabel,isNaval:u.isNaval,building:u.isNaval?'docks':'barracks',boundary:item.boundary,status:'pending',firstSeenAt:Date.now(),savedAt:Date.now(),notified:false};
+      scheduleRecruitmentDelivery(delivery);syncDeliveryToGrepoAlerts(delivery);
+    }
+    saveDeliveryNotificationState(state);window.GrepoAlerts?.ui?._render?.();window.GrepoAlerts?.ui?.updateBadge?.();return state;
+  }
+  function registerRecruitmentDeliveryModel(){reconcileRecruitmentDeliveries();return true;}
+  function registerRecruitmentDeliveries(){return reconcileRecruitmentDeliveries();}
+  async function switchToDeliveryTown(targetTownId){
+    const target=String(targetTownId),numeric=Number(targetTownId),value=Number.isFinite(numeric)?numeric:targetTownId;if(String(window.Game?.townId)===target)return true;
+    try{if(typeof window.HelperTown?.townSwitch==='function')window.HelperTown.townSwitch(value);else if(typeof window.HelperTown?.switchTown==='function')window.HelperTown.switchTown(value);else{const town=window.ITowns?.getTown?.(targetTownId);if(!town||typeof window.WMap?.mapJump!=='function')return false;window.WMap.mapJump(town,true);}}catch(_){return false;}
+    const deadline=Date.now()+5000;while(Date.now()<deadline){if(String(window.Game?.townId)===target)return true;await new Promise(resolve=>setTimeout(resolve,100));}return false;
+  }
+  function setDeliveryRecruitmentInput(input,value){
+    if(!input)return false;
+    const amount=String(Math.max(0,Math.floor(Number(value)||0)));
+    try{
+      const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
+      if(setter)setter.call(input,amount);else input.value=amount;
+      input.dispatchEvent(new Event('input',{bubbles:true}));
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+      input.dispatchEvent(new KeyboardEvent('keyup',{bubbles:true,key:'Enter',code:'Enter'}));
+      return true;
+    }catch(_){
+      input.value=amount;
+      return false;
+    }
+  }
+  async function selectDeliveryRecruitmentUnit(delivery){
+    const unitIds=(Array.isArray(delivery?.unitIds)?delivery.unitIds:[]).map(String).filter(Boolean);
+    if(!unitIds.length)return false;
+    const expectedType=delivery?.isNaval?'naval':'land';
+    const deadline=Date.now()+10000;
+    while(Date.now()<deadline){
+      const contexts=typeof getRecruitmentWindowHosts==='function'?getRecruitmentWindowHosts():[];
+      const context=contexts.find(entry=>entry.type===expectedType);
+      const roots=context?[context.host]:[...document.querySelectorAll('.classic_window,.ui-dialog,[id^="gpwnd_"]')];
+      for(const root of roots){
+        if(!root?.querySelector?.('#unit_order'))continue;
+        for(const unitId of unitIds){
+          const escaped=window.CSS?.escape?CSS.escape(unitId):unitId.replace(/[^a-zA-Z0-9_-]/g,'');
+          const unitImage=root.querySelector(`#unit_order_tab_${escaped} .unit_order_unit_image`);
+          if(!unitImage)continue;
+          unitImage.click();
+          await new Promise(resolve=>setTimeout(resolve,150));
+          const selected=root.querySelector('#unit_order_unit_hidden')?.value;
+          if(selected!==unitId)continue;
+
+          // Version 220 already opens the correct building and selects the correct
+          // unit. Only after that successful selection, enter the outstanding target.
+          const tab=context?.tabs?.find(entry=>entry.id===unitId)
+            || root.querySelector(`#${escaped}.unit_tab`);
+          const total=Math.max(0,Number(tab?.querySelector('.uti-row')?.textContent)||0);
+          const target=Math.max(0,Number(tab?.querySelector('.uti-target')?.value)||0);
+          const missing=Math.max(0,target-total);
+          const input=root.querySelector('#unit_order_input');
+          const maximum=Math.max(0,Math.floor(Number(input?.value)||0));
+          const amount=Math.min(missing,maximum);
+
+          if(input&&amount>0){
+            setDeliveryRecruitmentInput(input,amount);
+            // Grepolis may finish one delayed slider refresh after the unit click.
+            // Apply the same capped target once more, without selecting the unit again.
+            await new Promise(resolve=>setTimeout(resolve,200));
+            const liveInput=root.querySelector('#unit_order_input');
+            if(liveInput&&root.querySelector('#unit_order_unit_hidden')?.value===unitId){
+              setDeliveryRecruitmentInput(liveInput,amount);
+            }
+          }
+          return true;
+        }
+      }
+      await new Promise(resolve=>setTimeout(resolve,100));
+    }
+    console.warn('[EgelTools] Could not select the required unit.',unitIds);
+    return false;
+  }
+  async function openDeliveryRecruitmentBuilding(delivery){
+    if(!await switchToDeliveryTown(delivery.targetTownId))return false;
+    const building=delivery.isNaval?'docks':'barracks';
+    let opened=false;
+    try{
+      if(typeof window.BuildingWindowFactory?.open==='function'){
+        window.BuildingWindowFactory.open(building);
+        opened=true;
+      }
+    }catch(_){}
+    if(!opened){
+      const selectors=building==='docks'?['.building.docks','.docks.building','[data-building="docks"]','[data-building_type="docks"]']:['.building.barracks','.barracks.building','[data-building="barracks"]','[data-building_type="barracks"]'];
+      for(const selector of selectors){
+        const element=document.querySelector(selector);
+        if(!element)continue;
+        element.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));
+        opened=true;
+        break;
+      }
+    }
+    if(!opened)return false;
+    await selectDeliveryRecruitmentUnit(delivery);
+    return true;
+  }
+  function requestRecruitmentNotificationPermission(){if('Notification'in window&&Notification.permission==='default')void Notification.requestPermission().catch(()=>{});}
+  let deliveryBellRefresh=null;
+  function escapeDeliveryHtml(value){return String(value??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function formatDeliveryCountdown(arrivalAt){
+    const seconds=Math.max(0,Math.ceil(Number(arrivalAt||0)-Date.now()/1000));
+    const hours=Math.floor(seconds/3600),minutes=Math.floor(seconds/60)%60,rest=seconds%60;
+    return hours>0?`${hours}:${String(minutes).padStart(2,'0')}:${String(rest).padStart(2,'0')}`:`${minutes}:${String(rest).padStart(2,'0')}`;
+  }
+  function formatDeliveryClock(arrivalAt){try{return new Date(Number(arrivalAt)*1000).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});}catch(_){return '';}}
+  function ensureDeliveryBellStyles(){
+    if(document.getElementById('egeltools-delivery-bell-styles'))return;const style=document.createElement('style');style.id='egeltools-delivery-bell-styles';
+    style.textContent='#egeltools-delivery-bell{position:relative;width:40px;height:40px;margin:4px auto 0;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:21px;user-select:none;border-radius:50%;background:linear-gradient(145deg,#c8a96e,#7a5510);border:2px solid #5a3d12;box-shadow:0 3px 10px #0009}#egeltools-delivery-bell:hover{transform:scale(1.06)}#egeltools-delivery-bell-badge{position:absolute;right:-5px;top:-5px;min-width:18px;height:18px;padding:0 2px;border-radius:50%;display:none;align-items:center;justify-content:center;background:#d33;color:#fff;font:bold 11px Arial}#egeltools-delivery-panel{position:fixed;z-index:999998;width:340px;max-height:460px;display:none;flex-direction:column;overflow:hidden;border:2px solid #8b6914;border-radius:8px;background:linear-gradient(180deg,#3d2d11,#1e1507);box-shadow:0 8px 28px #000c;color:#d4b483;font:12px Arial}#egeltools-delivery-panel.open{display:flex}.egeltools-delivery-head{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:linear-gradient(180deg,#5a3d12,#3a2508);color:#e8c87a;font-weight:bold}.egeltools-delivery-close{border:0;background:none;color:#e8c87a;cursor:pointer;font-size:17px}.egeltools-delivery-list{padding:6px;overflow:auto}.egeltools-delivery-row{display:flex;align-items:center;gap:7px;padding:8px;border-left:3px solid #c8a96e;border-radius:4px;background:#ffffff08;margin-bottom:4px}.egeltools-delivery-row.done{border-left-color:#27ae60;opacity:.72}.egeltools-delivery-info{flex:1;min-width:0}.egeltools-delivery-title{font-weight:bold;color:#e8c87a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.egeltools-delivery-meta{margin-top:2px;color:#8b7a52;font-size:10px}.egeltools-delivery-time{min-width:56px;text-align:right;color:#e8c87a;font-weight:bold}.egeltools-delivery-open{cursor:pointer;border:1px solid #c8a96e;border-radius:3px;background:#5a3d12;color:#fff3c5;padding:3px 6px}.egeltools-delivery-empty{padding:24px;text-align:center;color:#8b7a52}';document.head.appendChild(style);
+  }
+  function buildDeliveryBell(){
+    ensureDeliveryBellStyles();let bell=document.getElementById('egeltools-delivery-bell');if(bell)return bell;
+    bell=document.createElement('div');bell.id='egeltools-delivery-bell';bell.title='Delivery notifications';bell.innerHTML='🔔<span id="egeltools-delivery-bell-badge"></span>';
+    const host=document.getElementById('icons_container_left');(host||document.body).appendChild(bell);
+    bell.onclick=()=>toggleDeliveryPanel();return bell;
+  }
+  function buildDeliveryPanel(){
+    let panel=document.getElementById('egeltools-delivery-panel');if(panel)return panel;
+    panel=document.createElement('div');panel.id='egeltools-delivery-panel';panel.innerHTML='<div class="egeltools-delivery-head"><span>🔔 Deliveries</span><button class="egeltools-delivery-close" type="button">×</button></div><div class="egeltools-delivery-list"></div>';
+    panel.querySelector('.egeltools-delivery-close').onclick=()=>{panel.classList.remove('open');clearInterval(deliveryBellRefresh);deliveryBellRefresh=null;};document.body.appendChild(panel);return panel;
+  }
+  function positionDeliveryPanel(){const bell=buildDeliveryBell(),panel=buildDeliveryPanel(),rect=bell.getBoundingClientRect();let left=rect.right+8,top=Math.max(8,rect.top);if(left+340>innerWidth-8)left=Math.max(8,rect.left-348);panel.style.left=`${left}px`;panel.style.top=`${top}px`;panel.style.maxHeight=`${Math.max(220,innerHeight-top-12)}px`;}
+  function toggleDeliveryPanel(){const panel=buildDeliveryPanel(),open=!panel.classList.contains('open');panel.classList.toggle('open',open);if(open){positionDeliveryPanel();renderDeliveryBell();if(!deliveryBellRefresh)deliveryBellRefresh=setInterval(renderDeliveryBell,1000);}else{clearInterval(deliveryBellRefresh);deliveryBellRefresh=null;}}
+  function renderDeliveryBell(){
+    const bell=buildDeliveryBell(),panel=buildDeliveryPanel(),state=loadDeliveryNotificationState(),all=Object.values(state).filter(Boolean),pending=all.filter(item=>!item.notified).sort((a,b)=>a.arrivalAt-b.arrivalAt),done=all.filter(item=>item.notified&&!item.acknowledged).sort((a,b)=>b.notifiedAt-a.notifiedAt);
+    const badge=document.getElementById('egeltools-delivery-bell-badge'),count=pending.length+done.length;badge.textContent=count>9?'9+':String(count);badge.style.display=count?'flex':'none';bell.title=count?`${count} delivery notification${count===1?'':'s'}`:'No delivery notifications';
+    const list=panel.querySelector('.egeltools-delivery-list');if(!pending.length&&!done.length){list.innerHTML='<div class="egeltools-delivery-empty">No delivery notifications scheduled.</div>';return;}
+    list.innerHTML=[...pending,...done].map(item=>`<div class="egeltools-delivery-row ${item.notified?'done':''}" data-id="${escapeDeliveryHtml(item.id)}"><div class="egeltools-delivery-info"><div class="egeltools-delivery-title">${escapeDeliveryHtml(item.unitLabel)} → ${escapeDeliveryHtml(item.targetTownName)}</div><div class="egeltools-delivery-meta">${item.notified?'Arrived':'Notify at'}: ${formatDeliveryClock(item.arrivalAt)}</div></div><div class="egeltools-delivery-time">${item.notified?'✓':formatDeliveryCountdown(item.arrivalAt)}</div>${item.notified?'<button class="egeltools-delivery-open" type="button">Open</button>':''}</div>`).join('');
+    list.querySelectorAll('.egeltools-delivery-open').forEach(button=>button.onclick=()=>{const item=state[button.closest('[data-id]').dataset.id];if(item)void openDeliveryRecruitmentBuilding(item);});
+  }
+  function renderPersistentDeliveryAlerts(){syncAllDeliveriesToGrepoAlerts();}
+  function fireRecruitmentDeliveryNotification(delivery){
+    syncAllDeliveriesToGrepoAlerts();const buildingLabel=delivery.isNaval?'Harbor':'Barracks',body=`${('Resources for')} ${delivery.unitLabel} ${('arrived in')} ${delivery.targetTownName}. ${('Click to open')} ${buildingLabel}.`;
+    if('Notification'in window&&Notification.permission==='granted'){
+      try{const notification=new Notification('Delivery arrived',{body,tag:`egeltools_delivery_${delivery.id}`,renotify:false,requireInteraction:true});notification.onclick=event=>{event?.preventDefault?.();try{window.focus();}catch(_){}void openDeliveryRecruitmentBuilding(delivery);notification.close();};}catch(error){console.warn('[EgelTools] Could not show the browser notification.',error);}
+    }else{
+      console.warn('[EgelTools] Browser notifications are not allowed:',('Notification'in window)?Notification.permission:'not supported');
+    }
+    const message=`Delivery arrived: ${delivery.unitLabel} in ${delivery.targetTownName}`;
+    if(typeof window.HumanMessage?.success==='function')window.HumanMessage.success(message);
+  }
+  function syncDeliveryToGrepoAlerts(delivery){
+    const GA=window.GrepoAlerts;if(!GA?.storage||!delivery)return false;
+    const alert={id:`egel_delivery_${delivery.id}`,type:'transport',icon:'',label:`${delivery.unitLabel} → ${delivery.targetTownName}`,townId:delivery.targetTownId,tsMs:Number(delivery.arrivalAt)*1000,status:delivery.notified?'notified':'pending',trackedAt:Number(delivery.firstSeenAt)||Date.now(),modelId:delivery.id,source:'EgelToolsDelivery',egelDelivery:true};
+    const data=GA.storage._read();data.alerts=data.alerts||[];const index=data.alerts.findIndex(item=>item.id===alert.id);
+    // A deleted history entry must stay deleted. Only pending delivery alarms are created again.
+    if(index>=0)data.alerts[index]={...data.alerts[index],...alert};else if(!delivery.notified)data.alerts.push(alert);else return false;
+    GA.storage._write(data);GA.ui?._render?.();GA.ui?.updateBadge?.();return true;
+  }
+  function markDeliveryInGrepoAlertsNotified(delivery){
+    const GA=window.GrepoAlerts;if(!GA?.storage||!delivery)return;GA.storage.updateStatus(`egel_delivery_${delivery.id}`,'notified');GA.ui?._render?.();GA.ui?.updateBadge?.();
+  }
+  function syncAllDeliveriesToGrepoAlerts(){for(const delivery of Object.values(loadDeliveryNotificationState()))syncDeliveryToGrepoAlerts(delivery);}
+  function notifyRecruitmentDelivery(tradeId){
+    const state=loadDeliveryNotificationState(),delivery=state[String(tradeId)];if(!delivery||delivery.notified)return false;
+    if(!window.EgelToolsNotificationSettings?.isUnitResourceEnabled?.()){removeRecruitmentDeliveryAlarm(tradeId,state);saveDeliveryNotificationState(state);return false;}
+    delivery.notified=true;delivery.status='notified';delivery.notifiedAt=Date.now();delivery.savedAt=Date.now();delivery.acknowledged=false;saveDeliveryNotificationState(state);markDeliveryInGrepoAlertsNotified(delivery);fireRecruitmentDeliveryNotification(delivery);return true;
+  }
+  function checkRecruitmentDeliveryArrivals(){
+    const state=registerRecruitmentDeliveries(),now=Math.floor(Date.now()/1000),active=new Map(deliveryTradeModels().map(model=>readDeliveryTrade(model)).filter(Boolean).map(trade=>[trade.id,trade]));
+    for(const delivery of Object.values(state)){if(!delivery||delivery.notified)continue;const live=active.get(delivery.id);if(live&&live.arrivalAt!==delivery.arrivalAt){delivery.arrivalAt=live.arrivalAt;saveDeliveryNotificationState(state);scheduleRecruitmentDelivery(delivery);}if(now>=Number(delivery.arrivalAt)+DELIVERY_NOTIFICATION_ARRIVAL_GRACE_SECONDS)notifyRecruitmentDelivery(delivery.id);}
+    renderPersistentDeliveryAlerts();
+  }
+  function restoreRecruitmentDeliveryAlarms(){const state=loadDeliveryNotificationState();for(const delivery of Object.values(state))if(delivery&&!delivery.notified)scheduleRecruitmentDelivery(delivery);setTimeout(syncAllDeliveriesToGrepoAlerts,1500);}
+  function cleanupLegacyRecruitmentDeliveryAlarms(){
+    const key=`egeltools_delivery_boundary_cleanup_v187_${window.Game?.world_id||location.hostname}_${window.Game?.player_id||'unknown'}`;if(localStorage.getItem(key))return;
+    const state=loadDeliveryNotificationState();for(const [id,delivery] of Object.entries(state))if(!delivery?.notified)removeRecruitmentDeliveryAlarm(id,state);saveDeliveryNotificationState(state);localStorage.setItem(key,'1');
+  }
+  function hookRecruitmentDeliveryCollection(){
+    const collection=getDeliveryTradeCollection();if(!collection||typeof collection.on!=='function'){setTimeout(hookRecruitmentDeliveryCollection,500);return;}if(collection._egeltoolsDeliveryHooked)return;collection._egeltoolsDeliveryHooked=true;
+    collection.on('add',()=>setTimeout(reconcileRecruitmentDeliveries,0));
+    collection.on('remove',model=>{
+      const id=String(model?.id??model?.getId?.()??'');
+      const state=loadDeliveryNotificationState(),delivery=state[id];
+      if(delivery&&!delivery.notified){
+        const arrivalMs=Number(delivery.arrivalAt)*1000;
+        if(Number.isFinite(arrivalMs)&&Date.now()>=arrivalMs-1500){
+          // Normal arrival: retain the qualified alarm and fire it at the stored arrival time.
+          scheduleRecruitmentDelivery(delivery);
+          setTimeout(()=>notifyRecruitmentDelivery(id),Math.max(0,arrivalMs-Date.now()+DELIVERY_NOTIFICATION_ARRIVAL_GRACE_SECONDS*1000));
+          return;
+        }
+        // Removed well before arrival means cancellation.
+        delivery.cancelledAt=Date.now();removeRecruitmentDeliveryAlarm(id,state);saveDeliveryNotificationState(state);
+        window.GrepoAlerts?.ui?._render?.();window.GrepoAlerts?.ui?.updateBadge?.();
+      }
+      setTimeout(reconcileRecruitmentDeliveries,0);
+    });
+    registerRecruitmentDeliveries();restoreRecruitmentDeliveryAlarms();
+  }
+  function senderTown(){try{return window.ITowns?.getTown?.(window.Game?.townId)||window.ITowns?.getCurrentTown?.()||null;}catch(_){return null;}}
+  function availableCapacity(){try{return Math.max(0,Number(senderTown()?.getAvailableTradeCapacity?.())||0);}catch(_){return 0;}}
+  function senderStock(){
+    const town=senderTown(),raw=getValue(town,['resources','getCurrentResources','getResources'],['resources'])||{};
+    return Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,Math.floor(Number(raw[r]??getValue(town,[`get${r[0].toUpperCase()+r.slice(1)}`],[r])??0)||0))]));
+  }
+  function allocate(open,capacity,sourceStock,ratio,targetResources){
+    const limits=Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,Math.min(Math.floor(open[r]||0),Math.floor(sourceStock?.[r]||0)))]));
+    const budget=Math.min(Math.max(0,Math.floor(capacity)),RESOURCES.reduce((sum,r)=>sum+limits[r],0));
+    const out={wood:0,stone:0,iron:0};
+    if(budget<=0)return out;
+    const weights=Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,Number(ratio?.[r])||0)]));
+    const hasRatio=RESOURCES.some(r=>weights[r]>0);
+    if(!hasRatio){
+      RESOURCES.forEach(r=>weights[r]=limits[r]);
+    }
+    // Level the destination's resulting resources according to the selected
+    // recruitment ratio. For catapults (1:1:1), the lowest city resource is
+    // filled first instead of splitting the merchants into three equal loads.
+    const base=Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,Number(targetResources?.[r])||0)]));
+    if(hasRatio){
+      let low=0;
+      let high=Math.max(...RESOURCES.filter(r=>weights[r]>0).map(r=>(base[r]+limits[r])/weights[r]),0)+budget;
+      const requiredAt=level=>RESOURCES.reduce((sum,r)=>sum+(weights[r]>0?Math.min(limits[r],Math.max(0,Math.floor(level*weights[r]-base[r]))):0),0);
+      for(let i=0;i<60;i+=1){
+        const middle=(low+high)/2;
+        if(requiredAt(middle)<=budget)low=middle;else high=middle;
+      }
+      RESOURCES.forEach(r=>{
+        if(weights[r]>0)out[r]=Math.min(limits[r],Math.max(0,Math.floor(low*weights[r]-base[r])));
+      });
+    }
+    let left=budget-RESOURCES.reduce((sum,r)=>sum+out[r],0);
+    while(left>0){
+      const active=RESOURCES.filter(r=>limits[r]>out[r]&&weights[r]>0);
+      if(!active.length)break;
+      active.sort((a,b)=>(base[a]+out[a])/weights[a]-(base[b]+out[b])/weights[b]||RESOURCES.indexOf(a)-RESOURCES.indexOf(b));
+      const resource=active[0];
+      out[resource]+=1;
+      left-=1;
+    }
+    return out;
+  }
+  function enteredAmounts(inputMap){
+    return Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,Math.floor(Number(inputMap[r]?.value)||0))]));
+  }
+  function restoreGrctTradeDisplay(root=document){
+    root.querySelectorAll?.('[data-egeltools-overridden="true"]').forEach(element=>{
+      element.style.removeProperty('display');
+      element.removeAttribute('data-egeltools-overridden');
+    });
+  }
+  function disableBridgeIn(root=document){
+    root.querySelectorAll?.(`.${BOX_CLASS}, [data-egeltools-trade-unit-picker]`).forEach(element=>element.remove());
+    restoreGrctTradeDisplay(root);
+  }
+  function suppressGrctTradeDisplay(root){
+    // GRCRT recreates its recruitment helper after switching the target town.
+    // Search both the active window and the document so every newly inserted
+    // helper is hidden immediately. The balanced button is not in these selectors.
+    const foreignSelectors=[
+      '.grcrt_abh_unit_wrapper',
+      '.grcrt_abh_res_left',
+      '.grcrt_recruitment_trade','.grcrt-recruitment-trade','.grct_recruitment_trade','.grct-recruitment-trade',
+      '.grcrt_trade_resources','.grcrt-trade-resources','.grct_trade_resources','.grct-trade-resources',
+      '[data-grcrt-recruitment]','[data-grct-recruitment]'
+    ];
+    const scopes=root===document?[document]:[root,document];
+    scopes.forEach(scope=>scope.querySelectorAll(foreignSelectors.join(',')).forEach(element=>{
+      if(element.closest(`.${BOX_CLASS}`))return;
+      element.style.setProperty('display','none','important');
+      element.setAttribute('data-egeltools-overridden','true');
+    }));
+  }
+  function icon(resource){
+    const labels={wood:'Wood',stone:'Stone',iron:'Silver'};
+    const urls={wood:'https://gpde.innogamescdn.com/images/game/res/wood.png',stone:'https://gpde.innogamescdn.com/images/game/res/stone.png',iron:'https://gpde.innogamescdn.com/images/game/res/iron.png'};
+    return `<img src="${urls[resource]}" alt="${labels[resource]}" title="${labels[resource]}" style="display:block;width:20px;height:20px;object-fit:contain;flex:0 0 20px;margin:0 4px 0 0;border:0;background:none">`;
+  }
+  function renderRatioPicker(root,box,target,plan,selected){
+    // Remove the old in-panel picker from earlier versions.
+    box.querySelector('[data-recruit-ratio-picker]')?.remove();
+    let picker=root.querySelector('[data-egeltools-trade-unit-picker]');
+    if(!picker){
+      picker=document.createElement('div');
+      picker.dataset.egeltoolsTradeUnitPicker='';
+      picker.style.cssText='position:absolute;top:190px;left:35px;z-index:4;display:flex;flex-direction:column;flex-wrap:nowrap;align-items:flex-start;gap:4px;max-height:190px;pointer-events:auto;';
+      const host=root.querySelector('#trade_tab .content')||root.querySelector('#trade_tab')||root.querySelector('.content')||root;
+      if(getComputedStyle(host).position==='static')host.style.position='relative';
+      host.appendChild(picker);
+    }
+    picker.replaceChildren();
+    const units=Array.isArray(plan?.units)?plan.units:[];
+    if(!units.length){picker.style.display='none';return;}
+    picker.style.display='flex';
+    units.forEach(unit=>{
+      const id=String(unit.id),button=document.createElement('button');
+      button.type='button';button.dataset.recruitRatioUnit=id;
+      button.title=`Ratio: ${unitName(id)} (${fmt(unit.count)} units) ${selected.includes(id)?'selected':'not selected'}`;
+      button.setAttribute('aria-pressed',String(selected.includes(id)));
+      button.style.cssText=`width:42px;height:42px;padding:0;border:2px solid ${selected.includes(id)?'#4f7e2d':'#8a672c'};border-radius:4px;background:${selected.includes(id)?'#d9efc2':'#ead9ae'};cursor:pointer;position:relative;box-shadow:0 1px 2px #0008;pointer-events:auto;`;
+      const icon=document.createElement('span');icon.className=`unit_icon40x40 ${id}`;icon.style.cssText='display:block;position:absolute;inset:0;margin:auto;transform:scale(.9);transform-origin:center;';button.append(icon);
+      const count=document.createElement('small');count.textContent=fmt(unit.count);count.style.cssText='position:absolute;right:-2px;bottom:-2px;z-index:2;padding:0 2px;border:1px solid #d6bd82;border-radius:2px;background:#2b1b0de6;color:#fff;font:bold 8px Arial;line-height:11px;';button.append(count);picker.append(button);
+    });
+  }
+  function render(root,target,forceFill=false){
+    if(!featureEnabled()){disableBridgeIn(root);return;}
+    const inputMap=inputsIn(root);if(!RESOURCES.some(r=>inputMap[r]))return;
+    suppressGrctTradeDisplay(root);
+    let box=root.querySelector(`.${BOX_CLASS}`);if(!box){box=document.createElement('div');box.className=BOX_CLASS;box.style.cssText='margin:8px 6px;padding:7px 9px;border:1px solid #7b541d;border-radius:4px;background:#f5e6bd;color:#2b1b0d;font:12px Arial;line-height:1.45;';(inputMap.wood?.closest('form,.trade,.content')||inputMap.wood?.parentElement||root).appendChild(box);}
+    if(!target){box.innerHTML=`<b>Recruitment requirements:</b> Target town could not be detected yet.`;return;}
+    const plan=plans()[target.id];if(!plan){box.innerHTML=`<b>Recruitment requirements:</b> No saved target for ${target.name||target.id}.`;return;}
+    const selected=selectedUnitIds(target,plan),ratio=ratioNeed(plan,selected);
+    // The selected unit icons define the actual required resource target.
+    // One selected unit type uses only that unit's saved barracks/docks values;
+    // further selected unit types are added to this target.
+    const required=ratio||{wood:0,stone:0,iron:0};
+    const stock=stockFor(target),incoming=incomingFor(target.id),open=Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,(Number(required[r])||0)-stock[r]-incoming[r])]));
+    const sourceStock=senderStock(),targetResources=Object.fromEntries(RESOURCES.map(r=>[r,stock[r]+incoming[r]])),enabled=autoEnabled(),warehouse=warehouseEnabled();
+    const effectiveOpen=warehouse?warehouseRatioLimits(target,targetResources,ratio,open):open;
+    const fill=allocate(effectiveOpen,availableCapacity(),sourceStock,ratio,targetResources);
+    if(enabled||forceFill){
+      RESOURCES.forEach(r=>{if(String(inputMap[r]?.value??'')!==String(fill[r]))setInput(inputMap[r],fill[r]);});
+      window.setTimeout(schedule,0);
+    }
+    // Read back the live fields after Grepolis recalculated capacity and totals.
+    const entered=enteredAmounts(inputMap);
+    const remaining=Object.fromEntries(RESOURCES.map(r=>[r,Math.max(0,open[r]-entered[r])]));
+    // Calculation always continues, independently from the entry toggle, and is remembered per target town.
+    rememberState(target,{plan:{wood:Number(plan.wood)||0,stone:Number(plan.stone)||0,iron:Number(plan.iron)||0},stock,incoming,sourceStock,open,entered,remaining,fill,autoEntry:enabled,warehouseEntry:warehouse,warehouseCapacity:warehouseCapacity(target)});
+    if(!box.querySelector('[data-recruit-toggle]')){
+      box.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><b>Still needed:</b><span style="display:inline-flex;gap:4px;align-items:center"><button type="button" data-warehouse-toggle title="Limits auto-fill using the selected unit cost ratio. The most expensive resource stops at each warehouse boundary. The next boundary is calculated directly from current stock and incoming deliveries: below one warehouse size up to the first boundary, at or above it up to twice the size, then three times the size, and so on." style="position:relative;z-index:3;cursor:pointer;min-width:82px;pointer-events:auto;user-select:none">Warehouse OFF</button><button type="button" data-recruit-toggle title="Automatically enter the still-needed resources into the trade fields." style="position:relative;z-index:3;cursor:pointer;min-width:92px;pointer-events:auto;user-select:none">Auto-fill OFF</button></span></div><div data-recruit-amounts style="display:flex;justify-content:space-around;align-items:center;gap:12px;margin-top:5px;overflow:hidden">${RESOURCES.map(r=>`<span data-recruit-resource="${r}" style="display:inline-flex;align-items:center;white-space:nowrap;overflow:hidden;min-width:0">${icon(r)}<b data-recruit-value>0</b></span>`).join('')}</div>`;
+    }
+    renderRatioPicker(root,box,target,plan,selected);
+    RESOURCES.forEach(r=>{const value=box.querySelector(`[data-recruit-resource="${r}"] [data-recruit-value]`);if(value)value.textContent=fmt(remaining[r]);});
+    const toggle=box.querySelector('[data-recruit-toggle]');
+    toggle.textContent=enabled?(`Auto-fill ON`):(`Auto-fill OFF`);
+    toggle.setAttribute('aria-pressed',String(enabled));
+    toggle.style.background=enabled?'#4f7e2d':'#8c3e2f';toggle.style.color='#fff4cd';
+    const warehouseToggle=box.querySelector('[data-warehouse-toggle]');
+    warehouseToggle.textContent=warehouse?('Warehouse ON'):('Warehouse OFF');
+    warehouseToggle.setAttribute('aria-pressed',String(warehouse));
+    warehouseToggle.style.background=warehouse?'#4f7e2d':'#8c3e2f';warehouseToggle.style.color='#fff4cd';
+  }
+  const TRADE_INPUT_SELECTOR='#trade_type_wood input,input[name="wood"],.trade_type_wood input';
+  const hasOpenTradeWindow=()=>Boolean(document.querySelector(TRADE_INPUT_SELECTOR));
+  function scan(){if(!featureEnabled()){disableBridgeIn(document);return;}const seen=new Set();for(const wood of document.querySelectorAll(TRADE_INPUT_SELECTOR)){const root=windowRoot(wood);if(!root||seen.has(root))continue;seen.add(root);render(root,inferTargetTown(root),false);}}
+  let queued=false;const schedule=()=>{if(queued||!hasOpenTradeWindow())return;queued=true;setTimeout(()=>{queued=false;if(hasOpenTradeWindow())scan();},80);};
+  new MutationObserver(mutations=>{
+    if(featureEnabled()){
+      for(const mutation of mutations){
+        for(const node of mutation.addedNodes){
+          if(!(node instanceof Element))continue;
+          if(node.matches?.('.grcrt_abh_unit_wrapper,.grcrt_abh_res_left')||node.querySelector?.('.grcrt_abh_unit_wrapper,.grcrt_abh_res_left')){
+            suppressGrctTradeDisplay(document);
+            break;
+          }
+        }
+      }
+    }
+    const touchesTradeWindow=mutations.some(mutation=>[mutation.target,...mutation.addedNodes,...mutation.removedNodes].some(node=>node instanceof Element&&(
+      node.matches?.(TRADE_INPUT_SELECTOR)||node.querySelector?.(TRADE_INPUT_SELECTOR)||node.closest?.(`.${BOX_CLASS}`)
+    )));
+    if(touchesTradeWindow||hasOpenTradeWindow())schedule();
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  window.addEventListener('egeltools:recruitment-plan-updated',schedule);
+  window.addEventListener(FEATURE_EVENT,()=>{if(featureEnabled())schedule();else disableBridgeIn(document);});
+  window.addEventListener('storage',event=>{if(event.key===FEATURE_KEY){if(featureEnabled())schedule();else disableBridgeIn(document);}});
+  document.addEventListener('input',event=>{
+    if(!(event.target instanceof HTMLInputElement))return;
+    const bridge=event.target.closest('.gpwindow,.window,.ui-dialog,[class*="gpwindow"],form')?.querySelector(`.${BOX_CLASS}`);
+    if(bridge)schedule();
+  },true);
+  document.addEventListener('change',event=>{
+    if(!(event.target instanceof HTMLInputElement))return;
+    const bridge=event.target.closest('.gpwindow,.window,.ui-dialog,[class*="gpwindow"],form')?.querySelector(`.${BOX_CLASS}`);
+    if(bridge)schedule();
+  },true);
+  document.addEventListener('pointerdown',event=>{
+    if(!featureEnabled())return;
+    const ratioButton=event.target instanceof Element?event.target.closest('[data-egeltools-trade-unit-picker] [data-recruit-ratio-unit]'):null;
+    if(ratioButton){
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+      const root=windowRoot(ratioButton),target=root&&inferTargetTown(root),plan=target&&plans()[target.id];
+      if(!target||!plan)return;
+      const id=String(ratioButton.dataset.recruitRatioUnit),selected=selectedUnitIds(target,plan);
+      // If several unit types are active, clicking one of the active icons makes
+      // that unit the exclusive first stage. Clicking another icon afterwards
+      // adds its barracks/docks resource requirement to the selected total.
+      const next=selected.includes(id)
+        ?(selected.length>1?[id]:selected)
+        :[...selected,id];
+      saveSelectedUnitIds(target,next);
+      render(root,target,autoEnabled());return;
+    }
+    const warehouseToggle=event.target instanceof Element?event.target.closest(`.${BOX_CLASS} [data-warehouse-toggle]`):null;
+    if(warehouseToggle){
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+      const enabled=!warehouseEnabled();setWarehouseEnabled(enabled);
+      const root=windowRoot(warehouseToggle);if(root)render(root,inferTargetTown(root),enabled);return;
+    }
+    const toggle=event.target instanceof Element?event.target.closest(`.${BOX_CLASS} [data-recruit-toggle], .${BOX_CLASS} [data-warehouse-toggle]`):null;
+    if(!toggle)return;
+    event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+    const enabled=!autoEnabled();setAutoEnabled(enabled);
+    const root=windowRoot(toggle);if(root)render(root,inferTargetTown(root),enabled);
+  },true);
+  document.addEventListener('click',event=>{
+    if(event.target instanceof Element&&event.target.closest(`.${BOX_CLASS} [data-recruit-toggle]`)){
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();return;
+    }
+    setTimeout(scan,350);
+  },true);
+  // No background recruitment/trade calculation while no relevant window is open.
+  document.addEventListener('visibilitychange',()=>{
+    if(!document.hidden&&hasOpenTradeWindow())schedule();
+  });
+  window.addEventListener('egeltools:delivery-alert-dismissed',event=>{
+    const id=String(event?.detail?.tradeId??'');if(!id)return;
+    const state=loadDeliveryNotificationState();if(!state[id])return;
+    removeRecruitmentDeliveryAlarm(id,state);saveDeliveryNotificationState(state);
+    window.GrepoAlerts?.ui?._render?.();window.GrepoAlerts?.ui?.updateBadge?.();
+  });
+  window.EgelToolsRecruitmentDeliveryMonitor={checkArrivals:checkRecruitmentDeliveryArrivals,openBuilding:openDeliveryRecruitmentBuilding,requestPermission:requestRecruitmentNotificationPermission,permission:()=>('Notification'in window?Notification.permission:'unsupported'),status:()=>({enabled:window.EgelToolsNotificationSettings?.isUnitResourceEnabled?.(),permission:('Notification'in window?Notification.permission:'unsupported'),stored:Object.values(loadDeliveryNotificationState()).map(d=>({id:d.id,unit:d.unitLabel,town:d.targetTownName,arrivalAt:d.arrivalAt,notified:d.notified}))}),restore:restoreRecruitmentDeliveryAlarms,test:(townId=window.Game?.townId)=>{const town=towns().find(item=>item.id===String(townId));const delivery={id:`test-${Date.now()}`,targetTownId:String(townId),targetTownName:town?.name||String(townId),unitLabel:'Katapulte',unitIds:['catapult'],isNaval:false,notified:true,acknowledged:false,savedAt:Date.now()};const state=loadDeliveryNotificationState();state[delivery.id]=delivery;saveDeliveryNotificationState(state);fireRecruitmentDeliveryNotification(delivery);return delivery;}};
+  const unlockRecruitmentNotifications=()=>{
+    requestRecruitmentNotificationPermission();
+    document.removeEventListener('pointerdown',unlockRecruitmentNotifications,true);
+    document.removeEventListener('keydown',unlockRecruitmentNotifications,true);
+  };
+  document.addEventListener('pointerdown',unlockRecruitmentNotifications,true);
+  document.addEventListener('keydown',unlockRecruitmentNotifications,true);
+  cleanupLegacyRecruitmentDeliveryAlarms();
+  hookRecruitmentDeliveryCollection();
+  restoreRecruitmentDeliveryAlarms();
+  checkRecruitmentDeliveryArrivals();
+  if(hasOpenTradeWindow())schedule();
+
+})();
+
+
+// Independent notification watchdog. Uses only exported APIs because the
+// recruitment bridge runs in its own scope.
+setInterval(() => {
+  if (window.EgelToolsNotificationSettings?.isUnitResourceEnabled?.()) {
+    window.EgelToolsRecruitmentDeliveryMonitor?.checkArrivals?.();
+  }
+  if (window.EgelToolsNotificationSettings?.isBdsEnabled?.()) {
+    window.EgelToolsRefreshBdsGrepoAlert?.();
+  }
+}, 5000);
+
+// Optional bridge for the separate GrepoAlerts userscript. EgelTools does not include its UI.
+window.addEventListener('egeltools:grepoalerts-ready',()=>{
+  window.EgelToolsRefreshBdsGrepoAlert?.();
+  window.EgelToolsRecruitmentDeliveryMonitor?.restore?.();
+});
+
+document.addEventListener('pointerdown', function egelNotificationUnlock(){
+  if(window.EgelToolsNotificationSettings?.isBdsEnabled?.()||window.EgelToolsNotificationSettings?.isUnitResourceEnabled?.()){
+    window.EgelToolsNotificationSettings?.requestPermission?.();
+  }
+  document.removeEventListener('pointerdown',egelNotificationUnlock,true);
+},{capture:true});
+
+/* EgelTools Academy Planner: GRCT-style overview and research templates */
+(() => {
+  'use strict';
+  const CFG={storageKey:'egeltools_academy_templates_v1',buttonId:'egeltools-academy-overview-button',overviewId:'egeltools-academy-overview',editorClass:'egeltools-academy-template-editor',styleId:'egeltools-academy-planner-style'};
+  const TEXT={
+    en:{academy:'Academy',overview:'Academy overview',refresh:'Refresh',close:'Close',allGroups:'All groups',sortGroup:'Sort by group',sortTown:'Sort by town',town:'Town',group:'Group',template:'Research template',noGroup:'No group',edit:'Edit template',finish:'Finish editing',saveTown:'Save town',saveGroup:'Save group',selectGroup:'Select a group first',townSaved:'Town template saved',groupSaved:'Group template saved',researched:'Researched',missing:'Must be researched',wrong:'Researched but not required',ignored:'Not required',unavailable:'Cannot be researched',createGroup:'Create custom group',deleteGroup:'Delete custom group',groupName:'Group name',noData:'Open an academy once, then refresh this overview.',noTemplate:'No template',cityTemplate:'Town template',unsaved:'No template saved',points:'Research points',resources:'Resources',start:'Start research',revert:'Reset research',queued:'Research queued',actionFailed:'Action failed'},
+  };
+  const lang=()=>'en';
+  const t=k=>TEXT.en[k]||k;
+  const state={open:false,timer:null,overviewRefreshTimer:null,overviewOpenToken:0,researchIds:new Set(),panelHost:null};
+  const blank=()=>({version:2,groups:{},cities:{},cityGroups:{}});
+  function load(){try{const v=JSON.parse(localStorage.getItem(CFG.storageKey)||'null');return v&&typeof v==='object'?{...blank(),...v,groups:v.groups||{},cities:v.cities||{},cityGroups:v.cityGroups||{}}:blank();}catch(_){return blank();}}
+  function save(v){localStorage.setItem(CFG.storageKey,JSON.stringify(v));window.dispatchEvent(new CustomEvent('egeltools:academy-templates-changed'));}
+  function saveSharedGroupTemplate(groupKey,researches,groupName){const d=load();d.groups[groupKey]={name:groupName||groupKey,researches:[...new Set(researches)],savedAt:Date.now()};d.cityGroups||={};Object.entries(d.cityGroups).forEach(([townKey,key])=>{if(String(key)===String(groupKey))delete d.cities[townKey];});const targets=recruitTargets();Object.entries(targets.cityTargetGroups||{}).forEach(([townKey,key])=>{if(String(key)===String(groupKey)){d.cityGroups[townKey]=groupKey;delete d.cities[townKey];}});save(d);return d;}
+  function attrs(v){return v?.attributes||v?.toJSON?.()||v||{};}
+  function value(v,m,keys){try{const x=v?.[m]?.();if(x!=null)return x;}catch(_){}const a=attrs(v);for(const k of keys)if(a[k]!=null)return a[k];return null;}
+  const townId=v=>String(value(v,'getId',['id','town_id'])??'');
+  const townName=v=>String(value(v,'getName',['name'])||`Town ${townId(v)}`);
+  function towns(){try{return Object.values(window.ITowns?.getTowns?.()||window.ITowns?.towns||{}).filter(Boolean);}catch(_){return[];}}
+  function currentTown(){try{return window.ITowns?.getCurrentTown?.()||null;}catch(_){return null;}}
+  function canonicalResearchId(id){const raw=String(id||''),data=window.GameData?.researches||{};if(data[raw])return raw;const aliases={booty_bpv:['booty','booty_bpv'],take_over_old:['take_over','take_over_old']};return(aliases[raw]||[raw]).find(key=>data[key])||raw;}function researchAliases(id){const canonical=canonicalResearchId(id);const map={booty:['booty','booty_bpv'],booty_bpv:['booty','booty_bpv'],take_over:['take_over','take_over_old'],take_over_old:['take_over','take_over_old']};return map[id]||map[canonical]||[canonical];}function researched(town,id){let r;try{r=town?.getResearches?.();}catch(_){}if(!r)return false;const data=r.attributes||r.toJSON?.()||r;return researchAliases(id).some(key=>{let v;try{v=typeof r.get==='function'?r.get(key):undefined;}catch(_){}if(v==null)v=data?.[key];return v===true||v===1||v==='1';});}
+  function researchIdFromNode(node){const box=node?.closest?.('.research_box');const direct=box?.dataset?.researchId||box?.dataset?.research_id||node?.dataset?.researchId||node?.dataset?.research_id;if(direct)return canonicalResearchId(String(direct));const known=window.GameData?.researches||{};return canonicalResearchId([...(node?.classList||[])].find(c=>Object.prototype.hasOwnProperty.call(known,c))||[...(node?.classList||[])].find(c=>!['research_icon','research','inactive','active','disabled','research40x40','selected','locked'].includes(c))||'');}function ids(root=document){const data=window.GameData?.researches||{};/* GRCT uses GameData.researches as the authoritative research catalogue. Do not derive the overview from the currently rendered academy DOM, because Grepolis only renders a subset there. */Object.keys(data).forEach(id=>{const canonical=canonicalResearchId(id);if(canonical&&data[canonical])state.researchIds.add(canonical);});root?.querySelectorAll?.('.research_icon.research').forEach(icon=>{const id=researchIdFromNode(icon),canonical=canonicalResearchId(id);if(canonical&&data[canonical])state.researchIds.add(canonical);});return [...new Set(state.researchIds)].filter(id=>data[id]);}
+  function label(id){const key=canonicalResearchId(id);return String(window.GameData?.researches?.[key]?.name||key).replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase());}function researchTooltip(id,town){const key=canonicalResearchId(id),r=window.GameData?.researches?.[key]||{},parts=[label(id)];const desc=r.description||r.description_text||r.tooltip||'';if(desc)parts.push(String(desc).replace(/<[^>]+>/g,' '));if(!researched(town,id)){const c=r.resources||r.costs||r;const wood=Number(c.wood||0),stone=Number(c.stone||0),iron=Number(c.iron||0),points=Number(r.research_points||0);parts.push(`${t('resources')}: ${wood} wood, ${stone} stone, ${iron} iron · ${points} ${t('points')}`);}return parts.join('\n');}
+  function attachGrctResearchTooltip(element,id,town){try{const key=canonicalResearchId(id),research=window.GameData?.researches?.[key],factory=window.GrcRTAcademyTooltipFactory;if(research&&factory?.getResearchTooltip&&window.jQuery){const academy=Number(town?.getBuildings?.()?.getBuildingLevel?.('academy')||0),points=researchPoints(town),done=researched(town,id),queued=researchQueued(town,id);window.jQuery(element).tooltip(factory.getResearchTooltip(research,academy,points,done,queued,false,townId(town)));return true;}}catch(error){console.debug('[EgelTools Academy] GRCT tooltip fallback',error);}element.title=researchTooltip(id,town);return false;}function recruitTargets(){try{return JSON.parse(localStorage.getItem('grepo_unit_targets_scoped_v2')||'{}')||{};}catch(_){return{};}}function saveRecruitTargets(data){localStorage.setItem('grepo_unit_targets_scoped_v2',JSON.stringify(data));window.dispatchEvent(new CustomEvent('egeltools:recruit-targets-updated'));}function createAcademyGroup(){const name=prompt(t('groupName'));if(!name?.trim())return null;const d=recruitTargets();d.customGroups||={};const id='academy_'+Date.now().toString(36);d.customGroups[id]={name:name.trim(),targets:{}};saveRecruitTargets(d);return'custom:'+id;}function deleteAcademyGroup(key){if(!String(key).startsWith('custom:'))return false;const id=String(key).slice(7),d=recruitTargets();delete d.customGroups?.[id];Object.entries(d.cityTargetGroups||{}).forEach(([town,a])=>{if(a===key)d.cityTargetGroups[town]='none';});saveRecruitTargets(d);return true;}function groups(){const out=new Map(),r=recruitTargets(),add=(id,name)=>{id=String(id??'').trim();name=String(name??'').trim();if(id&&id!=='-1'&&id!=='-2'&&name)out.set('grepo:'+id,name);};try{const models=window.MM?.getModels?.()||{},collections=window.MM?.getCollections?.()||{};[models.TownGroup,collections.TownGroup].filter(Boolean).forEach(bucket=>{(Array.isArray(bucket)?bucket:Object.values(bucket)).forEach(entry=>{(Array.isArray(entry?.models)?entry.models:[entry]).forEach(model=>{const a=model?.attributes||model?.toJSON?.()||model||{};add(a.id??a.group_id??a.town_group_id,a.name??a.group_name??a.title);});});});}catch(error){console.debug('[EgelTools Academy] live groups',error);}Object.entries(r.grepolisGroupNames||{}).forEach(([id,name])=>add(id,name));Object.entries(r.customGroups||{}).forEach(([id,g])=>out.set('custom:'+String(id),String(g?.name||id)));return out;}
+  function groupId(id){const r=recruitTargets(),assigned=r.cityTargetGroups?.[String(id)];if(assigned)return String(assigned);const custom=r.cityCustomGroups?.[String(id)];if(custom)return'custom:'+String(custom);try{for(const bucket of Object.values(window.MM?.getModels?.()||{}))for(const m of Object.values(bucket||{})){const a=attrs(m);if(String(a.town_id??a.townId??'')===String(id)&&(a.town_group_id??a.group_id??a.groupId)!=null)return'grepo:'+String(a.town_group_id??a.group_id??a.groupId);}}catch(_){}return'none';}
+  function template(id){const d=load(),gid=groupId(id),g=gid!=='none'?d.groups[gid]:null;if(g?.researches)return{saved:true,list:g.researches,source:g.name||`${t('group')} ${gid}`};if(gid==='none'&&d.cities[id]?.researches)return{saved:true,list:d.cities[id].researches,source:t('cityTemplate')};return{saved:false,list:[],source:t('unsaved')};}
+  function researchData(id){return window.GameData?.researches?.[canonicalResearchId(id)]||{};}function academyRequirement(id){return Number(researchData(id)?.building_dependencies?.academy||0);}function academyLevel(town){return Number(town?.getBuildings?.()?.getBuildingLevel?.('academy')||0);}function canResearch(town,id){try{return academyLevel(town)>=academyRequirement(id);}catch(_){return true;}}function researchCost(id){const data=researchData(id);return{wood:Number(data.resources?.wood??data.wood??0),stone:Number(data.resources?.stone??data.stone??0),iron:Number(data.resources?.iron??data.iron??0),points:Number(data.research_points??0)};}function researchAffordability(town,id){const cost=researchCost(id),res=townResources(town),points=researchPoints(town);return{cost,res,points,enoughResources:res.wood>=cost.wood&&res.stone>=cost.stone&&res.iron>=cost.iron,enoughPoints:points>=cost.points};}function status(town,id){const done=researched(town,id)||researchQueued(town,id);if(!done&&!canResearch(town,id))return'unavailable';const tp=template(townId(town)),required=tp.saved&&tp.list.some(saved=>researchAliases(id).includes(saved)||canonicalResearchId(saved)===canonicalResearchId(id));if(required&&!done){const affordability=researchAffordability(town,id);return affordability.enoughResources&&affordability.enoughPoints?'missing':'insufficient';}if(required)return'done';return done?'wrong':'ignored';}
+  function styles(){if(document.getElementById(CFG.styleId))return;const e=document.createElement('style');e.id=CFG.styleId;e.textContent=`
+#${CFG.buttonId}{min-width:86px;cursor:pointer;color:#f3d58d;background:linear-gradient(#61492e,#382718);border:1px solid #806238;border-radius:4px;padding:4px 8px;font-weight:bold}#${CFG.buttonId}[aria-expanded=true]{background:linear-gradient(#a9513d,#743326);color:#fff3c5}
+#${CFG.overviewId}{position:fixed;left:calc(50% - 410px);top:110px;width:820px;height:570px;z-index:1000;color:#2c1c0e;font:12px Arial;background:#d4b77b;border:2px solid #4c351c;border-radius:5px;box-shadow:0 5px 18px rgba(0,0,0,.55),inset 0 0 0 1px #f3dda4;overflow:hidden;display:flex;flex-direction:column;box-sizing:border-box;resize:both;min-width:620px;min-height:400px;max-width:calc(100vw - 12px);max-height:calc(100vh - 12px)}#${CFG.overviewId}::after{content:'';position:absolute;right:2px;bottom:2px;width:12px;height:12px;pointer-events:none;background:linear-gradient(135deg,transparent 0 45%,#6d4c29 46% 55%,transparent 56% 65%,#6d4c29 66% 75%,transparent 76%)}#${CFG.overviewId}[hidden]{display:none!important}#${CFG.overviewId}[data-egeltools-active='false']{z-index:1000!important}#${CFG.overviewId}[data-egeltools-active='true']{z-index:2147483000!important}
+#${CFG.overviewId} .ao-title{height:28px;display:flex;align-items:center;gap:7px;padding:0 8px;color:#f8e8b8;background:linear-gradient(#755630,#392615);border-bottom:1px solid #1f140a;cursor:move}#${CFG.overviewId} .ao-title strong{flex:1;font-size:14px;text-shadow:0 1px #000}#${CFG.overviewId} .ao-title button,#${CFG.overviewId} .ao-title select{height:22px;font-size:11px}
+#${CFG.overviewId} .ao-legend{height:27px;display:flex;gap:18px;align-items:center;padding:0 9px;background:#ead6a5;border-bottom:1px solid #846437}.ao-dot{width:13px;height:13px;display:inline-block;margin-right:4px;border:1px solid #3e2a16;vertical-align:-2px}.ao-green{background:linear-gradient(#74c969,#2e7f35)}.ao-yellow{background:linear-gradient(#f4dd55,#bd8e00)}.ao-red{background:linear-gradient(#d86b58,#8f2e28)}.ao-orange{background:linear-gradient(#f6a941,#c76500);color:#fff}.ao-gray{background:linear-gradient(#b7b7b7,#777);color:#eee}.ao-black{background:linear-gradient(#333,#050505);color:#aaa}
+#${CFG.overviewId} .ao-grid{flex:1;overflow:auto;background:#cbb17b}.ao-table{border-collapse:separate;border-spacing:0;min-width:max-content}.ao-table th,.ao-table td{height:42px;box-sizing:border-box;border-right:1px solid #80653b;border-bottom:1px solid #80653b;background:#e8d29e;text-align:center}.ao-table thead th{position:sticky;top:0;z-index:4;height:46px;background:url('/images/game/overviews/fixed_table_header_bg.jpg') repeat-x,#b99b68}.ao-table .ao-town{position:sticky;left:0;z-index:3;width:190px;min-width:190px;padding:4px 7px;text-align:left;background:#ead7a9}.ao-table thead .ao-town{z-index:6}.ao-group-label{position:sticky;left:0;z-index:5!important;width:190px;min-width:190px;text-align:left!important;padding-left:8px!important;background:#9b7a46!important;color:#fff2c5;text-shadow:0 1px #241506;font-weight:bold}.ao-research-head{width:34px;min-width:34px;max-width:34px;padding:0;overflow:hidden}.ao-research-icon{width:40px;height:40px;margin:-1px -3px;transform:scale(.75);transform-origin:center center}.ao-cell{width:34px;min-width:34px;max-width:34px;padding:2px}.ao-mark{width:28px;height:28px;line-height:28px;margin:auto;border:1px solid #54391f;border-radius:4px;box-shadow:inset 0 1px #fff7;font-size:13px}.ao-group-row td{position:sticky;top:46px;z-index:5;height:24px!important;padding-left:8px!important;font-weight:bold;background:#9b7a46!important;color:#fff2c5;text-shadow:0 1px #241506;box-shadow:0 2px 3px rgba(45,27,10,.45)}.ao-group-row .ao-group-label{left:0;z-index:7!important}
+.${CFG.editorClass}{position:absolute!important;z-index:10020!important;top:38px!important;width:285px!important;box-sizing:border-box;padding:7px;min-height:150px;display:flex!important;flex-direction:column;align-items:stretch;align-items:center;gap:6px;flex-wrap:wrap;background:linear-gradient(#ead9aa,#cdb174);border:2px solid #6d4c29;border-radius:5px;box-shadow:inset 0 0 0 1px #f8e8b8}.aop-editor-title{font-weight:bold;text-align:left;margin-bottom:2px}.aop-editor-status{font-weight:bold;text-align:left;min-height:15px}.ao-group-row td{text-align:left!important;padding-left:8px!important}.ao-resources{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:10px}.ao-resource{display:inline-flex;align-items:center;gap:1px}.ao-resource-icon{display:inline-block;width:15px;height:15px;object-fit:contain}.ao-resource-icon.points{width:15px;height:15px}.ao-town-link{color:#3e250d;text-decoration:none}.ao-town-link:hover{text-decoration:underline}.ao-research-points{display:inline-block!important;width:18px!important;height:18px!important;vertical-align:middle;background-position:center!important}.ao-title select,.ao-title button,.${CFG.editorClass} button{box-sizing:border-box;border:1px solid #5b3c1e;border-radius:3px;color:#2a1b0d;background:linear-gradient(#f5e5b7,#c7a566);box-shadow:inset 0 1px #fff5d4,0 1px 1px #5a3c20;font-weight:bold;text-shadow:0 1px #fff4cf;cursor:pointer}.ao-title select:hover,.ao-title button:hover,.${CFG.editorClass} button:hover{background:linear-gradient(#fff0c6,#d5b474)}.${CFG.editorClass} button{width:100%;min-height:27px;margin-top:3px}.ao-mark{position:relative;font-size:18px;font-weight:bold;line-height:30px;text-shadow:0 1px #fff8}.ao-mark:hover{filter:brightness(1.18);box-shadow:inset 0 1px #fff7,0 0 4px #2b180b}.${CFG.editorClass} .aop-side-toggle{position:absolute;top:0;width:28px;height:125px!important;margin:0!important;padding:3px!important;writing-mode:vertical-rl;transform:rotate(180deg);background:linear-gradient(#72502c,#3c2816)!important;color:#fff3c5!important;text-shadow:0 1px #000!important}.${CFG.editorClass}[data-side=right] .aop-side-toggle{right:100%;border-radius:5px 0 0 5px}.${CFG.editorClass}[data-side=left] .aop-side-toggle{left:100%;border-radius:0 5px 5px 0}.${CFG.editorClass}[data-collapsed=true]{width:0!important;min-height:125px!important;padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}.${CFG.editorClass}[data-collapsed=true]>:not(.aop-side-toggle){display:none!important}.uti-academy-summary[data-ready="false"]{visibility:hidden!important;pointer-events:none!important}.uti-recruitment-summary.uti-academy-summary{box-sizing:border-box;align-items:flex-start;color:#2c1c0e;font:11px Arial,sans-serif}.uti-academy-summary .uti-recruitment-summary-toggle{box-sizing:border-box;width:34px;min-height:108px;padding:8px 6px;border:2px solid #4c351c;border-radius:5px 0 0 5px;color:#f3d58d;background:linear-gradient(#57432b,#332416);box-shadow:0 3px 9px rgba(0,0,0,.42);font:bold 11px/17px Arial,sans-serif;text-shadow:0 1px #000;cursor:pointer;writing-mode:vertical-rl}.uti-academy-summary[data-side=left] .uti-recruitment-summary-toggle{border-radius:0 5px 5px 0}.uti-academy-summary .uti-recruitment-summary-window{overflow:hidden;border:2px solid #4c351c;border-left:0;border-radius:0 5px 5px 0;background:#d6bd82;box-shadow:0 5px 18px rgba(0,0,0,.55),inset 0 0 0 1px #f3dda4}.uti-academy-summary[data-side=left] .uti-recruitment-summary-window{border-right:0;border-left:2px solid #4c351c;border-radius:5px 0 0 5px}.uti-academy-summary[data-collapsed="true"] .uti-recruitment-summary-window{display:none!important}.uti-academy-summary .uti-summary-header{height:32px;display:flex;align-items:center;padding:0 5px 0 10px;color:#f3d58d;background:linear-gradient(#57432b,#332416);text-shadow:0 1px #000}.uti-academy-summary .uti-summary-title{flex:1;min-width:0;font-size:12px;font-weight:bold}.uti-academy-summary .uti-side-save{height:22px;padding:0 6px;border:1px solid #49341c;border-radius:3px;color:#fff3c5;background:linear-gradient(#587d35,#35551f);font:bold 10px Arial,sans-serif;text-shadow:0 1px #1b260f;cursor:pointer}.uti-academy-summary .uti-side-save:hover{background:linear-gradient(#6c9641,#416827)}.uti-recruitment-summary.uti-academy-summary{display:flex!important;position:absolute!important;z-index:100!important;top:38px!important}.uti-recruitment-summary.uti-academy-summary[data-side=right]{left:100%!important;right:auto!important}.uti-recruitment-summary.uti-academy-summary[data-side=left]{right:100%!important;left:auto!important}.uti-academy-summary .uti-recruitment-summary-window{width:345px!important;box-sizing:border-box}.uti-academy-summary .uti-academy-body{display:flex;flex-direction:column;gap:4px;padding:5px 4px 6px}.uti-academy-summary .uti-custom-group-row{display:grid;grid-template-columns:minmax(0,1fr) 28px 28px auto;gap:4px;align-items:center;width:100%;box-sizing:border-box}.uti-academy-summary .uti-target-group-select{display:block;width:100%;min-width:0;height:22px;box-sizing:border-box;font-size:11px}.uti-academy-summary .uti-side-save{height:22px!important;min-height:22px!important;padding:0 8px!important}.uti-academy-summary .uti-save-grid{display:grid!important;grid-template-columns:1fr 1fr!important;gap:6px!important;width:100%!important}.uti-academy-summary .uti-save-column{display:block!important}.uti-academy-summary .uti-save-caption{display:none!important}.uti-academy-summary .uti-save-column .uti-side-save{width:100%!important}.uti-academy-summary .uti-academy-status{display:none!important}.aop-academy-ignored{outline:none!important;box-shadow:none!important}.aop-academy-done{outline:3px solid #48a44d!important;outline-offset:1px}.aop-academy-missing{outline:3px solid #e0b500!important;outline-offset:1px}.aop-academy-insufficient{outline:3px solid #e97800!important;outline-offset:1px}.aop-academy-wrong{outline:3px solid #b63c34!important;outline-offset:1px}.research_box.aop-academy-done .research_icon{outline:3px solid #35a447!important;outline-offset:1px!important;box-shadow:0 0 7px #35a447!important}.research_box.aop-academy-missing .research_icon{outline:3px solid #e3bf00!important;outline-offset:1px!important;box-shadow:0 0 7px #e3bf00!important}.research_box.aop-academy-insufficient .research_icon{outline:3px solid #f07b00!important;outline-offset:1px!important;box-shadow:0 0 7px #f07b00!important}.research_box.aop-academy-wrong .research_icon{outline:3px solid #c83d32!important;outline-offset:1px!important;box-shadow:0 0 7px #c83d32!important}.research_box.aop-academy-ignored .research_icon{outline:none!important;box-shadow:none!important}.uti-academy-summary .uti-edit-template{display:block!important;width:100%!important;height:22px!important;min-height:22px!important;margin:0!important;padding:0 8px!important;box-sizing:border-box!important}.uti-academy-summary .uti-save-grid{width:100%!important;margin:0!important;padding:0!important;box-sizing:border-box!important}.uti-academy-summary .uti-save-column{min-width:0!important;margin:0!important;padding:0!important}.uti-academy-summary .uti-save-city,.uti-academy-summary .uti-save-group{display:block!important;width:100%!important;height:22px!important;min-height:22px!important;margin:0!important;padding:0 8px!important;box-sizing:border-box!important}.aop-template-edit .research_box{cursor:pointer}.aop-template-edit .research_box:hover{filter:brightness(1.15)}
+`;document.head.append(e);}
+  function button(){let b=document.getElementById(CFG.buttonId);if(!b){b=document.createElement('button');b.id=CFG.buttonId;b.type='button';b.addEventListener('click',()=>setOpen(!state.open));}b.textContent=t('academy');b.title=t('overview');b.setAttribute('aria-expanded',String(state.open));const a=document.getElementById('egeltools-tool-dock-actions');if(a&&b.parentElement!==a){const party=document.getElementById('egeltools-resource-checker-button');party?.parentElement===a?a.insertBefore(b,party.nextSibling):a.append(b);}return b;}
+  function drag(panel,handle){let d=null;handle.addEventListener('pointerdown',e=>{if(e.target.closest('button,select'))return;const r=panel.getBoundingClientRect();d={x:e.clientX-r.left,y:e.clientY-r.top};});document.addEventListener('pointermove',e=>{if(d){panel.style.left=`${Math.max(0,e.clientX-d.x)}px`;panel.style.top=`${Math.max(0,e.clientY-d.y)}px`;}});document.addEventListener('pointerup',()=>d=null);}
+  function overview(){let p=document.getElementById(CFG.overviewId);if(p)return p;p=document.createElement('section');p.id=CFG.overviewId;p.className='egeltools-academy-overview-window';p.hidden=true;p.dataset.egeltoolsActive='false';p.setAttribute('role','dialog');p.setAttribute('aria-modal','false');p.setAttribute('aria-labelledby','egeltools-academy-overview-title');p.innerHTML='<div class="ao-title egeltools-academy-overview__header"><select data-group></select><select data-sort><option value="group"></option><option value="town"></option></select><strong id="egeltools-academy-overview-title"></strong><button data-refresh></button><button data-close>×</button></div><div class="ao-legend"><span><i class="ao-dot ao-green"></i><b data-l-done></b></span><span><i class="ao-dot ao-yellow"></i><b data-l-missing></b></span><span><i class="ao-dot ao-red"></i><b data-l-wrong></b></span><span><i class="ao-dot ao-orange"></i><b data-l-insufficient></b></span><span><i class="ao-dot ao-gray"></i><b data-l-ignored></b></span><span><i class="ao-dot ao-black"></i><b data-l-unavailable></b></span></div><div class="ao-grid"></div>';p.querySelector('[data-close]').onclick=()=>setOpen(false);p.querySelector('[data-refresh]').onclick=render;p.querySelector('[data-group]').onchange=render;p.querySelector('[data-sort]').onchange=render;document.body.append(p);drag(p,p.querySelector('.ao-title'));translateOverview(p);return p;}
+  function translateOverview(p){p.querySelector('.ao-title strong').textContent=t('overview');p.querySelector('[data-refresh]').textContent=t('refresh');p.querySelector('[data-refresh]').title=t('refresh');p.querySelector('[data-close]').title=t('close');p.querySelector('[data-sort] option[value=group]').textContent=t('sortGroup');p.querySelector('[data-sort] option[value=town]').textContent=t('sortTown');p.querySelector('[data-l-done]').textContent=t('researched');p.querySelector('[data-l-missing]').textContent=t('missing');p.querySelector('[data-l-wrong]').textContent=t('wrong');p.querySelector('[data-l-insufficient]').textContent='Not enough resources/research points';p.querySelector('[data-l-ignored]').textContent=t('ignored');p.querySelector('[data-l-unavailable]').textContent=t('unavailable');}
+  function townResources(town){const out={wood:0,stone:0,iron:0};const readObject=obj=>{if(!obj)return;const a=obj.attributes||obj.toJSON?.()||obj||{};for(const k of Object.keys(out)){let v;try{v=typeof obj.get==='function'?obj.get(k):undefined;}catch(_){}if(v==null)v=a[k]??a['resources_'+k]??a['current_'+k];if(Number.isFinite(Number(v)))out[k]=Number(v);}};try{readObject(town?.getResources?.());}catch(_){}try{readObject(town?.resources?.());}catch(_){}try{readObject(town?.getResourcesModel?.());}catch(_){}try{const models=window.MM?.getModels?.()?.Town||{};const model=models[townId(town)]||Object.values(models).find(m=>townId(m)===townId(town));readObject(model?.getResources?.());readObject(model?.attributes?.resources);readObject(model?.attributes);}catch(_){}return out;}function researchPoints(town){let total=0;try{const b=town.getBuildings(),a=Number(b.getBuildingLevel('academy')||0),l=Number(b.getBuildingLevel('library')||0);total=a*Number(window.GameDataResearches?.getResearchPointsPerAcademyLevel?.()||4)+l*Number(window.GameDataResearches?.getResearchPointsPerLibraryLevel?.()||12);Object.entries(window.GameData?.researches||{}).forEach(([id,x])=>{if(researched(town,id))total-=Number(x.research_points||0);});}catch(_){}return total;}function researchQueued(town,id){try{const wantedTown=townId(town),wantedIds=new Set(researchAliases(id).map(String));const modelBucket=window.MM?.getModels?.()?.ResearchOrder||{};const collectionBucket=window.MM?.getCollections?.()?.ResearchOrder||[];const orders=[...Object.values(modelBucket),...collectionBucket.flatMap?.(collection=>collection?.models||[])||[]];return orders.some(order=>{let orderTown,orderType;try{orderTown=order?.getTownId?.();}catch(_){}try{orderType=order?.getType?.();}catch(_){}const a=attrs(order);if(orderTown==null)orderTown=a.town_id??a.townId;if(orderType==null)orderType=a.type??a.research??a.research_id;return String(orderTown)===wantedTown&&wantedIds.has(String(orderType));});}catch(error){console.debug('[EgelTools Academy] research queue lookup failed',error);return false;}}function showGrepolisResearchError(message){try{if(window.HumanMessage?.error){window.HumanMessage.error(message);return;}if(window.HumanMessage?.getInstance?.()?.error){window.HumanMessage.getInstance().error(message);return;}if(window.Layout?.showError){window.Layout.showError(message);return;}}catch(_){}alert(message);}function researchAction(town,id,revert){id=canonicalResearchId(id);if(!revert&&!canResearch(town,id)){const needed=academyRequirement(id),current=academyLevel(town),name=label(id);showGrepolisResearchError(`${name} requires Academy level ${needed}. Current level: ${current}.`);return;}if(!revert){const affordability=researchAffordability(town,id),missing=[];if(!affordability.enoughResources)missing.push('resources');if(!affordability.enoughPoints)missing.push('research points');if(missing.length){showGrepolisResearchError(`Not enough ${missing.join(' and ')} for ${label(id)}.`);return;}}const action=revert?'revert':'research';if(revert&&window.ConfirmationWindowFactory?.openConfirmationResettingResearch){window.ConfirmationWindowFactory.openConfirmationResettingResearch(()=>sendResearchAction(town,id,action));return;}sendResearchAction(town,id,action);}function sendResearchAction(town,id,action){try{gpAjax.ajaxPost('frontend_bridge','execute',{model_url:'ResearchOrder',action_name:action,arguments:{id},town_id:Number(townId(town))},true,{success:()=>setTimeout(render,250),error:()=>alert(t('actionFailed'))});}catch(_){alert(t('actionFailed'));}}function render(){const p=overview();translateOverview(p);const grid=p.querySelector('.ao-grid');try{const gs=groups(),filter=p.querySelector('[data-group]'),old=filter.value;filter.replaceChildren(new Option(t('allGroups'),'all'),new Option(t('noGroup'),'none'));[...gs].sort((a,b)=>a[1].localeCompare(b[1],lang())).forEach(([id,n])=>filter.add(new Option(n,id)));filter.value=[...filter.options].some(o=>o.value===old)?old:'all';const researchIds=ids(),list=towns().map(x=>({town:x,gid:groupId(townId(x))})).filter(x=>filter.value==='all'||x.gid===filter.value);const sort=p.querySelector('[data-sort]').value;if(sort==='group')list.sort((a,b)=>(gs.get(a.gid)||t('noGroup')).localeCompare(gs.get(b.gid)||t('noGroup'),lang())||townName(a.town).localeCompare(townName(b.town),lang(),{numeric:true}));else list.sort((a,b)=>townName(a.town).localeCompare(townName(b.town),lang(),{numeric:true}));const grid=p.querySelector('.ao-grid');if(!list.length||!researchIds.length){grid.textContent=t('noData');return;}const table=document.createElement('table');table.className='ao-table';const hr=document.createElement('tr'),first=document.createElement('th');first.className='ao-town';first.textContent=t('town');hr.append(first);researchIds.forEach(id=>{const th=document.createElement('th');th.className='ao-research-head';th.title=label(id);const icon=document.createElement('div');icon.className=`ao-research-icon research_icon research research40x40 ${window.GameDataResearches?.getResearchCssClass?.(id)||id}`;th.append(icon);hr.append(th);});const thead=document.createElement('thead');thead.append(hr);table.append(thead);const body=document.createElement('tbody');let lastGroup=null;list.forEach(row=>{const gname=gs.get(row.gid)||t('noGroup');if(sort==='group'&&gname!==lastGroup){const gr=document.createElement('tr'),labelCell=document.createElement('td'),rest=document.createElement('td');gr.className='ao-group-row';labelCell.className='ao-group-label';labelCell.textContent=gname;rest.colSpan=researchIds.length;gr.append(labelCell,rest);body.append(gr);lastGroup=gname;}const tr=document.createElement('tr'),name=document.createElement('td');name.className='ao-town';const rr=townResources(row.town),rp=researchPoints(row.town);name.innerHTML=`<a href="#" rel="${esc(townId(row.town))}" class="gp_town_link ao-town-link"><strong>${esc(townName(row.town))}</strong></a><br><small>${esc(gname)}</small><div class="ao-resources"><span class="ao-resource"><img class="ao-resource-icon" src="https://gpde.innogamescdn.com/images/game/res/wood.png">${rr.wood.toLocaleString()}</span><span class="ao-resource"><img class="ao-resource-icon" src="https://gpde.innogamescdn.com/images/game/res/stone.png">${rr.stone.toLocaleString()}</span><span class="ao-resource"><img class="ao-resource-icon" src="https://gpde.innogamescdn.com/images/game/res/iron.png">${rr.iron.toLocaleString()}</span><span class="ao-resource"><span class="grcrt_ao_ap ao-research-points"></span>${rp}</span></div>`;name.querySelector('.ao-town-link').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();openAcademyTown(row.town);},{capture:true});tr.append(name);researchIds.forEach(id=>{const s=status(row.town,id),td=document.createElement('td'),mark=document.createElement('div');td.className='ao-cell';mark.className=`ao-mark ${s==='done'?'ao-green':s==='missing'?'ao-yellow':s==='wrong'?'ao-red':s==='insufficient'?'ao-orange':s==='unavailable'?'ao-black':'ao-gray'}`;const queued=researchQueued(row.town,id);attachGrctResearchTooltip(mark,id,row.town);mark.style.cursor='pointer';mark.textContent=s==='unavailable'?'':queued?'✓':s==='done'||s==='wrong'?'−':'+';mark.onclick=()=>researchAction(row.town,id,s==='done'||s==='wrong');td.append(mark);tr.append(td);});body.append(tr);});table.append(body);grid.replaceChildren(table);}catch(error){console.error('[EgelTools Academy Overview] render failed',error);if(grid)grid.textContent='Academy overview could not be rendered. See console for details.';}}
+  const esc=x=>{const d=document.createElement('div');d.textContent=String(x);return d.innerHTML;};
+  function openAcademyTown(town){const id=townId(town),numeric=Number(id);try{if(typeof window.HelperTown?.townSwitch==='function'){window.HelperTown.townSwitch(Number.isFinite(numeric)?numeric:id);return true;}if(typeof window.HelperTown?.switchTown==='function'){window.HelperTown.switchTown(Number.isFinite(numeric)?numeric:id);return true;}if(typeof window.WMap?.mapJump==='function'){window.WMap.mapJump(town,true);return true;}if(typeof window.ITowns?.setCurrentTown==='function'){window.ITowns.setCurrentTown(id);return true;}}catch(error){console.debug('[EgelTools Academy] town switch failed',error);}return false;}function setOpen(v){state.open=v;const p=overview(),token=++state.overviewOpenToken;button();clearTimeout(state.overviewRefreshTimer);state.overviewRefreshTimer=null;if(v){p.hidden=true;const started=Date.now();const openWhenReady=()=>{if(!state.open||token!==state.overviewOpenToken)return;const townList=towns(),researchList=ids(),researchesReady=townList.length>0&&townList.every(town=>{try{return!!town?.getResearches?.();}catch(_){return false;}});if((townList.length&&researchList.length&&researchesReady)||Date.now()-started>=1200){render();p.hidden=false;p.dataset.egeltoolsActive='true';requestAnimationFrame(()=>{if(state.open&&token===state.overviewOpenToken)render();});return;}state.overviewRefreshTimer=setTimeout(openWhenReady,80);};state.overviewRefreshTimer=setTimeout(openWhenReady,120);}else{p.hidden=true;p.dataset.egeltoolsActive='false';}}
+  function roots(){const found=new Set();document.querySelectorAll('.tech_tree_box.js-tech-tree,.js-tech-tree,.tech_tree_box').forEach(tree=>{const content=tree.closest('.window_content,.js-window-content');const host=tree.closest('.classic_window,.js-window-main-container')||content?.parentElement;if(host&&host.isConnected&&(host.classList.contains('academy')||content?.querySelector('.academy_image')))found.add(host);});return[...found];}
+  function paint(root){const town=currentTown();if(!town)return;const editing=root?.classList?.contains('aop-template-edit'),editSet=root?._aopEditSelected instanceof Set?root._aopEditSelected:null;root.querySelectorAll('.research_icon.research').forEach(icon=>{const id=canonicalResearchId(researchIdFromNode(icon));if(!id)return;const box=icon.closest('.research_box')||icon;box.dataset.researchId=id;box.classList.remove('aop-academy-done','aop-academy-missing','aop-academy-wrong','aop-academy-ignored','aop-academy-unavailable','aop-academy-insufficient');if(editing){const on=editSet?editSet.has(id):box.dataset.aopSelected==='1';box.dataset.aopSelected=on?'1':'0';const done=researched(town,id)||researchQueued(town,id);box.classList.add(on?(done?'aop-academy-done':'aop-academy-missing'):(done?'aop-academy-wrong':'aop-academy-ignored'));return;}box.classList.add(`aop-academy-${status(town,id)}`);});}
+  function selected(root){return[...root.querySelectorAll('.research_box[data-aop-selected="1"]')].map(x=>canonicalResearchId(x.dataset.researchId)).filter(Boolean);}function selectedWithResearched(root,town){const set=new Set(selected(root));ids(root).forEach(id=>{if(researched(town,id))set.add(id);});return[...set];}
+  function seed(root,type,key){const d=load(),set=new Set(((type==='city'?d.cities[key]?.researches:d.groups[key]?.researches)||[]).map(canonicalResearchId).filter(Boolean)),town=currentTown();root._aopEditSelected=set;root.querySelectorAll('.research_box[data-research-id]').forEach(box=>{const on=set.has(canonicalResearchId(box.dataset.researchId));box.dataset.aopSelected=on?'1':'0';const done=researched(town,box.dataset.researchId);box.classList.remove('aop-academy-done','aop-academy-missing','aop-academy-wrong','aop-academy-ignored');box.classList.add(on?(done?'aop-academy-done':'aop-academy-missing'):(done?'aop-academy-wrong':'aop-academy-ignored'));});}
+  function positionEditor(panel,host){
+    if(!panel?.isConnected||!host?.isConnected)return;
+    if(getComputedStyle(host).position==='static')host.style.position='relative';
+    host.style.setProperty('overflow','visible','important');
+    const r=host.getBoundingClientRect(),rightSpace=innerWidth-r.right;
+    panel.dataset.side=rightSpace>=390||rightSpace>=r.left?'right':'left';
+    panel.style.display='flex';panel.style.top='38px';panel.style.left='';panel.style.right='';panel.style.flexDirection='';
+    const win=panel.querySelector('.uti-recruitment-summary-window');
+    if(win){win.style.maxHeight=Math.max(220,Math.floor(r.height))+'px';win.style.removeProperty('display');win.style.flexDirection='column';}
+  }
+  function populateAcademyGroupSelect(select,town){
+    const r=recruitTargets(),selected=groupId(townId(town));
+    select.replaceChildren(new Option('No group','none'));
+    const grepo=document.createElement('optgroup');grepo.label='Grepolis city groups';
+    [...groups()].filter(([key])=>key.startsWith('grepo:')).forEach(([key,name])=>grepo.append(new Option(name,key)));
+    select.append(grepo);
+    const customs=[...groups()].filter(([key])=>key.startsWith('custom:'));
+    if(customs.length){const custom=document.createElement('optgroup');custom.label='Custom groups';customs.forEach(([key,name])=>custom.append(new Option(name,key)));select.append(custom);}
+    select.value=[...select.options].some(o=>o.value===selected)?selected:'none';
+  }
+  function editor(root){
+    const host=root,town=currentTown();if(!host||!town)return;
+    document.querySelectorAll('.uti-academy-summary').forEach(p=>{if(p.parentElement!==host){p._academyResearchObserver?.disconnect?.();p.remove();}});
+    let panel=host.querySelector(':scope > .uti-academy-summary');if(panel){positionEditor(panel,host);requestAnimationFrame(()=>requestAnimationFrame(()=>{if(panel.isConnected)panel.dataset.ready='true';}));return panel;}
+    panel=document.createElement('aside');panel.id='uti-recruitment-summary-academy';panel.className='uti-recruitment-summary uti-academy-summary';panel.dataset.ready='false';panel.dataset.collapsed=localStorage.getItem('uti_recruitment_summary_collapsed_academy')==='1'?'true':'false';
+    panel.innerHTML='<button class="uti-recruitment-summary-toggle" type="button" aria-expanded="true"><span class="uti-toggle-label">Academy</span></button><div class="uti-recruitment-summary-window"><div class="uti-summary-header"><div class="uti-summary-title">Academy: Research template</div></div><div class="uti-academy-body"><div class="uti-custom-group-row"><select class="uti-target-group-select"></select><button type="button" class="uti-side-save uti-create-custom-group" title="Create custom group">+</button><button type="button" class="uti-side-save uti-delete-custom-group" title="Delete custom group">−</button><button type="button" class="uti-side-save uti-reset-city-group" title="Reset city">Reset</button></div><button type="button" class="uti-side-save uti-edit-template">Edit Template</button><div class="uti-save-grid"><div class="uti-save-column"><button type="button" class="uti-side-save uti-save-city">Save City</button></div><div class="uti-save-column"><button type="button" class="uti-side-save uti-save-group">Save Group</button></div></div></div></div>';
+    host.appendChild(panel);populateAcademyGroupSelect(panel.querySelector('.uti-target-group-select'),town);panel.querySelector('.uti-edit-template').textContent='Edit Template';paint(host);
+    const toggle=panel.querySelector('.uti-recruitment-summary-toggle');const sync=()=>toggle.setAttribute('aria-expanded',String(panel.dataset.collapsed!=='true'));sync();toggle.onclick=e=>{e.preventDefault();e.stopPropagation();panel.dataset.collapsed=String(panel.dataset.collapsed!=='true');localStorage.setItem('uti_recruitment_summary_collapsed_academy',panel.dataset.collapsed==='true'?'1':'0');sync();};
+    const select=panel.querySelector('.uti-target-group-select');select.onchange=()=>{const activeTown=currentTown()||town,id=townId(activeTown),selected=String(select.value||'none');const targets=recruitTargets();targets.cityTargetGroups||={};targets.cityTargetGroups[id]=selected;if(selected.startsWith('custom:')){targets.cityCustomGroups||={};targets.cityCustomGroups[id]=selected.slice(7);}else if(targets.cityCustomGroups){delete targets.cityCustomGroups[id];}saveRecruitTargets(targets);const d=load();d.cityGroups[id]=selected;if(selected!=='none')delete d.cities[id];save(d);paint(host);requestAnimationFrame(()=>{populateAcademyGroupSelect(select,activeTown);paint(host);});};
+    panel.querySelector('.uti-create-custom-group').onclick=()=>{const key=createAcademyGroup();if(key){populateAcademyGroupSelect(select,town);select.value=key;select.dispatchEvent(new Event('change'));}};
+    panel.querySelector('.uti-delete-custom-group').onclick=()=>{if(deleteAcademyGroup(select.value)){const d=load(),id=townId(town);d.cityGroups[id]='none';save(d);populateAcademyGroupSelect(select,town);paint(host);}};
+    panel.querySelector('.uti-reset-city-group').onclick=()=>{const activeTown=currentTown()||town,id=townId(activeTown),targets=recruitTargets();targets.cityTargetGroups||={};delete targets.cityTargetGroups[id];if(targets.cityCustomGroups)delete targets.cityCustomGroups[id];saveRecruitTargets(targets);const d=load();delete d.cities[id];delete d.cityGroups[id];save(d);populateAcademyGroupSelect(select,activeTown);paint(host);};
+    let editing=false;
+    const editButton=panel.querySelector('.uti-edit-template');
+    editButton.onclick=()=>{
+      const id=townId(town),groupKey=select.value;
+      if(!editing){
+        editing=true;host.classList.add('aop-template-edit');
+        seed(host,groupKey==='none'?'city':'group',groupKey==='none'?id:groupKey);
+        editButton.textContent='Finish editing';
+        return;
+      }
+      const chosen=host._aopEditSelected instanceof Set?[...host._aopEditSelected]:selected(host);
+      if(groupKey==='none'){
+        const d=load();d.cities[id]={name:townName(town),researches:chosen,savedAt:Date.now()};save(d);
+      }else{
+        const d=load();d.cityGroups[id]=groupKey;save(d);saveSharedGroupTemplate(groupKey,chosen,groups().get(groupKey)||groupKey);
+      }
+      editing=false;host.classList.remove('aop-template-edit');delete host._aopEditSelected;editButton.textContent='Edit Template';paint(host);
+    };
+    host.addEventListener('click',event=>{
+      if(!editing)return;
+      const box=event.target instanceof Element?event.target.closest('.research_box'):null;
+      if(!box||!host.contains(box)||panel.contains(box))return;
+      event.preventDefault();event.stopPropagation();
+      const icon=box.querySelector('.research_icon.research');const id=canonicalResearchId(box.dataset.researchId||researchIdFromNode(icon));if(!id)return;
+      box.dataset.researchId=id;const on=!(host._aopEditSelected instanceof Set?host._aopEditSelected.has(id):box.dataset.aopSelected==='1');if(!(host._aopEditSelected instanceof Set))host._aopEditSelected=new Set(selected(host));if(on)host._aopEditSelected.add(id);else host._aopEditSelected.delete(id);box.dataset.aopSelected=on?'1':'0';
+      const done=researched(town,id);box.classList.remove('aop-academy-done','aop-academy-missing','aop-academy-wrong','aop-academy-ignored','aop-academy-unavailable');box.classList.add(on?(done?'aop-academy-done':'aop-academy-missing'):(done?'aop-academy-wrong':'aop-academy-ignored'));
+    },true);
+    panel.querySelector('.uti-save-city').onclick=()=>{const activeTown=currentTown()||town,d=load(),id=townId(activeTown);d.cities[id]={name:townName(activeTown),researches:selectedWithResearched(host,activeTown),savedAt:Date.now()};save(d);paint(host);};
+    panel.querySelector('.uti-save-group').onclick=()=>{if(select.value==='none')return;const activeTown=currentTown()||town,d=load(),id=townId(activeTown);d.cityGroups[id]=select.value;save(d);saveSharedGroupTemplate(select.value,selectedWithResearched(host,activeTown),groups().get(select.value)||select.value);paint(host);};
+    positionEditor(panel,host);requestAnimationFrame(()=>requestAnimationFrame(()=>{if(panel.isConnected)panel.dataset.ready='true';}));return panel;
+  }
+  function refresh(){const all=roots(),visible=all.filter(h=>{const r=h.getBoundingClientRect(),cs=getComputedStyle(h);return cs.display!=='none'&&cs.visibility!=='hidden'&&r.width>0&&r.height>0;}),host=visible.at(-1)||all.at(-1);document.querySelectorAll('.uti-academy-summary').forEach(p=>{if(!host||p.parentElement!==host)p.remove();});if(host){const panel=editor(host),town=currentTown();if(panel&&town&&!host.classList.contains('aop-template-edit'))populateAcademyGroupSelect(panel.querySelector('.uti-target-group-select'),town);paint(host);requestAnimationFrame(()=>{if(host.isConnected){const activeTown=currentTown(),activePanel=host.querySelector(':scope > .uti-academy-summary');if(activePanel&&activeTown&&!host.classList.contains('aop-template-edit'))populateAcademyGroupSelect(activePanel.querySelector('.uti-target-group-select'),activeTown);paint(host);}});}}
+  function init(){
+    styles();button();overview();refresh();
+    new MutationObserver(mutations=>{const relevant=mutations.some(m=>[...m.addedNodes,...m.removedNodes].some(n=>n instanceof Element&&!n.closest?.('.uti-academy-summary')&&(n.matches?.('.classic_window.academy,.js-tech-tree,.tech_tree_box,.research_box,.research_icon')||n.querySelector?.('.classic_window.academy,.js-tech-tree,.tech_tree_box,.research_box,.research_icon'))));if(!relevant)return;requestAnimationFrame(refresh);clearTimeout(state.timer);state.timer=setTimeout(refresh,160);}).observe(document.body,{childList:true,subtree:true});
+    window.addEventListener('egeltools:academy-templates-changed',()=>{refresh();setTimeout(refresh,160);if(state.open)render();});
+    window.EgelToolsAcademyPlanner={open:()=>setOpen(true),close:()=>setOpen(false),refresh:()=>{refresh();if(state.open)render();},data:load,status:()=>({academyWindows:roots().length,academyPanels:document.querySelectorAll('.uti-academy-summary').length})};
+  }
+  document.readyState==='loading'?document.addEventListener('DOMContentLoaded',init,{once:true}):init();
 })();

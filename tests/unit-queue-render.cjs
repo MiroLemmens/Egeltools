@@ -13,7 +13,7 @@ const context = vm.createContext({
   console,
 });
 vm.runInContext('let unitQueueList = [];', context);
-vm.runInContext(extract('getQueuedUnits', 'getRecruitmentUnitId'), context);
+vm.runInContext(extract('getQueuedUnits', 'refreshUnitQueue'), context);
 vm.runInContext(extract('refreshUnitQueue', 'makePanelDraggable'), context);
 vm.runInContext(extract('renderUnitQueueWindow', 'createUnitQueueWindow'), context);
 vm.runInContext('renderUnitQueueWindow()', context);
