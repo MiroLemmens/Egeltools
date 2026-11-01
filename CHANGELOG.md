@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.114 — 2026-11-01
+
+- The **Academy** overview now colours every research your template still requires yellow, not only the ones the town cannot start yet. A required research the town can start right now is plain yellow; one it cannot start yet (too few resources, research points or academy levels) is the darker, shaded yellow. Red now only marks researches outside the template.
+
 ## 1.2.113 — 2026-11-01
 
 - The **Academy** overview's research icons now fit their header cells: each icon is a framed square centred above its column, instead of a shrunken icon that could sit off-centre or be cut off at the edges.

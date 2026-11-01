@@ -87,7 +87,7 @@ assert.equal(cell(2, 'r0'), 'missing', 'town template when the town is assigned 
 assert.equal(cell(3, 'r4'), 'done', 'a queued research counts as done');
 assert.equal(cell(3, 'booty'), 'done', 'a queued research alias counts as done');
 const mark = (townId, id) => context.batch(() => context.markClass(towns[townId], id, context.status(towns[townId], id)));
-assert.equal(mark(6, 'r1'), 'ao-red', 'an affordable required research is red until it is researched');
+assert.equal(mark(6, 'r1'), 'ao-yellow', 'an affordable required research is yellow until it is researched');
 assert.equal(mark(6, 'r5'), 'ao-red', 'a research outside the template that is not researched is red');
 assert.equal(mark(4, 'r1'), 'ao-yellow', 'a required research the town cannot afford is yellow');
 assert.equal(mark(4, 'r6'), 'ao-red', 'a research outside the template the town cannot afford is red');
