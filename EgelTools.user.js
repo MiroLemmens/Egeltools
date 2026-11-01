@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.105
+// @version      1.2.106
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.105',
+    version: '1.2.106',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -3499,6 +3499,16 @@
     return dock;
   }
 
+  // Administrator's buttons can return after the Academy button is already
+  // docked, so each button takes its fixed slot instead of the end.
+  const TOOL_DOCK_BUTTON_ORDER = Object.freeze([
+    'egeltools-trade-overview-button',
+    CELEBRATION_FINDER.floatingButtonId,
+    TOWN_DISTANCE_SORTER.floatingButtonId,
+    RESOURCE_CHECKER.floatingButtonId,
+    'egeltools-academy-overview-button',
+  ]);
+
   function mountToolDockButton(button) {
     const actions = createToolDock().querySelector(`#${APP.toolDockActionsId}`);
     button.style.setProperty('display', 'inline-flex', 'important');
@@ -3508,7 +3518,13 @@
     button.style.setProperty('z-index', 'auto', 'important');
     button.style.setProperty('visibility', 'visible', 'important');
     button.style.setProperty('opacity', '1', 'important');
-    if (actions && button.parentElement !== actions) actions.append(button);
+    if (actions && button.parentElement !== actions) {
+      const slot = TOOL_DOCK_BUTTON_ORDER.indexOf(button.id);
+      const nextButton = slot === -1 ? null : [...actions.children].find((sibling) => (
+        TOOL_DOCK_BUTTON_ORDER.indexOf(sibling.id) > slot
+      ));
+      actions.insertBefore(button, nextButton || null);
+    }
     window.requestAnimationFrame(positionToolDock);
     return button;
   }

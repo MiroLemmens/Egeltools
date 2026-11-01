@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.106 — 2026-11-01
+
+- Fix the dock buttons changing order: **Incoming trades**, **Show CFs**, **Trade times**, **Party trades** and **Academy** now always appear in that order. Since 1.2.98, **Show CFs**, **Trade times** and **Party trades** moved behind **Academy** when Administrator was renewed during play or became active after the game loaded.
+
 ## 1.2.105 — 2026-11-01
 
 - **Trade times** now show twice the previous travel time, and **Party trades** use the same doubled times when judging whether a suggested trade arrives in time.
