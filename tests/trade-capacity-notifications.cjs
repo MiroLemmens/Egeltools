@@ -11,10 +11,8 @@ let selected;
 const towns = { 1: { name: 'Alpha', stock: { wood: 9000, stone: 0, iron: 0 } }, 2: { name: 'Beta', stock: { wood: 9000, stone: 0, iron: 0 } } };
 const context = vm.createContext({
   Map, Set, console,
-  updateNotificationResources: () => {},
-  notifications: new Map(),
-  notify: notice => context.notifications.set(notice.key, notice),
-  removeNotification: key => context.notifications.delete(key),
+  document: { getElementById: () => null },
+  RESOURCE_NAMES: { wood: 'Wood', stone: 'Stone', iron: 'Iron' },
   getCurrentTownId: () => selected,
   TRADE_CAPACITY_MARKER: { resources: new Set(['wood', 'stone', 'iron']), maximumOverfillForAfterMarker: 2000 },
   getResourceCheckerServerTime: () => now,
@@ -28,6 +26,10 @@ vm.runInContext(source.slice(start, end), context);
 const readLiveArrivals = context.getTradeCapacityArrivals;
 context.getTradeCapacityArrivals = () => arrivals;
 context.playTradeCapacitySound = () => { sounds++; };
+let opened = 0;
+context.setTradeOverviewOpen = () => { opened++; vm.runInContext('tradeOverviewOpen = true', context); };
+context.renderTradeOverview = () => {};
+const hasNotice = townId => vm.runInContext(`tradeCapacityNotices.has("${townId}")`, context);
 const trade = (id, arrivalAt, wood, townId = '1') => ({ id, townId, arrivalAt, resources: { wood, stone: 0, iron: 0 } });
 const tick = () => vm.runInContext('checkTradeCapacityArrivals()', context);
 const boundary = (trades, stock = towns[1].stock) => context.getTradeCapacityBoundary(stock, 10000, trades);
@@ -43,25 +45,21 @@ arrivals.delete('a');
 towns[1].stock.wood = 10000;
 tick();
 assert.equal(sounds, 1, 'Alert when the marked shipment arrives');
-assert.equal(context.notifications.size, 1, 'Warehouse alert uses the shared inbox');
-assert.equal(context.notifications.get('warehouse:1').message, 'Warehouse reached the red line.');
-assert.equal(context.notifications.get('warehouse:1').warehouse.stock.wood, 10000);
-assert.equal(context.notifications.get('warehouse:1').warehouse.incoming.wood, 100);
-assert.equal(context.notifications.get('warehouse:1').warehouse.resource, 'wood');
-assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), true);
-context.notifications.get('warehouse:1').action();
+assert.equal(opened, 1, 'A new alarm opens the Incoming trades window');
+assert.equal(hasNotice('1'), true);
+assert.equal(vm.runInContext('tradeCapacityNotices.get("1").resource', context), 'wood');
+const alarmRow = context.getTradeOverviewRows(arrivals, now).find(row => row.townId === '1');
+assert.equal(alarmRow.stock.wood, 10000, 'The alarm row shows live warehouse stock');
+assert.equal(alarmRow.incoming.wood, 100);
+context.selectTradeCapacityTown('1');
 assert.equal(selected, '1');
 assert.equal(sounds, 2, 'Selecting the alerted town plays the alarm');
 now = 111;
 tick();
 assert.equal(sounds, 2, 'Repeated polling does not repeat sound');
-const originalNotice = context.notifications.get('warehouse:1');
-context.notifications.delete('warehouse:1');
-tick();
-assert.equal(context.notifications.has('warehouse:1'), false, 'An inbox entry evicted by the history limit must not resurface every tick');
-context.notifications.set('warehouse:1', originalNotice);
-context.notifications.get('warehouse:1').onDismiss();
-assert.equal(context.notifications.size, 0, 'Inbox dismissal clears the warehouse alarm');
+assert.equal(opened, 1, 'An open window is not reopened by polling');
+context.acknowledgeTradeCapacityNotice('1');
+assert.equal(hasNotice('1'), false, 'Dismiss alarm clears the warehouse alarm');
 tick();
 assert.equal(vm.runInContext('tradeCapacityNotices.size', context), 0, 'Dismissed alarms stay dismissed');
 now = 200;
@@ -73,8 +71,10 @@ arrivals.delete('c'); arrivals.delete('e');
 towns[1].stock.wood = 9500; towns[2].stock.wood = 10000;
 tick();
 assert.equal(sounds, 3, 'Simultaneous town alerts play one chime');
-assert.equal(context.notifications.size, 2, 'Both town alerts appear in the shared inbox');
-assert.equal(context.notifications.has('warehouse:2'), true, 'Keep the alarm after the final shipment');
+const alarmRows = context.getTradeOverviewRows(arrivals, now);
+assert.equal(alarmRows.length, 2, 'Keep all alarms in the tracker, even after the final shipment');
+assert.equal(alarmRows.find(row => row.townId === '2').count, 0);
+assert.equal(alarmRows.find(row => row.townId === '2').nextArrivalAt, null);
 now = 300;
 towns[1].stock.wood = 9000;
 arrivals = new Map([['cancel', trade('cancel', 310, 1000)]]);
@@ -111,7 +111,6 @@ assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), true, 'S
 now = 671; tick();
 assert.equal(vm.runInContext('tradeCapacityNotices.has("1")', context), false, 'Alarm for a town that never filled expires');
 vm.runInContext('tradeCapacityNotices.clear()', context);
-context.notifications.clear();
 
 // A single shipment that overfills by more than 2,000 has no predecessor:
 // alert when it lands instead of staying silent.
@@ -121,23 +120,23 @@ tick();
 assert.equal(sounds, 0, 'No alert before the overfilling shipment lands');
 now = 810; arrivals.clear(); tick();
 assert.equal(sounds, 1, 'An overfilling first shipment alerts when it lands');
-assert.equal(context.notifications.has('warehouse:1'), true);
+assert.equal(hasNotice('1'), true);
 
 // A line before the next delivery stays alarmed while the warehouse still has room.
-vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+vm.runInContext('tradeCapacityNotices.clear()', context);
 now = 900; towns[1].stock.wood = 5000; sounds = 0;
 arrivals = new Map([['first', trade('first', 910, 1000)], ['second', trade('second', 950, 7000)]]);
 tick();
 now = 910; arrivals.delete('first'); towns[1].stock.wood = 6000; tick();
 assert.equal(sounds, 1, 'Predecessor of an overfilling shipment alerts');
 now = 940; tick();
-assert.equal(context.notifications.has('warehouse:1'), true, 'The alarm survives while the next shipment would overfill');
+assert.equal(hasNotice('1'), true, 'The alarm survives while the next shipment would overfill');
 now = 950; arrivals.clear(); towns[1].stock.wood = 10000; tick();
 assert.equal(sounds, 1, 'The overfilling shipment does not chime an already alarmed town again');
-assert.equal(context.notifications.has('warehouse:1'), true);
+assert.equal(hasNotice('1'), true);
 
 // Grepolis can drop the trade model a moment before the arrival tick.
-vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+vm.runInContext('tradeCapacityNotices.clear()', context);
 now = 1000; towns[1].stock.wood = 9000; sounds = 0;
 arrivals = new Map([['early', trade('early', 1010, 1000)], ['next', trade('next', 1100, 100)]]);
 tick();
@@ -147,12 +146,12 @@ now = 1010; tick();
 assert.equal(sounds, 1, 'A model removed just before arrival still counts as delivered');
 
 // Already full warehouses are left to the selection alert, not re-chimed per delivery.
-vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+vm.runInContext('tradeCapacityNotices.clear()', context);
 now = 1200; towns[1].stock.wood = 10000; sounds = 0;
 arrivals = new Map([['full', trade('full', 1210, 1000)]]);
 tick(); now = 1210; arrivals.clear(); tick();
 assert.equal(sounds, 0, 'A delivery into an already full, dismissed warehouse does not re-alert');
-vm.runInContext('tradeCapacityNotices.clear()', context); context.notifications.clear();
+vm.runInContext('tradeCapacityNotices.clear()', context);
 console.log('Overfill, lagging stock and early-removal checks passed');
 
 const atLine = (trades, townId = '1') => context.isTradeCapacityTownAtLine(townId,
@@ -188,6 +187,31 @@ assert.equal(boundary(summed).index, 1, 'Ignore the smaller resource overflowing
 assert.equal(context.getDominantIncomingResource([]).resource, null);
 console.log('Trade selection and dominant-resource checks passed');
 
+const units = {
+  slinger: { name: 'Slinger', resources: { wood: 55, stone: 100, iron: 40 } },
+  sword: { name: 'Swordsman', resources: { wood: 95, stone: 0, iron: 85 } },
+};
+assert.equal(context.getTradeRatioUnits({ wood: 5500, stone: 10000, iron: 4000 }, units)[0].id, 'slinger');
+assert.equal(context.getTradeRatioUnits({ wood: 282, stone: 513, iron: 205 }, units)[0].id, 'slinger', 'Allow rounded trade loads');
+assert.equal(context.getTradeRatioUnits({ wood: 950, stone: 0, iron: 850 }, units)[0].id, 'sword');
+assert.equal(context.getTradeRatioUnits({ wood: 950, stone: 10, iron: 850 }, units).length, 0, 'Do not match a zero-cost resource carrying a shipment');
+assert.equal(context.getTradeRatioUnits({ wood: 1000, stone: 1000, iron: 1000 }, units).length, 0, 'Unknown ratios stay custom');
+assert.equal(context.getTradeRatioUnits({ wood: 0, stone: 0, iron: 0 }, units).length, 0);
+vm.runInContext('tradeCapacityNotices.clear()', context);
+const overview = context.getTradeOverviewRows(new Map([
+  ['a', trade('a', 410, 1000)], ['b', trade('b', 405, 2000)],
+  ['c', trade('c', 403, 500, '2')], ['past', trade('past', 399, 1000)],
+]), 400);
+assert.equal(overview.length, 2);
+assert.equal(overview[0].townId, '2', 'Soonest arrival sorts first');
+assert.equal(overview[1].nextArrivalAt, 405);
+assert.equal(overview[1].count, 2);
+assert.equal(overview[1].total, 3000);
+assert.equal(overview[1].incoming.wood, 3000);
+assert.equal(context.formatTradeArrivalTime(406, 400), '0:00:06');
+assert.equal(context.formatTradeArrivalTime(null, 400), 'No incoming trades');
+console.log('Trade overview checks passed');
+
 // Reproduce the live Grepolis predicate: isReturning() is true for inbound
 // deliveries to the selected town, despite its misleading name.
 context.getModelAttributes = model => model.attributes;
@@ -212,4 +236,8 @@ context.getResourceTradeModels = () => [
 ];
 const liveArrivals = readLiveArrivals();
 assert.equal(liveArrivals.size, 14, 'Count all 14 incoming deliveries, deduplicate, and ignore empty/explicit returns');
+context.getFirstMethodValue = town => town.name;
+const liveRows = context.getTradeOverviewRows(liveArrivals, 400);
+assert.equal(liveRows[0].count, 14);
+assert.equal(liveRows[0].total, 157500);
 console.log('Live Grepolis incoming-trade regression passed');
