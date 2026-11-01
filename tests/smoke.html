@@ -568,17 +568,6 @@
     </script>
     <script src="../EgelTools.user.js?v=1.2.27"></script>
     <script>
-      const getNotificationMessages = () => {
-        const button = document.getElementById('egeltools-notifications-button');
-        const wasOpen = button.getAttribute('aria-expanded') === 'true';
-        if (!wasOpen) button.click();
-        const messages = [...document.querySelectorAll('.egeltools-notification')].map(row => ({
-          type: row.classList.contains('egeltools-notification--error') ? 'error' : 'success',
-          message: row.querySelector('p')?.textContent || '',
-        }));
-        if (!wasOpen) button.click();
-        return messages;
-      };
       window.addEventListener('load', async () => {
         const waitFor = async (condition, timeout = 2000) => {
           const started = Date.now();
@@ -911,7 +900,7 @@
         );
         console.assert(
           window.__townGroupChanges.length === 0
-            && getNotificationMessages().some(({ type, message }) => (
+            && window.__humanMessages.some(({ type, message }) => (
               type === 'success' && message.includes('another script interrupted')
             )),
           'A timed-out silver response should be reported without changing groups or leaving the action stuck',
@@ -1958,7 +1947,7 @@
         bulkButtons.party.click();
         console.assert(
           window.__celebrationRequests.length === 0
-            && getNotificationMessages().some(({ type, message }) => (
+            && window.__humanMessages.some(({ type, message }) => (
               type === 'error' && message.includes('Select “All towns”')
             )),
           'A selected town group should show a red warning and block the bulk celebration request',

@@ -2,6 +2,13 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.97 — 2026-11-01
+
+- Remove the Notifications inbox, its dock button, preview popup, and styles.
+- Bring back the **Incoming trades** dock button and window: every owned town receiving loaded trades, with live warehouse stock and capacity, next-arrival countdown, shipment count, incoming totals per resource, and unit-ratio icons. Town names switch to that town, and the window can be dragged by its header.
+- Warehouse alarms live in Incoming trades again. A new alarm chimes and opens the window; alarm towns show a red card with **Dismiss alarm**, and the dock button shows the alarm count. Red-line rules (dominant resource, 60-second grace, alerts one shipment early) are unchanged.
+- Action results and failed or unconfirmed party trades appear in the game's status bar again. Incoming attack and farming alarms keep their sounds and controls without an inbox entry.
+
 ## 1.2.96 — 2026-10-28
 
 - Fix Town distances staying on its loading message and Party trades misbehaving whenever a trade-locked town gained resources. A stray notification call from 1.2.83 replaced the trade lock bookkeeping, so updating a lock threw an error that stopped the distance list, Party trades donor checks, and the once-a-second refresh of trade markers and advisor tools. Raised lock peaks are saved again, so locks also release correctly after a major spend.
