@@ -2,9 +2,14 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
-## 1.2.104 — 2026-11-01
+## 1.2.105 — 2026-11-01
 
 - **Settings** is more compact: its eleven sections are merged into five. **Attacks** holds the incoming-attack alarm, its alarm sound and the non-cancellable movements filter. **Culture** holds Olympic Games, Show Orpheus and both Party trades options. **Trade & resources** holds recruitment needs in the trade window, the Trade times capacity and the Store silver amounts. **Notifications** and **Recruit Optimizer backup** stay as they were. Every option keeps its saved value, and hovering an option shows its longer explanation.
+
+## 1.2.104 — 2026-11-01
+
+- The **Academy** overview scrolls inside its window in both directions, so every town and research column is reachable at any window size. The group and sort pickers, the colour legend and each town's resources wrap onto extra lines instead of being cut off when the window is narrow.
+- The **Academy** dock button now has the same shape, hover and open state as the other EgelTools dock buttons. The overview's pickers and the Academy window's side panel use the EgelTools button colours: green for **Save City** and **Save Group**, cream for **Edit Template**, **Reset** and the **+**/**−** group buttons.
 
 ## 1.2.103 — 2026-11-01
 
