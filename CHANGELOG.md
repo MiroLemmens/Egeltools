@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.101 — 2026-11-01
+
+- **Settings** is more compact: its eleven sections are merged into five. **Attacks** holds the incoming-attack alarm, its alarm sound and the non-cancellable movements filter. **Culture** holds Olympic Games, Show Orpheus and both Party trades options. **Trade & resources** holds recruitment needs in the trade window, the Trade times capacity and the Store silver amounts. **Notifications** and **Recruit Optimizer backup** stay as they were. Every option keeps its saved value, and hovering an option shows its longer explanation.
+
 ## 1.2.99 — 2026-11-01
 
 - The **Academy** overview now opens in a regular Grepolis window, like the **Recruitment Simulator**: native frame and title bar, with **↻** (refresh) and close buttons at the top right. Drag it by the title bar and resize it from the bottom-right corner, and it comes to the front over other game windows when clicked. The group and sort pickers sit above the colour legend.
