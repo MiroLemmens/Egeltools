@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.100 — 2026-11-01
+
+- The **Academy** overview scrolls inside its window in both directions, so every town and research column is reachable at any window size. The group and sort pickers, the colour legend and each town's resources wrap onto extra lines instead of being cut off when the window is narrow.
+- The **Academy** dock button now has the same shape, hover and open state as the other EgelTools dock buttons. The overview's pickers and the Academy window's side panel use the EgelTools button colours: green for **Save City** and **Save Group**, cream for **Edit Template**, **Reset** and the **+**/**−** group buttons.
+
 ## 1.2.99 — 2026-11-01
 
 - The **Academy** overview now opens in a regular Grepolis window, like the **Recruitment Simulator**: native frame and title bar, with **↻** (refresh) and close buttons at the top right. Drag it by the title bar and resize it from the bottom-right corner, and it comes to the front over other game windows when clicked. The group and sort pickers sit above the colour legend.
