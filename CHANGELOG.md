@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.99 — 2026-11-01
+
+- The **Academy** overview now opens in a regular Grepolis window, like the **Recruitment Simulator**: native frame and title bar, with **↻** (refresh) and close buttons at the top right. Drag it by the title bar and resize it from the bottom-right corner, and it comes to the front over other game windows when clicked. The group and sort pickers sit above the colour legend.
+
 ## 1.2.98 — 2026-11-01
 
 Ports features from the EgelTools_Angepasst fork (based on 1.2.42), translated to English.
