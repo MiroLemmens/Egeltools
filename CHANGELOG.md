@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.116 — 2026-11-01
+
+- The **Academy** overview now opens big enough to show every research column at once, plus about fifteen towns, instead of a small window you had to scroll sideways in. On smaller screens it fills the screen. You can still resize it yourself.
+
 ## 1.2.115 — 2026-11-01
 
 - Fix the **Academy** overview cutting off the edges of the research icons in its header. Each icon is now shown whole, slightly smaller, with a thin frame around it, and the research columns are a little wider to make room.
