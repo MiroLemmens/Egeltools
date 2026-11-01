@@ -11,10 +11,12 @@ The publisher reads the committed userscript (`EgelTools.user.js` or the legacy 
 
 ## Publish a release
 
-1. For userscript changes, bump `@version` and `APP.version` together and add notes to `CHANGELOG.md`.
+1. For userscript changes, bump `@version` and `APP.version` together and add readable, player-facing notes to `CHANGELOG.md` (see `.claude/skills/release-changelog/SKILL.md`).
 2. Run relevant checks and merge the change through a pull request into `dev`.
 3. The Action publishes the merged branch automatically. Check its result and the public download.
 4. For an explicit deployment or retry, run `scripts/deploy.sh dev` (or `main`). This publishes the latest remote branch head, not uncommitted local work. Reuse the version for documentation-only changes.
+
+After a successful publish, the Action's **announce** job posts the new version's `CHANGELOG.md` section to the webhook in the `CHANGELOG_WEBHOOK_URL` repository secret (Discord, Slack, or generic JSON, detected from the URL). It posts only when the push changed the userscript version, so documentation-only pushes and retries stay silent; without the secret it skips. To preview or post by hand, run `python3 scripts/changelog-webhook.py --dry-run` or `--channel dev`; the manual URL comes from `EGELTOOLS_CHANGELOG_WEBHOOK` or `~/.config/egeltools/changelog-webhook`, never from the repository.
 
 The Action can also be run manually on either branch. An older queued run is skipped if a newer commit is already the branch head. Publish to `main` only for major releases such as `1.0` or `2.0` (`1.0.0` or `2.0.0`), through a PR from `dev` into `main`. Retain feature branches after ordinary merges into `dev`; clean up released feature branches only after the major-release merge and successful deployment. See `CLAUDE.md` (or `AGENTS.md`) for the cleanup safeguards.
 
@@ -31,7 +33,7 @@ Caddy forwards `/egeltools/deploy` to `egeltools-publisher:8094` over Docker net
 
 To install/update the service from an approved checkout, run `scripts/setup-publisher.sh`. Caddy's `/data/filehost/Caddyfile` needs the routing and cache directives in `scripts/publisher/Caddyfile.fragment` inside its existing site block. Validate and reload Caddy after merging these directives. Updating publisher code requires this server setup step; normal userscript pushes do not.
 
-Validation: `python3 -m unittest discover -s tests -p 'test_publisher.py'` (requires `PyJWT[crypto]==2.10.1`), plus `bash -n scripts/*.sh`.
+Validation: `python3 -m unittest discover -s tests -p 'test_*.py'` (requires `PyJWT[crypto]==2.10.1`), plus `bash -n scripts/*.sh`.
 
 ## Install for development
 

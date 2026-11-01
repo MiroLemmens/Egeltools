@@ -14,6 +14,8 @@ jobs:
     if: github.repository == 'MiroLemmens/Egeltools' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    outputs:
+      skipped: ${{ steps.deploy.outputs.skipped }}
     steps:
       - name: Publish authenticated branch head
         id: deploy
@@ -45,3 +47,27 @@ jobs:
           curl --fail --silent --show-error "${base}/EgelTools.user.js?commit=${COMMIT}" > EgelTools.user.js
           echo "$(jq -r .sha256 deployment.json)  EgelTools.user.js" | sha256sum --check
           node --check EgelTools.user.js
+  announce:
+    needs: publish
+    if: github.event_name == 'push' && needs.publish.outputs.skipped != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Announce changelog
+        env:
+          EGELTOOLS_CHANGELOG_WEBHOOK: ${{ secrets.CHANGELOG_WEBHOOK_URL }}
+          BEFORE: ${{ github.event.before }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EGELTOOLS_CHANGELOG_WEBHOOK}" ]; then
+            echo 'Repository secret CHANGELOG_WEBHOOK_URL is not set; skipping the announcement.'
+            exit 0
+          fi
+          python3 scripts/changelog-webhook.py --channel "$BRANCH" --since "$BEFORE"

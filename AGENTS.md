@@ -22,7 +22,7 @@
 Always deploy after completing changes to this project. Deployment is part of the task and is authorized by this project instruction; do not stop after local edits or ask for routine deployment confirmation.
 
 - Follow the release process in `README.md`.
-- When changing `EgelTools.user.js`, bump both `@version` and `APP.version` to the same new version and add release notes to `CHANGELOG.md`.
+- When changing `EgelTools.user.js`, bump both `@version` and `APP.version` to the same new version and add release notes to `CHANGELOG.md`. Follow `.claude/skills/release-changelog/SKILL.md` to write a readable, player-facing entry; the Publish Action announces it on the changelog webhook.
 - Run checks relevant to the changes, then run `scripts/deploy.sh` from the project root, including after documentation or instruction changes. Reuse the current version when the userscript itself is unchanged.
 - Confirm that deployment succeeds before reporting the task complete. If deployment fails, resolve the failure when possible; otherwise clearly report the blocker and that deployment is incomplete.
 - Preserve immutable published releases; never overwrite an existing release with different content.
