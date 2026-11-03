@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.120 — 2026-11-03
+
+- The **Recruitment overview** no longer replaces a town's saved troop totals whenever the game reports less free population than EgelTools remembers. The town's numbers are marked yellow with a dashed red border instead; open that town's barracks or docks to update them and clear the mark. Troops you recruit from the overview itself do not trigger the mark.
+
 ## 1.2.119 — 2026-11-03
 
 - Fix **Trade times** with an active Captain: the Captain only makes trades to other islands twice as fast, so trades between towns on the same island now show their full in-game time instead of half. **Party trades** use the same corrected times. Hovering a time says whether the Captain bonus applies.

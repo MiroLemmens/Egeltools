@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.119
+// @version      1.2.120
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.119',
+    version: '1.2.120',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -14545,9 +14545,11 @@
     const cache = readRecruitTotalCache();
     cache.towns ||= {};
     cache.reconcileCandidates ||= {};
+    cache.freePopulationMarks ||= {};
     const capturedAt = Date.now();
     const serverTime = Number(response?._srvtime) || null;
     let changed = false;
+    let marksChanged = false;
     let reviewed = 0;
     let pendingDecreases = 0;
 
@@ -14604,29 +14606,24 @@
       const cachedFreePopulation = Number(previous.freePopulation);
       const hasServerFreePopulation = Number.isFinite(serverFreePopulation);
       const hasCachedFreePopulation = Number.isFinite(cachedFreePopulation);
-      const freePopulationChanged = hasServerFreePopulation
+      // Less free population than cached means troops were recruited elsewhere.
+      // Never take the overview's snapshot for that: mark the town instead, and
+      // let opening its barracks or docks refresh the cache.
+      const freePopulationDropped = hasServerFreePopulation
         && hasCachedFreePopulation
-        && serverFreePopulation !== cachedFreePopulation;
-
-      // A changed free-population value makes the current server snapshot
-      // authoritative for the whole town, as requested. Replace all unit totals
-      // and the stored BHP value together so both belong to the same snapshot.
-      if (freePopulationChanged) {
-        cache.towns[townId] = {
-          ...previous,
-          name: String(town?.name || previous.name || townId),
-          capturedAt,
-          serverTime,
-          source: 'recruit-overview-free-population-changed',
-          freePopulation: Math.max(0, serverFreePopulation),
-          trained: serverTrained,
-          queued: serverQueued,
-          totals: serverTotals,
+        && serverFreePopulation < cachedFreePopulation;
+      const previousMark = cache.freePopulationMarks[townId];
+      if (freePopulationDropped) {
+        cache.freePopulationMarks[townId] = {
+          cachedFreePopulation,
+          serverFreePopulation,
+          markedAt: previousMark?.markedAt || capturedAt,
         };
-        delete cache.reconcileCandidates[townId];
-        changed = true;
-        reviewed += unitIds.size;
-        continue;
+        if (previousMark?.serverFreePopulation !== serverFreePopulation
+          || previousMark?.cachedFreePopulation !== cachedFreePopulation) marksChanged = true;
+      } else if (previousMark) {
+        delete cache.freePopulationMarks[townId];
+        marksChanged = true;
       }
 
       const trained = { ...(previous.trained || {}) };
@@ -14715,7 +14712,15 @@
     cache.serverTime = serverTime;
     // Persist candidates locally, but upload only when a total was committed.
     writeRecruitTotalCache(cache, { upload: changed });
-    return { changed, reviewed, pendingDecreases, tolerance: 1, lowerValuesPolicy: 'server-if-free-population-changed' };
+    return {
+      changed,
+      marksChanged,
+      reviewed,
+      pendingDecreases,
+      markedTowns: Object.keys(cache.freePopulationMarks).length,
+      tolerance: 1,
+      lowerValuesPolicy: 'mark-if-free-population-dropped',
+    };
   }
 
   function cachedFinalTotal(townIdValue, unitIdValue) {
@@ -14874,6 +14879,11 @@
       }
       #recruit_overview .lbl_unit_number.egeltools-target-number.is-extra {
         color: #b55a00 !important;
+      }
+      #recruit_overview .lbl_unit_number.egeltools-free-pop-mark {
+        background: rgba(255, 214, 0, 0.55) !important;
+        outline: 1px dashed #c20d0d;
+        outline-offset: -1px;
       }
     `;
     document.head.appendChild(style);
@@ -15184,6 +15194,7 @@
     const owned = exactOwnedByTownAndUnit();
     const queued = exactQueuedByTownAndUnit();
     const boosted = boostsByTownAndUnit();
+    const freePopulationMarks = readRecruitTotalCache().freePopulationMarks || {};
 
     root.querySelectorAll('.unit_box').forEach(unitBox => {
       const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
@@ -15207,10 +15218,16 @@
       numberElement.classList.remove('egeltools-target-number', 'is-missing', 'is-done', 'is-extra');
       numberElement.onclick = null;
       numberElement.dataset.missing = String(missing);
+      const freePopulationMark = freePopulationMarks[townId];
+      numberElement.classList.toggle('egeltools-free-pop-mark', Boolean(freePopulationMark));
+      const markNote = freePopulationMark
+        ? `\nFree population ${freePopulationMark.serverFreePopulation} is below the cached `
+          + `${freePopulationMark.cachedFreePopulation}. Open this town's barracks or docks to update it.`
+        : '';
 
       if (target.scope === 'none' || target.value === 0) {
         numberElement.textContent = String(total);
-        numberElement.title = target.scope === 'none' ? 'Kein Sollwert gespeichert' : 'Sollwert 0';
+        numberElement.title = (target.scope === 'none' ? 'Kein Sollwert gespeichert' : 'Sollwert 0') + markNote;
         return;
       }
 
@@ -15238,6 +15255,7 @@
         numberElement.classList.add('is-done');
         numberElement.title += ', target reached';
       }
+      numberElement.title += markNote;
     });
   }
 
@@ -15321,7 +15339,12 @@
       if (Number.isFinite(freeValue)) detectedFreePopulation = Math.max(0, freeValue);
     } catch (_) {}
 
-    const valuesChanged = previous.name !== nextName
+    // The barracks/docks calculation is the refresh a marked town is waiting for.
+    const hadFreePopulationMark = Boolean(cache.freePopulationMarks?.[id]);
+    if (hadFreePopulationMark) delete cache.freePopulationMarks[id];
+
+    const valuesChanged = hadFreePopulationMark
+      || previous.name !== nextName
       || Number(previous.freePopulation) !== Number(detectedFreePopulation)
       || JSON.stringify(previous.trained || {}) !== JSON.stringify(trained)
       || JSON.stringify(previous.queued || {}) !== JSON.stringify(queued)
@@ -15402,6 +15425,12 @@
       town.totals ||= {};
       town.queued[unitId] = (Number(town.queued[unitId]) || 0) + amount;
       town.totals[unitId] = (Number(town.totals[unitId]) || 0) + amount;
+      // Spend the population here too, so the next overview load does not mark
+      // the town for troops EgelTools already counted.
+      if (Number.isFinite(Number(town.freePopulation))) {
+        town.freePopulation = Math.max(0,
+          Number(town.freePopulation) - amount * unitCost(unitId).population);
+      }
       town.capturedAt = appliedAt;
       town.source = 'recruit-overview-recruited';
     });
@@ -15506,7 +15535,7 @@
             missingOnly: true,
           });
           window.__egeltoolsLastRecruitFreePopulationSync = freePopulationSync;
-          if (reconciliation.changed) {
+          if (reconciliation.changed || reconciliation.marksChanged) {
             document.querySelectorAll('#recruit_overview .unit_box').forEach(box => {
               delete box.dataset.egeltoolsRenderSignature;
             });
