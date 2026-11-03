@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.120
+// @version      1.2.121
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.120',
+    version: '1.2.121',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -14265,13 +14265,23 @@
         recruitmentWatcherQueued=true;
         setTimeout(()=>{recruitmentWatcherQueued=false;watcher();},80);
     };
+    // Only react to Grepolis' own recruitment window (#unit_order). The watcher
+    // injects .uti-bottom-box rows into the unit tabs and rewrites the
+    // .uti-recruitment-summary panel on every run; if those self-made changes
+    // retriggered the observer, the panel would re-render on an endless debounce
+    // loop while the barracks/harbor window stayed open.
+    const isEgelToolsRecruitmentNode=node=>node instanceof Element&&(
+        node.matches?.('.uti-bottom-box,.uti-recruitment-summary')||
+        node.closest?.('.uti-bottom-box,.uti-recruitment-summary')
+    );
     new MutationObserver(mutations=>{
         for(const mutation of mutations){
-            const nodes=[mutation.target,...mutation.addedNodes,...mutation.removedNodes];
-            if(nodes.some(node=>node instanceof Element&&(
-                node.matches?.('#unit_order,.uti-recruitment-summary')||
-                node.querySelector?.('#unit_order,.uti-recruitment-summary')||
-                node.closest?.('#unit_order,.uti-recruitment-summary')
+            if(isEgelToolsRecruitmentNode(mutation.target))continue;
+            const nodes=[...mutation.addedNodes,...mutation.removedNodes];
+            if(nodes.some(node=>node instanceof Element&&!isEgelToolsRecruitmentNode(node)&&(
+                node.matches?.('#unit_order')||
+                node.querySelector?.('#unit_order')||
+                node.closest?.('#unit_order')
             ))){queueRecruitmentWatcher();return;}
         }
     }).observe(document.documentElement,{childList:true,subtree:true});
@@ -14494,6 +14504,9 @@
 
   function writeRecruitTotalCache(cache, { upload = true } = {}) {
     localStorage.setItem(RECRUIT_TOTAL_CACHE_KEY, JSON.stringify(cache));
+    // The cached totals and free-population marks feed the overview render
+    // context, so drop it: the next render rebuilds from the new values.
+    invalidateRecruitRenderContext();
     if (upload) scheduleRecruitCacheDriveUpload();
   }
 
@@ -15185,77 +15198,126 @@
     recruitButton.parentElement.insertBefore(button, recruitButton);
   }
 
+  // The overview's render context (targets, cached totals, boosts and free
+  // population marks) only changes when the plan or the cache changes, never
+  // while the virtualized list scrolls. Build it once and reuse it so scrolling
+  // reprocesses only the rows Grepolis actually recycled, instead of recomputing
+  // all of it (and the boost scan over every game model) on every frame.
+  let recruitRenderContext = null;
+  function buildRecruitRenderContext() {
+    return {
+      targets: readTargets(),
+      owned: exactOwnedByTownAndUnit(),
+      queued: exactQueuedByTownAndUnit(),
+      boosted: boostsByTownAndUnit(),
+      freePopulationMarks: readRecruitTotalCache().freePopulationMarks || {},
+    };
+  }
+  function getRecruitRenderContext() {
+    return (recruitRenderContext ||= buildRecruitRenderContext());
+  }
+  function invalidateRecruitRenderContext() {
+    recruitRenderContext = null;
+  }
+
+  function unitBoxDetails(unitBox) {
+    const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
+    return decodeDetails(source);
+  }
+
+  // Render a single unit box from the shared context and stamp it with its
+  // town:unit signature, so it is not processed again until Grepolis recycles the
+  // row for a different town/unit (or the context is invalidated).
+  function renderUnitBox(unitBox, context, details = unitBoxDetails(unitBox)) {
+    if (!details?.town_id || !details?.unit_id) return false;
+    const townId = String(details.town_id);
+    const unitId = String(details.unit_id);
+    unitBox.dataset.egeltoolsRenderSignature = `${townId}:${unitId}`;
+    const { targets, owned, queued, boosted, freePopulationMarks } = context;
+    const target = targetFor(townId, unitId, targets);
+    const cachedTotal = cachedFinalTotal(townId, unitId);
+    const modelOwned = owned[townId]?.[unitId];
+    const fallbackOwned = Math.max(0, Number(details.unit_number) || 0);
+    const fallbackBase = modelOwned === undefined ? fallbackOwned : modelOwned;
+    // If a cache value exists, it is the complete final value and is displayed unchanged.
+    const total = cachedTotal ?? (
+      fallbackBase + (queued[townId]?.[unitId] || 0) + (boosted[townId]?.[unitId] || 0)
+    );
+    const missing = Math.max(target.value - total, 0);
+    const extra = Math.max(total - target.value, 0);
+    const numberElement = unitBox.querySelector('.lbl_unit_number');
+    if (!numberElement) return false;
+    numberElement.classList.remove('egeltools-target-number', 'is-missing', 'is-done', 'is-extra');
+    numberElement.onclick = null;
+    numberElement.dataset.missing = String(missing);
+    const freePopulationMark = freePopulationMarks[townId];
+    numberElement.classList.toggle('egeltools-free-pop-mark', Boolean(freePopulationMark));
+    const markNote = freePopulationMark
+      ? `\nFree population ${freePopulationMark.serverFreePopulation} is below the cached `
+        + `${freePopulationMark.cachedFreePopulation}. Open this town's barracks or docks to update it.`
+      : '';
+
+    if (target.scope === 'none' || target.value === 0) {
+      numberElement.textContent = String(total);
+      numberElement.title = (target.scope === 'none' ? 'Kein Sollwert gespeichert' : 'Sollwert 0') + markNote;
+      return true;
+    }
+
+    numberElement.classList.add('egeltools-target-number');
+    numberElement.innerHTML = `${total}<br>/${target.value}`;
+    const scopeLabel = target.scope === 'city' ? 'Town'
+      : target.scope === 'custom-group' ? 'Custom group'
+      : 'Group';
+    numberElement.title = `${scopeLabel}: have ${total}, target ${target.value}`;
+
+    if (missing > 0) {
+      numberElement.classList.add('is-missing');
+      const recruitableNow = Math.max(0, Number(details.unit_max) || 0);
+      const fillAmount = Math.min(missing, recruitableNow);
+      numberElement.title += `, missing ${missing}. Recruitable now: ${fillAmount}. Click to enter; click again to clear.`;
+      numberElement.onclick = event => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleRecruitInput(unitBox, missing, details.unit_max);
+      };
+    } else if (extra > 0) {
+      numberElement.classList.add('is-extra');
+      numberElement.title += `, extra ${extra}`;
+    } else {
+      numberElement.classList.add('is-done');
+      numberElement.title += ', target reached';
+    }
+    numberElement.title += markNote;
+    return true;
+  }
+
+  // Full pass over every visible row. Used on open and whenever the plan or the
+  // cache changes; rebuilds the context from fresh data first.
   function render() {
     const root = document.querySelector('#recruit_overview');
     if (!root) return;
     ensureStyle();
     ensureAutoFillButton();
-    const targets = readTargets();
-    const owned = exactOwnedByTownAndUnit();
-    const queued = exactQueuedByTownAndUnit();
-    const boosted = boostsByTownAndUnit();
-    const freePopulationMarks = readRecruitTotalCache().freePopulationMarks || {};
+    invalidateRecruitRenderContext();
+    const context = getRecruitRenderContext();
+    root.querySelectorAll('.unit_box').forEach(unitBox => renderUnitBox(unitBox, context));
+  }
 
+  // Scroll/observer pass: render only the rows whose signature no longer matches
+  // their current town/unit (newly created or recycled by Grepolis), reusing the
+  // cached context. This is what keeps scrolling cheap.
+  function renderPendingUnitBoxes() {
+    const root = document.querySelector('#recruit_overview');
+    if (!root) return;
+    ensureStyle();
+    ensureAutoFillButton();
+    let context = null;
     root.querySelectorAll('.unit_box').forEach(unitBox => {
-      const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
-      const details = decodeDetails(source);
+      const details = unitBoxDetails(unitBox);
       if (!details?.town_id || !details?.unit_id) return;
-      const townId = String(details.town_id);
-      const unitId = String(details.unit_id);
-      const target = targetFor(townId, unitId, targets);
-      const cachedTotal = cachedFinalTotal(townId, unitId);
-      const modelOwned = owned[townId]?.[unitId];
-      const fallbackOwned = Math.max(0, Number(details.unit_number) || 0);
-      const fallbackBase = modelOwned === undefined ? fallbackOwned : modelOwned;
-      // If a cache value exists, it is the complete final value and is displayed unchanged.
-      const total = cachedTotal ?? (
-        fallbackBase + (queued[townId]?.[unitId] || 0) + (boosted[townId]?.[unitId] || 0)
-      );
-      const missing = Math.max(target.value - total, 0);
-      const extra = Math.max(total - target.value, 0);
-      const numberElement = unitBox.querySelector('.lbl_unit_number');
-      if (!numberElement) return;
-      numberElement.classList.remove('egeltools-target-number', 'is-missing', 'is-done', 'is-extra');
-      numberElement.onclick = null;
-      numberElement.dataset.missing = String(missing);
-      const freePopulationMark = freePopulationMarks[townId];
-      numberElement.classList.toggle('egeltools-free-pop-mark', Boolean(freePopulationMark));
-      const markNote = freePopulationMark
-        ? `\nFree population ${freePopulationMark.serverFreePopulation} is below the cached `
-          + `${freePopulationMark.cachedFreePopulation}. Open this town's barracks or docks to update it.`
-        : '';
-
-      if (target.scope === 'none' || target.value === 0) {
-        numberElement.textContent = String(total);
-        numberElement.title = (target.scope === 'none' ? 'Kein Sollwert gespeichert' : 'Sollwert 0') + markNote;
-        return;
-      }
-
-      numberElement.classList.add('egeltools-target-number');
-      numberElement.innerHTML = `${total}<br>/${target.value}`;
-      const scopeLabel = target.scope === 'city' ? 'Town'
-        : target.scope === 'custom-group' ? 'Custom group'
-        : 'Group';
-      numberElement.title = `${scopeLabel}: have ${total}, target ${target.value}`;
-
-      if (missing > 0) {
-        numberElement.classList.add('is-missing');
-        const recruitableNow = Math.max(0, Number(details.unit_max) || 0);
-        const fillAmount = Math.min(missing, recruitableNow);
-        numberElement.title += `, missing ${missing}. Recruitable now: ${fillAmount}. Click to enter; click again to clear.`;
-        numberElement.onclick = event => {
-          event.preventDefault();
-          event.stopPropagation();
-          toggleRecruitInput(unitBox, missing, details.unit_max);
-        };
-      } else if (extra > 0) {
-        numberElement.classList.add('is-extra');
-        numberElement.title += `, extra ${extra}`;
-      } else {
-        numberElement.classList.add('is-done');
-        numberElement.title += ', target reached';
-      }
-      numberElement.title += markNote;
+      if (unitBox.dataset.egeltoolsRenderSignature === `${details.town_id}:${details.unit_id}`) return;
+      context ||= getRecruitRenderContext();
+      renderUnitBox(unitBox, context, details);
     });
   }
 
@@ -15267,22 +15329,12 @@
 
   const renderedRecruitOverviews = new WeakSet();
   let virtualRowsCheckQueued = false;
-  const visibleRecruitRowsNeedRender = () => {
-    const overview = document.querySelector('#recruit_overview');
-    if (!overview) return false;
-    return [...overview.querySelectorAll('.unit_box')].some(unitBox => {
-      const source = unitBox.querySelector('.lbl_unit_number[details], .btn_set_max[details], .textbox[details]');
-      const details = decodeDetails(source);
-      if (!details?.town_id || !details?.unit_id) return false;
-      return unitBox.dataset.egeltoolsRenderSignature !== `${details.town_id}:${details.unit_id}`;
-    });
-  };
   const renderNewVirtualRows = () => {
     if (virtualRowsCheckQueued) return;
     virtualRowsCheckQueued = true;
     window.requestAnimationFrame(() => {
       virtualRowsCheckQueued = false;
-      if (visibleRecruitRowsNeedRender()) render();
+      renderPendingUnitBoxes();
     });
   };
   const initializeRecruitOverview = () => {
@@ -15298,8 +15350,29 @@
     }
     renderNewVirtualRows();
   };
-  new MutationObserver(initializeRecruitOverview)
-    .observe(document.documentElement, { childList: true, subtree: true });
+  // Scoped to the overview appearing and to Grepolis adding unit boxes, instead
+  // of running on every mutation of the whole document. It only looks at added
+  // nodes, so EgelTools' own writes (which change .lbl_unit_number contents, not
+  // add .unit_box / #recruit_overview nodes) never retrigger it — no render loop.
+  new MutationObserver(mutations => {
+    let overviewAppeared = false;
+    let unitBoxesAdded = false;
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node.matches?.('#recruit_overview') || node.querySelector?.('#recruit_overview')) {
+          overviewAppeared = true;
+          break;
+        }
+        if (node.matches?.('.unit_box') || node.querySelector?.('.unit_box')) {
+          unitBoxesAdded = true;
+        }
+      }
+      if (overviewAppeared) break;
+    }
+    if (overviewAppeared) initializeRecruitOverview();
+    else if (unitBoxesAdded && document.querySelector('#recruit_overview')) renderNewVirtualRows();
+  }).observe(document.documentElement, { childList: true, subtree: true });
   initializeRecruitOverview();
 
   function currentTownIdForRecruitCache() {
@@ -15436,20 +15509,20 @@
     });
 
     cache.updatedAt = appliedAt;
-    writeRecruitTotalCache(cache, { upload: false });
-    void uploadRecruitCacheToDriveNow();
+    // Confirmed recruitment inputs change the cache, so upload to Drive — but
+    // through the throttled scheduler (writeRecruitTotalCache) so confirming
+    // several towns in a row coalesces into a single POST instead of one per
+    // click.
+    writeRecruitTotalCache(cache);
     return true;
   }
 
-  let buildingCacheTimer = 0;
+  // The barracks/docks cache is written by refreshTotalsOnly() in the
+  // recruitment watcher, so no separate capture is needed here. This stays a
+  // no-op (still referenced by the #unit_order_confirm click handler below);
+  // the previous body-wide childList+characterData observer that only called it
+  // has been removed, as it fired on every text change on the page for nothing.
   const scheduleBuildingCacheCapture = () => {};
-  const buildingCacheObserver = new MutationObserver(mutations => {
-    if (mutations.some(mutation => (
-      mutation.target instanceof Element
-      && mutation.target.closest('#unit_order, #unit_orders_queue')
-    ))) scheduleBuildingCacheCapture();
-  });
-  buildingCacheObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
   function getRecruitOverviewTownRow(element) {
     if (!(element instanceof Element)) return null;
     const overview = element.closest('#recruit_overview');

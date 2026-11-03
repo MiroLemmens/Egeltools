@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.121 — 2026-11-03
+
+- Fix the **Recruitment overview** stuttering and lagging while you scroll through your towns. EgelTools now fills in each town row once, as the game creates it, instead of re-checking and redrawing every visible row many times a second, so scrolling stays smooth even with a lot of towns.
+- Fix the **Barracks** and **Harbor** recruitment summary re-drawing itself over and over while the window stayed open. It now refreshes only when the game's own recruitment window actually changes, which keeps those windows responsive too.
+
 ## 1.2.120 — 2026-11-03
 
 - The **Recruitment overview** no longer replaces a town's saved troop totals whenever the game reports less free population than EgelTools remembers. The town's numbers are marked yellow with a dashed red border instead; open that town's barracks or docks to update them and clear the mark. Troops you recruit from the overview itself do not trigger the mark.
