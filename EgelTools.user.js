@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.118
+// @version      1.2.119
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.118',
+    version: '1.2.119',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -6808,11 +6808,12 @@
   function calculateTownTradeDuration(distance, sameIsland) {
     const speed = getTradeWorldSpeed();
     if (!Number.isFinite(distance) || distance < 0 || speed === null) return null;
-    // An active Captain doubles trade speed; apply it before rounding.
+    // An active Captain makes trades reach other islands twice as fast; trades
+    // on the same island keep their normal time. Apply it before rounding.
     const duration = 2 * (sameIsland
       ? distance * 5 / (3 * speed)
       : 2700 / (speed ** 3) + distance * 5 / (speed ** 2));
-    return Math.floor(duration / (isCaptainActive() ? 2 : 1));
+    return Math.floor(duration / (!sameIsland && isCaptainActive() ? 2 : 1));
   }
 
   function formatTownTradeDuration(seconds) {
@@ -7003,7 +7004,7 @@
       name.title = town.name;
       const distance = document.createElement('td');
       distance.textContent = formatTownTradeDuration(town.tradeDuration);
-      distance.title = `${town.sameIsland ? 'Same island' : 'Different island'}; distance ${town.distance.toFixed(1)}; world speed ${getTradeWorldSpeed() ?? 'unavailable'}; Marketplace level ${town.marketplaceLevel ?? 'unknown'}`;
+      distance.title = `${town.sameIsland ? 'Same island' : `Different island${isCaptainActive() ? ' (Captain: twice as fast)' : ''}`}; distance ${town.distance.toFixed(1)}; world speed ${getTradeWorldSpeed() ?? 'unavailable'}; Marketplace level ${town.marketplaceLevel ?? 'unknown'}`;
       const tradeCell = document.createElement('td');
       tradeCell.className = 'egeltools-town-distance__trade-cell';
       const tradeButton = document.createElement('button');
