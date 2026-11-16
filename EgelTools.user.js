@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.121
+// @version      1.2.122
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.121',
+    version: '1.2.122',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -6808,11 +6808,12 @@
   function calculateTownTradeDuration(distance, sameIsland) {
     const speed = getTradeWorldSpeed();
     if (!Number.isFinite(distance) || distance < 0 || speed === null) return null;
+    // Merchants need a 900 / 8 s setup and travel at 60 * speed, with map
+    // distances scaled by 50 like unit movements. The same rule applies on
+    // and between islands.
+    const duration = (900 / 8 + distance * 50 / 60) / speed;
     // An active Captain makes trades reach other islands twice as fast; trades
     // on the same island keep their normal time. Apply it before rounding.
-    const duration = 2 * (sameIsland
-      ? distance * 5 / (3 * speed)
-      : 2700 / (speed ** 3) + distance * 5 / (speed ** 2));
     return Math.floor(duration / (!sameIsland && isCaptainActive() ? 2 : 1));
   }
 

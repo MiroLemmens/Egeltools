@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.122 — 2026-11-16
+
+- Fix **Trade times** showing trades as taking far longer than they do (three times as long on speed 4 worlds). Times now match the travel time the game shows in its trade window, and **Party trades** use the same corrected times. This undoes the doubling added in 1.2.105.
+
 ## 1.2.121 — 2026-11-03
 
 - Fix the **Recruitment overview** stuttering and lagging while you scroll through your towns. EgelTools now fills in each town row once, as the game creates it, instead of re-checking and redrawing every visible row many times a second, so scrolling stays smooth even with a lot of towns.
