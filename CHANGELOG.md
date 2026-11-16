@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.123 — 2026-11-16
+
+- **Party trades** now proposes far more trades between your own towns. Until now a source town had to hold a full city party's cost of every resource (15,000 wood, 18,000 stone and 15,000 iron) before it could give anything, and a town that was itself short of one resource was skipped completely, so in practice only farm village exchanges were suggested. A source town now keeps only what its own celebrations still need after its production, loyalty claims and incoming trades, plus a safety floor, and a town short of stone can still send its spare wood. When no town can help, the row says why.
+- Add **Settings → Culture → Party trades: every town keeps** to set that floor (5,000 of each resource by default). Raise it to protect building and recruiting stock, or set it to 0 to let towns spend everything beyond their celebration needs.
+
 ## 1.2.122 — 2026-11-16
 
 - Fix **Trade times** showing trades as taking far longer than they do (three times as long on speed 4 worlds). Times now match the travel time the game shows in its trade window, and **Party trades** use the same corrected times. This undoes the doubling added in 1.2.105.

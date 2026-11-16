@@ -42,6 +42,20 @@ for (const donor of plan.donors) {
   assert.ok(donor.total <= donor.tradeCapacity);
   assert.ok(Object.values(donor.contributions).every(amount => amount >= 500));
 }
+// A town that is short of one resource for its own celebration still gives
+// its surplus of another; only its own reserve is protected.
+context.target = { ...target, deficits: { wood: 1800 } };
+context.towns = [context.target, town('short', 1, 4000, 10000, {
+  partyForecast: { locked: true, reserveNow: { wood: 1000, stone: 9000, iron: 0 } },
+})];
+plan = vm.runInContext('buildResourceDonorPlan(target, towns, minimums)', context);
+assert.equal(plan.donors[0]?.id, 'short', 'A town that still needs stone donates its spare wood');
+assert.equal(plan.donors[0].contributions.wood, 1800);
+assert.equal(plan.donors[0].contributions.stone, undefined);
+context.target = { ...target, deficits: { wood: 1800, stone: 1800 } };
+plan = vm.runInContext('buildResourceDonorPlan(target, towns, minimums)', context);
+assert.equal(plan.donors[0].contributions.stone, undefined, 'The reserved stone stays home');
+assert.equal(plan.remaining.stone, 1800);
 console.log('Party trades routing checks passed');
 
 context.reservations = new Map();
