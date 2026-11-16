@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.124 — 2026-11-16
+
+- Fix **Trade times** showing a trade time for the town the list starts from. Since 1.2.122 that first row showed the merchant setup time (00:00:56 on a speed 2 world) as though a trade to the town itself took that long. It reads 00:00:00 again, and hovering it says the times are measured from this town. Every other town keeps the trade time the game shows.
+
 ## 1.2.123 — 2026-11-16
 
 - **Party trades** now proposes far more trades between your own towns. Until now a source town had to hold a full city party's cost of every resource (15,000 wood, 18,000 stone and 15,000 iron) before it could give anything, and a town that was itself short of one resource was skipped completely, so in practice only farm village exchanges were suggested. A source town now keeps only what its own celebrations still need after its production, loyalty claims and incoming trades, plus a safety floor, and a town short of stone can still send its spare wood. When no town can help, the row says why.

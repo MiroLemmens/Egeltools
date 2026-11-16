@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.123
+// @version      1.2.124
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.123',
+    version: '1.2.124',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -6889,13 +6889,18 @@
       const distance = Math.hypot(position.x - referencePosition.x, position.y - referencePosition.y);
       const island = getIsland(town, id);
       const sameIsland = island !== null && island === referenceIsland;
+      // The reference town stays in the list to anchor the keyboard navigation.
+      // No trade travels to it, so it shows no merchant setup time; any other
+      // town, even one on the same spot, keeps the full trade formula.
+      const isReference = String(id) === String(referenceTownId);
       return [{
         id,
         name: String(getFirstMethodValue(town, ['getName'], ['name']) || id),
         marketplaceLevel: getTownMarketplaceLevel(town),
         distance,
         sameIsland,
-        tradeDuration: calculateTownTradeDuration(distance, sameIsland),
+        isReference,
+        tradeDuration: isReference ? 0 : calculateTownTradeDuration(distance, sameIsland),
       }];
     });
     const capacityFilterEnabled = localStorage.getItem('egeltools_distance_capacity_filter') === 'on';
@@ -7026,7 +7031,10 @@
       name.title = town.name;
       const distance = document.createElement('td');
       distance.textContent = formatTownTradeDuration(town.tradeDuration);
-      distance.title = `${town.sameIsland ? 'Same island' : `Different island${isCaptainActive() ? ' (Captain: twice as fast)' : ''}`}; distance ${town.distance.toFixed(1)}; world speed ${getTradeWorldSpeed() ?? 'unavailable'}; Marketplace level ${town.marketplaceLevel ?? 'unknown'}`;
+      const placement = town.isReference
+        ? 'Trade times are measured from this town'
+        : town.sameIsland ? 'Same island' : `Different island${isCaptainActive() ? ' (Captain: twice as fast)' : ''}`;
+      distance.title = `${placement}; distance ${town.distance.toFixed(1)}; world speed ${getTradeWorldSpeed() ?? 'unavailable'}; Marketplace level ${town.marketplaceLevel ?? 'unknown'}`;
       const tradeCell = document.createElement('td');
       tradeCell.className = 'egeltools-town-distance__trade-cell';
       const tradeButton = document.createElement('button');
