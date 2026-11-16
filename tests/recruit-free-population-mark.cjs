@@ -7,6 +7,7 @@ const context = vm.createContext({
   RECRUIT_TOTAL_CACHE_KEY: 'cache',
   localStorage: { getItem: key => store.get(key) ?? null, setItem: (key, value) => store.set(key, value) },
   scheduleRecruitCacheDriveUpload: () => {},
+  invalidateRecruitRenderContext: () => {},
 });
 vm.runInContext(source.slice(source.indexOf('  function readRecruitTotalCache'), source.indexOf('  let recruitCacheDriveUploadTimer')), context);
 vm.runInContext(source.slice(source.indexOf('  function writeRecruitTotalCache'), source.indexOf('  let recruitCacheRefreshArmed')), context);
