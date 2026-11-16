@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.120
+// @version      1.2.122
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.120',
+    version: '1.2.122',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -175,12 +175,15 @@
     excludeTheatersKey: 'egeltools_party_trades_exclude_theaters',
     excludeTheatersSettingId: 'egeltools-party-trades-exclude-theaters',
     partyWindowMinutesKey: 'egeltools_party_trades_window_minutes',
+    donorFloorKey: 'egeltools_party_trades_donor_floor',
+    donorFloorSettingId: 'egeltools-party-trades-donor-floor',
     windowButtonId: 'egeltools-resource-checker-window',
     windowMenuId: 'egeltools-resource-checker-window-menu',
     tradeModelSyncGraceSeconds: 2 * 60,
     tradeDonorCooldownSeconds: 10,
     minimumTradeAmount: 500,
     minimumRelativeTradeSaving: 0.1,
+    donorFloor: 5000,
     loyaltyClaimInterval: 13 * 60,
     loyaltyClaimByFarmLevel: Object.freeze([0, 28, 34, 40, 45, 51, 57]),
   });
@@ -3228,6 +3231,13 @@
                       <input id="egeltools-party-farm-trades" type="checkbox"> Party trades: farm villages
                     </label>
                   </div>
+                  <div class="egeltools-settings__field-pair">
+                    <label class="egeltools-settings__field" for="${RESOURCE_CHECKER.donorFloorSettingId}"
+                      title="Party trades never take a town below this amount of wood, stone or iron, on top of what the town still needs for its own celebrations. Zero lets towns spend everything beyond those needs.">
+                      <span class="egeltools-settings__field-label">Party trades: every town keeps</span>
+                      <input id="${RESOURCE_CHECKER.donorFloorSettingId}" type="number" inputmode="numeric" min="0" step="500">
+                    </label>
+                  </div>
                 </section>
                 <section class="egeltools-settings__feature egeltools-settings__feature--trade">
                   <div class="egeltools-settings__feature-heading">
@@ -3458,6 +3468,17 @@
     excludeTheaters.checked = localStorage.getItem(RESOURCE_CHECKER.excludeTheatersKey) === 'on';
     excludeTheaters.addEventListener('change', () => {
       localStorage.setItem(RESOURCE_CHECKER.excludeTheatersKey, excludeTheaters.checked ? 'on' : 'off');
+      renderResourceChecker(true);
+    });
+    const donorFloor = settingsWindow.querySelector(`#${RESOURCE_CHECKER.donorFloorSettingId}`);
+    donorFloor.value = String(getResourceCheckerDonorFloor());
+    donorFloor.addEventListener('change', () => {
+      const value = Number(donorFloor.value);
+      if (donorFloor.value.trim() === '' || !Number.isSafeInteger(value) || value < 0) {
+        donorFloor.value = String(getResourceCheckerDonorFloor());
+        return;
+      }
+      localStorage.setItem(RESOURCE_CHECKER.donorFloorKey, String(value));
       renderResourceChecker(true);
     });
 
@@ -7193,8 +7214,18 @@
   let resourceTradeSequence = 0;
   const RESOURCE_NAMES = Object.freeze({ wood: 'Wood', stone: 'Stone', iron: 'Iron' });
 
+  // Besides the stock its own celebrations still need, every town keeps this
+  // much of each resource out of Party trades, so no trade empties a warehouse.
+  // An unset or invalid preference uses the default; zero is a valid choice.
+  function getResourceCheckerDonorFloor() {
+    const saved = localStorage.getItem(RESOURCE_CHECKER.donorFloorKey);
+    const floor = saved === null || String(saved).trim() === '' ? NaN : Number(saved);
+    return Number.isSafeInteger(floor) && floor >= 0 ? floor : RESOURCE_CHECKER.donorFloor;
+  }
+
   function getResourceCheckerMinimums() {
-    return { ...CELEBRATION_COSTS.party };
+    const floor = getResourceCheckerDonorFloor();
+    return Object.fromEntries(RESOURCE_CHECKER.resources.map((resource) => [resource, floor]));
   }
 
   function makeResourceIcon(resource) {
@@ -7574,9 +7605,6 @@
         const missing = Math.max(0, cost - projected[resource]);
         return missing ? [[resource, missing]] : [];
       }));
-      const lockedResources = Object.fromEntries(Object.entries(reserveNow).flatMap(([resource, reserve]) => (
-        reserve > 0 && spendableNow[resource] === 0 ? [[resource, reserve]] : []
-      )));
       town.partyForecast = {
         active: Boolean(activeParty),
         endAt: activeParty?.endAt ?? null,
@@ -7588,8 +7616,6 @@
         reserveNow,
         spendableNow,
         shortfall,
-        lockedResources,
-        locked: Object.keys(lockedResources).length > 0,
       };
     }
   }
@@ -7622,9 +7648,6 @@
       celebrations: forecasts,
       reserveNow,
       shortfall,
-      locked: RESOURCE_CHECKER.resources.some((resource) => (
-        reserveNow[resource] > 0 && town.resources[resource] <= reserveNow[resource]
-      )),
     };
   }
 
@@ -8106,11 +8129,14 @@
     let candidates = allTowns.flatMap((town) => {
       if (partyFarmTradesPending.has(String(town.id)) || partyFarmTradesPending.has(String(targetTown.id))
         || String(town.id) === String(targetTown.id)
-        || town.partyForecast?.locked
         || town.awaitingTradeModel
         || pendingOutgoingTownIds.has(String(town.id))
         || [...resourceTradesInFlight].some((key) => key.endsWith(`:${town.id}`))
         || tradeLockedTownIds.has(String(town.id))) return [];
+      // A source town keeps what its own celebrations still need after its
+      // production, loyalty claims and incoming trades, and never less than
+      // the configured floor. A town short of one resource for its own
+      // celebration can still give away its surplus of another.
       const available = Object.fromEntries(Object.entries(minimums).map(([resource, minimum]) => {
         const protectedStock = Math.max(minimum, town.partyForecast?.reserveNow?.[resource] || 0);
         return [resource, Math.max(0, town.resources[resource] - protectedStock
@@ -8213,7 +8239,7 @@
     if (!plan.donors.length) {
       const note = document.createElement('p');
       note.className = 'egeltools-resource-checker__donor-note';
-      note.textContent = 'No safe source town can cover this party yet.';
+      note.textContent = `No town has spare stock for this celebration: each keeps what its own celebrations still need and at least ${getResourceCheckerDonorFloor().toLocaleString()} of every resource.`;
       donors.append(note);
       return donors;
     }
@@ -8613,7 +8639,7 @@
             <button type="submit">Apply</button>
           </div>
         </form>
-        <span title="Includes production, loyalty claims, and incoming trades. Prefers shorter routes, then complete coverage. Minimum ${RESOURCE_CHECKER.minimumTradeAmount} per resource.">Snapshot · reopen or ↻ to update</span>
+        <span title="Includes production, loyalty claims, and incoming trades. Prefers shorter routes, then complete coverage. Minimum ${RESOURCE_CHECKER.minimumTradeAmount} per resource. Source towns keep what their own celebrations still need, plus the floor set under Settings → Culture.">Snapshot · reopen or ↻ to update</span>
       </div>
       <div id="${RESOURCE_CHECKER.bodyId}" aria-live="polite">
         <p class="egeltools-resource-checker__state">Loading upcoming party trades…</p>

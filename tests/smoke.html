@@ -99,6 +99,7 @@
       localStorage.removeItem('egeltools_resource_checker_min_iron');
       localStorage.removeItem('egeltools_party_trades_exclude_theaters');
       localStorage.removeItem('egeltools_party_trades_window_minutes');
+      localStorage.removeItem('egeltools_party_trades_donor_floor');
       localStorage.removeItem('egeltools_party_farm_trades');
       localStorage.removeItem('egeltools_trade_locks_zz1_999');
       localStorage.removeItem('egeltools_bds_sound_enabled');
@@ -202,11 +203,14 @@
           { wood: 100, stone: 100, iron: 100 },
           500,
         ),
+        // Sparta cannot celebrate (storage below 18,000), so Party trades only
+        // protect the 5,000 floor there: 5,000 wood, 1,000 stone and 5,000 iron
+        // are spare for other towns.
         103: makeTown(
           103,
           'Sparta',
           { theater: 0, academy: 30, storage: 23, hide: 10, market: 10 },
-          { wood: 20000, stone: 19000, iron: 20000 },
+          { wood: 10000, stone: 6000, iron: 10000 },
           17999,
           436,
           445,
@@ -1139,6 +1143,10 @@
           localStorage.getItem('egeltools_party_trades_exclude_theaters') === 'on',
           'The Exclude theaters setting should persist',
         );
+        console.assert(
+          document.getElementById('egeltools-party-trades-donor-floor')?.value === '5000',
+          'Settings should offer the Party trades floor with its 5,000 default',
+        );
         const lockedSourceTarget = lockedResourcePanel.querySelector('[data-resource-shortage-town="101"]');
         console.assert(
           lockedSourceTarget.querySelector('[data-donors-for-town="101"]').textContent.includes('Sparta')
@@ -1225,7 +1233,8 @@
         const thebesTradeTimeResources = window.__towns[102].resources();
         const originalSpartaTradeTimeResources = { ...spartaTradeTimeResources };
         const originalThebesTradeTimeResources = { ...thebesTradeTimeResources };
-        Object.assign(spartaTradeTimeResources, { wood: 16000, stone: 18001, iron: 15001 });
+        // Above the 5,000 floor Sparta now spares 1,000 wood only, like Thèbes spares 1,000 iron.
+        Object.assign(spartaTradeTimeResources, { wood: 6000, stone: 5001, iron: 5001 });
         Object.assign(thebesTradeTimeResources, { wood: 15001, stone: 18001, iron: 16000 });
         window.__towns[103].setAvailableTradeCapacity(1000);
         window.__towns[102].setAvailableTradeCapacity(1000);
