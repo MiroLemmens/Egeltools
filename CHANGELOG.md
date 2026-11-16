@@ -2,6 +2,11 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.124 — 2026-11-16
+
+- Fix the **Academy** overview leaving towns out when you pick a group. The **Group** picker now follows your Grepolis town groups as they are right now: a town that is in several groups is listed under each of them, also with **Sort by group**, and **No group** holds only the towns that are in no group at all. Until now each town was listed under a single group that EgelTools had remembered from the Recruit Optimizer, which could be empty or out of date, so towns went missing from their group.
+- The research template a town is checked against has not changed: it still follows the group chosen for that town in the Academy window's side panel.
+
 ## 1.2.123 — 2026-11-16
 
 - **Party trades** now proposes far more trades between your own towns. Until now a source town had to hold a full city party's cost of every resource (15,000 wood, 18,000 stone and 15,000 iron) before it could give anything, and a town that was itself short of one resource was skipped completely, so in practice only farm village exchanges were suggested. A source town now keeps only what its own celebrations still need after its production, loyalty claims and incoming trades, plus a safety floor, and a town short of stone can still send its spare wood. When no town can help, the row says why.
