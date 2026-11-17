@@ -2,6 +2,10 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
+## 1.2.126 — 2026-11-17
+
+- Add an **Upgrade all** button to the **FV levels** side window next to the farming-village claim window. One click starts every farming-village expansion the game allows across all your towns, using Grepolis's new mass-upgrade, and reports how many expansions started and how many battle points they cost. The button counts the unlocked farming villages below level 6 that are not already expanding, and stays off when there are none.
+
 ## 1.2.125 — 2026-11-17
 
 - Fix **Trade times** showing a trade time for the town the list starts from. Since 1.2.122 that first row showed the merchant setup time (00:00:56 on a speed 2 world) as though a trade to the town itself took that long. It reads 00:00:00 again, and hovering it says the times are measured from this town. Every other town keeps the trade time the game shows.

@@ -523,8 +523,21 @@
       window.__tradeRequests = [];
       window.__islandUtilityRequests = [];
       window.__silverStoreRequests = [];
+      window.__fvUpgradeAllRequests = [];
       window.gpAjax = {
+        ajaxGet: (controller, action, data, async, onSuccess) => {
+          if (controller === 'farm_town_overviews' && action === 'get_farm_towns_from_multiple_towns') {
+            window.__fvUpgradeAllRequests.push({ method: 'get', action, data });
+            onSuccess?.({ json: { upgrade_all_cost: 5, available_battle_points: 30788 } });
+          }
+        },
         ajaxPost: (controller, action, data, async, onSuccess) => {
+          if (controller === 'farm_town_overviews' && action === 'upgrade_all') {
+            window.__fvUpgradeAllRequests.push({ method: 'post', action, data });
+            window.__farmTownRelations[301].attributes.expansion_at = 999999;
+            onSuccess?.({ json: { success: 'The expansions of 1 farming villages have started.' } });
+            return;
+          }
           if (controller === 'frontend_bridge' && action === 'execute') {
             window.__islandUtilityRequests.push({ controller, action, data });
             onSuccess?.({});
@@ -961,6 +974,39 @@
         );
         bdToggle.click();
         console.assert(bdPanel.dataset.collapsed === 'true', 'The FV side window should collapse again');
+
+        const upgradeAllButton = document.getElementById('egeltools-bd-level-check-upgrade-all');
+        console.assert(
+          upgradeAllButton && !upgradeAllButton.disabled && upgradeAllButton.textContent === 'Upgrade all (1)',
+          `Upgrade all should count only unlocked, idle FVs below level 6, got "${upgradeAllButton?.textContent}"`,
+        );
+        upgradeAllButton.click();
+        console.assert(
+          await waitFor(() => window.__fvUpgradeAllRequests.length === 2),
+          'Upgrade all should read the cost and then send one upgrade_all request',
+        );
+        const [fvCostRequest, fvUpgradeRequest] = window.__fvUpgradeAllRequests;
+        const sortedIds = (ids) => [...ids].sort((left, right) => left - right).join(',');
+        console.assert(
+          fvCostRequest.method === 'get'
+            && sortedIds(fvCostRequest.data.town_ids) === '101,102,103'
+            && fvUpgradeRequest.method === 'post'
+            && sortedIds(fvUpgradeRequest.data.towns) === '101,102,103'
+            && fvUpgradeRequest.data.expected_cost === 5,
+          `Upgrade all should send every town with the server's expected cost, got ${JSON.stringify(window.__fvUpgradeAllRequests)}`,
+        );
+        console.assert(
+          await waitFor(() => window.__humanMessages.some(({ type, message }) => (
+            type === 'success' && message.includes('farming villages have started') && message.includes('5 battle points')
+          ))),
+          'Upgrade all should report the game\'s success message with the cost',
+        );
+        console.assert(
+          await waitFor(() => upgradeAllButton.disabled && upgradeAllButton.textContent === 'Upgrade all'),
+          'Upgrade all should disable itself once every eligible FV is expanding',
+        );
+        window.__farmTownRelations[301].attributes.expansion_at = null;
+        window.__fvUpgradeAllRequests.length = 0;
 
         const islandOverview = document.createElement('section');
         islandOverview.id = 'gpwnd_3001';

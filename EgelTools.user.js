@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         EgelTools
-// @version      1.2.125
+// @version      1.2.126
 // @updateURL    https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @downloadURL  https://files.miro23.uk/egeltools/EgelTools.user.js?channel=stable
 // @description  A Grepolis toolkit. Privacy: optional external audio, images, YouTube embeds, and the optional Google Drive sync contact their providers and disclose your IP address and standard request headers.
@@ -19,7 +19,7 @@
 
   const APP = Object.freeze({
     name: 'EgelTools',
-    version: '1.2.125',
+    version: '1.2.126',
     launcherId: 'egeltools-launcher',
     toolDockId: 'egeltools-tool-dock',
     toolDockActionsId: 'egeltools-tool-dock-actions',
@@ -194,6 +194,8 @@
     countId: 'egeltools-bd-level-check-count',
     toggleId: 'egeltools-bd-level-check-toggle',
     refreshId: 'egeltools-bd-level-check-refresh',
+    upgradeAllId: 'egeltools-bd-level-check-upgrade-all',
+    upgradeAllCallbackTimeout: 8 * 1000,
     collapsedKey: 'egeltools_bd_level_check_collapsed_v2',
     maximumLevel: 6,
     refreshInterval: 10 * 60 * 1000,
@@ -2171,6 +2173,36 @@
         background: rgba(255, 255, 255, .1);
       }
 
+      #${BD_LEVEL_CHECK.panelId} .egeltools-bd-level__actions {
+        padding: 5px 4px 0;
+      }
+
+      #${BD_LEVEL_CHECK.upgradeAllId} {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 25px;
+        padding: 3px 8px;
+        border: 1px solid #4c351c;
+        border-radius: 3px;
+        color: #f3d58d;
+        background: linear-gradient(#6b5337, #3e2d1c);
+        box-shadow: inset 0 1px rgba(255, 244, 205, .2);
+        font: bold 12px/17px Arial, Helvetica, sans-serif;
+        text-shadow: 0 1px #000;
+        cursor: pointer;
+      }
+
+      #${BD_LEVEL_CHECK.upgradeAllId}:hover:not(:disabled),
+      #${BD_LEVEL_CHECK.upgradeAllId}:focus-visible {
+        color: #fff4cd;
+        background: linear-gradient(#7d6242, #4a3622);
+      }
+
+      #${BD_LEVEL_CHECK.upgradeAllId}:disabled {
+        opacity: .55;
+        cursor: default;
+      }
+
       #${BD_LEVEL_CHECK.bodyId} {
         box-sizing: border-box;
         max-height: min(430px, calc(100vh - 110px));
@@ -3841,6 +3873,7 @@
   }
 
   let bdLevelRetryTimer = null;
+  let bdUpgradeAllInFlight = false;
   let islandIndexPromise = null;
 
   // islands.txt rows start with id,x,y,type. FV island links need the ids and
@@ -4924,6 +4957,15 @@
       // with the sentinel upgrade cost 1.
       if (level === 1 && Number(upgradeCost) === 1) level = 0;
       if (!Number.isFinite(level) || level >= BD_LEVEL_CHECK.maximumLevel) return [];
+      const expansionAt = getFirstMethodValue(relation, ['getExpansionAt'], ['expansion_at']);
+      const relationStatus = Number(getFirstMethodValue(
+        relation,
+        ['getRelationStatus'],
+        ['relation_status'],
+      ));
+      // Locked FVs need their own unlock, and running expansions cannot be
+      // started again, so neither counts towards "Upgrade all".
+      const upgradable = expansionAt == null && relationStatus !== 0;
 
       const islandX = Number(getFirstMethodValue(
         farmTown,
@@ -4973,6 +5015,7 @@
       return [{
         farmTownId,
         level,
+        upgradable,
         islandX,
         islandY,
         islandId,
@@ -5020,6 +5063,7 @@
     if (!body || !count) return;
 
     const entries = getBdLevelCheckData();
+    paintBdUpgradeAllButton(panel, entries);
     body.replaceChildren();
     if (entries === null) {
       count.textContent = '…';
@@ -5078,6 +5122,149 @@
     body.append(list);
   }
 
+  function paintBdUpgradeAllButton(panel, entries) {
+    const button = panel.querySelector(`#${BD_LEVEL_CHECK.upgradeAllId}`);
+    if (!button) return;
+    const count = Array.isArray(entries)
+      ? entries.filter((entry) => entry.upgradable).length
+      : 0;
+    button.disabled = bdUpgradeAllInFlight || count === 0;
+    button.textContent = bdUpgradeAllInFlight
+      ? 'Upgrading…'
+      : count ? `Upgrade all (${count})` : 'Upgrade all';
+    button.title = bdUpgradeAllInFlight
+      ? 'Starting the FV upgrades…'
+      : count
+        ? `Start every FV upgrade the game allows across all your towns in one request (${count} unlocked FV${count === 1 ? '' : 's'} below level 6 can be upgraded). Costs battle points.`
+        : 'No unlocked FV below level 6 can be upgraded right now';
+    button.setAttribute('aria-label', button.title);
+  }
+
+  // Resolves { ok, json, message }. ok is null when the game never answered,
+  // so the caller can tell a lost callback from a refusal.
+  function requestFarmTownOverviews(method, action, data) {
+    return new Promise((resolve) => {
+      let settled = false;
+      let callbackTimeout = null;
+      const finish = (ok, json = null, message = '') => {
+        if (settled) return;
+        settled = true;
+        if (callbackTimeout !== null) window.clearTimeout(callbackTimeout);
+        resolve({ ok, json, message });
+      };
+      const request = window.gpAjax?.[method];
+      if (typeof request !== 'function') {
+        finish(false);
+        return;
+      }
+      callbackTimeout = window.setTimeout(
+        () => finish(null),
+        BD_LEVEL_CHECK.upgradeAllCallbackTimeout,
+      );
+      const readError = (response) => {
+        const error = response?.json?.error || response?.error;
+        return typeof error === 'string' ? error : '';
+      };
+      try {
+        request.call(
+          window.gpAjax,
+          'farm_town_overviews',
+          action,
+          data,
+          true,
+          (response) => {
+            const json = response?.json && typeof response.json === 'object'
+              ? response.json
+              : (response || {});
+            const error = json.error || response?.error;
+            finish(
+              !error && json.success !== false,
+              json,
+              readError(response) || (typeof json.success === 'string' ? json.success : ''),
+            );
+          },
+          (response) => finish(false, null, readError(response)),
+        );
+      } catch (error) {
+        console.error(`[${APP.name}] farm_town_overviews/${action} failed`, error);
+        finish(false);
+      }
+    });
+  }
+
+  function getBdUpgradeAllTownIds() {
+    return [...new Set(getModelArray(window.ITowns?.getTowns?.())
+      .map((town) => Number(getFirstMethodValue(town, ['getId'], ['id'])))
+      .filter(Number.isFinite))];
+  }
+
+  // Mirrors the game's own "upgrade all" button in the farming overview: ask
+  // the server what upgrading every FV of these towns costs, then start them
+  // all with that expected cost in a single request.
+  async function upgradeAllFarmVillages() {
+    if (bdUpgradeAllInFlight) return;
+    if (!isCaptainActive()) {
+      removeCaptainGatedTools();
+      return;
+    }
+    const townIds = getBdUpgradeAllTownIds();
+    if (!townIds.length) {
+      showCelebrationMessage('Town data is not loaded yet. Try again shortly.', true);
+      return;
+    }
+
+    bdUpgradeAllInFlight = true;
+    renderBdLevelPanel();
+    try {
+      const overview = await requestFarmTownOverviews(
+        'ajaxGet',
+        'get_farm_towns_from_multiple_towns',
+        { town_ids: townIds },
+      );
+      const cost = Number(overview.json?.upgrade_all_cost);
+      if (!overview.ok || !Number.isFinite(cost)) {
+        showCelebrationMessage(
+          overview.message || 'Could not read the FV upgrade cost. Try again shortly.',
+          true,
+        );
+        return;
+      }
+      if (cost <= 0) {
+        showCelebrationMessage('No FV upgrades are available right now.', true);
+        return;
+      }
+      const available = Number(overview.json?.available_battle_points);
+      if (Number.isFinite(available) && available < cost) {
+        showCelebrationMessage(
+          `Upgrading all FVs needs ${cost.toLocaleString()} battle points; you have ${available.toLocaleString()}.`,
+          true,
+        );
+        return;
+      }
+
+      const result = await requestFarmTownOverviews(
+        'ajaxPost',
+        'upgrade_all',
+        { towns: townIds, expected_cost: cost },
+      );
+      if (result.ok === null) {
+        showCelebrationMessage('FV upgrades requested, but the game has not confirmed them yet.');
+      } else if (result.ok) {
+        showCelebrationMessage(
+          `${result.message || 'FV upgrades started.'} (${cost.toLocaleString()} battle points)`,
+        );
+      } else {
+        showCelebrationMessage(result.message || 'The FV upgrades could not be started.', true);
+      }
+    } finally {
+      bdUpgradeAllInFlight = false;
+      renderBdLevelPanel();
+      // The game applies the FarmTownPlayerRelation updates from the response
+      // notifications; render again once those have landed.
+      window.setTimeout(renderBdLevelPanel, 500);
+    }
+  }
+
   function getBdLevelClaimWindow() {
     const farmTownWrapper = document.querySelector('#farm_town_wrapper');
     return farmTownWrapper?.closest('.ui-dialog')
@@ -5112,6 +5299,9 @@
             <button id="${BD_LEVEL_CHECK.refreshId}" type="button"
               title="Refresh" aria-label="Refresh FV levels">&#8635;</button>
           </div>
+          <div class="egeltools-bd-level__actions">
+            <button id="${BD_LEVEL_CHECK.upgradeAllId}" type="button" disabled>Upgrade all</button>
+          </div>
           <div id="${BD_LEVEL_CHECK.bodyId}" aria-live="polite"></div>
         </div>`;
       setBdLevelPanelCollapsed(
@@ -5123,6 +5313,9 @@
       });
       panel.querySelector(`#${BD_LEVEL_CHECK.refreshId}`).addEventListener('click', () => {
         renderBdLevelPanel();
+      });
+      panel.querySelector(`#${BD_LEVEL_CHECK.upgradeAllId}`).addEventListener('click', () => {
+        upgradeAllFarmVillages();
       });
     }
 
