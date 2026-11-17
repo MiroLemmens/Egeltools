@@ -33,6 +33,9 @@ const PAGES = {
 };
 const POLL_MS = 250;
 const DEFAULT_TIMEOUT_SECONDS = 300;
+const SERVER_START_TIMEOUT_MS = 20000;
+// A cold Chrome start on a 2-vCPU GitHub runner has taken 25 s before the DevTools port answered.
+const CHROME_START_TIMEOUT_MS = 120000;
 
 function fail(message) {
   console.error(`run-smoke-tests: ${message}`);
@@ -134,7 +137,7 @@ const httpGet = (url) => new Promise((resolve, reject) => {
     response.on('end', () => resolve({ status: response.statusCode, body }));
   });
   request.on('error', reject);
-  request.setTimeout(5000, () => request.destroy(new Error(`timed out fetching ${url}`)));
+  request.setTimeout(10000, () => request.destroy(new Error(`timed out fetching ${url}`)));
 });
 
 async function waitFor(check, timeoutMs, description) {
@@ -354,7 +357,7 @@ async function main() {
     await waitFor(async () => {
       server.assertAlive();
       return (await httpGet(`${baseUrl}/${options.pages[0]}`)).status === 200;
-    }, 20000, `the HTTP server on ${baseUrl}`);
+    }, SERVER_START_TIMEOUT_MS, `the HTTP server on ${baseUrl}`);
 
     const chrome = new ManagedProcess('Chrome', chromeBinary, [
       '--headless=new',
@@ -364,6 +367,14 @@ async function main() {
       '--no-default-browser-check',
       '--disable-extensions',
       '--disable-background-networking',
+      '--disable-component-update',
+      '--disable-default-apps',
+      '--disable-sync',
+      '--disable-breakpad',
+      '--metrics-recording-only',
+      '--password-store=basic',
+      '--use-mock-keychain',
+      '--disable-dev-shm-usage',
       '--disable-background-timer-throttling',
       '--disable-renderer-backgrounding',
       '--disable-backgrounding-occluded-windows',
@@ -372,19 +383,25 @@ async function main() {
       'about:blank',
     ]);
     processes.push(chrome);
+    const chromeStartedAt = Date.now();
     const devToolsPort = await waitFor(() => {
       chrome.assertAlive();
       const portFile = path.join(userDataDir, 'DevToolsActivePort');
       if (!fs.existsSync(portFile)) return 0;
       return Number(fs.readFileSync(portFile, 'utf8').split('\n')[0]) || 0;
-    }, 30000, 'Chrome to open its DevTools port');
-    const version = JSON.parse((await httpGet(`http://127.0.0.1:${devToolsPort}/json/version`)).body);
-    console.log(`${version.Browser} via ${chromeBinary}; Node ${process.versions.node}; serving ${ROOT} at ${baseUrl}`);
+    }, CHROME_START_TIMEOUT_MS, 'Chrome to open its DevTools port');
+    // The port file can appear while the browser is still busy starting up, so keep retrying the endpoint.
+    const version = await waitFor(async () => {
+      chrome.assertAlive();
+      return JSON.parse((await httpGet(`http://127.0.0.1:${devToolsPort}/json/version`)).body);
+    }, CHROME_START_TIMEOUT_MS, 'the DevTools endpoint to answer');
     const target = await waitFor(async () => {
       chrome.assertAlive();
       const targets = JSON.parse((await httpGet(`http://127.0.0.1:${devToolsPort}/json/list`)).body);
       return targets.find((candidate) => candidate.type === 'page' && candidate.webSocketDebuggerUrl) || null;
-    }, 30000, 'a Chrome page target');
+    }, CHROME_START_TIMEOUT_MS, 'a Chrome page target');
+    const chromeStartSeconds = ((Date.now() - chromeStartedAt) / 1000).toFixed(1);
+    console.log(`${version.Browser} via ${chromeBinary} (ready after ${chromeStartSeconds} s); Node ${process.versions.node}; serving ${ROOT} at ${baseUrl}`);
     devtools = await DevTools.connect(target.webSocketDebuggerUrl);
     await devtools.send('Runtime.enable');
     await devtools.send('Page.enable');
