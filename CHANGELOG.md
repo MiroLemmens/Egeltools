@@ -2,9 +2,14 @@
 
 All published EgelTools releases are preserved at <https://files.miro23.uk/egeltools/releases/>.
 
-## 1.2.124 — 2026-11-16
+## 1.2.125 — 2026-11-17
 
 - Fix **Trade times** showing a trade time for the town the list starts from. Since 1.2.122 that first row showed the merchant setup time (00:00:56 on a speed 2 world) as though a trade to the town itself took that long. It reads 00:00:00 again, and hovering it says the times are measured from this town. Every other town keeps the trade time the game shows.
+
+## 1.2.124 — 2026-11-16
+
+- Fix the **Academy** overview leaving towns out when you pick a group. The **Group** picker now follows your Grepolis town groups as they are right now: a town that is in several groups is listed under each of them, also with **Sort by group**, and **No group** holds only the towns that are in no group at all. Until now each town was listed under a single group that EgelTools had remembered from the Recruit Optimizer, which could be empty or out of date, so towns went missing from their group.
+- The research template a town is checked against has not changed: it still follows the group chosen for that town in the Academy window's side panel.
 
 ## 1.2.123 — 2026-11-16
 
