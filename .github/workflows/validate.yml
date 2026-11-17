@@ -1,4 +1,4 @@
-name: Validate publisher
+name: Validate
 on:
   pull_request:
     branches: [dev, main]
@@ -9,14 +9,37 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - run: |
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+      - name: Publisher tests, changelog dry run and syntax checks
+        run: |
           python3 -m venv /tmp/publisher-tests
           /tmp/publisher-tests/bin/pip install 'PyJWT[crypto]==2.10.1'
           /tmp/publisher-tests/bin/python -m unittest discover -s tests -p 'test_*.py'
           python3 scripts/changelog-webhook.py --dry-run > /dev/null
           bash -n scripts/deploy.sh scripts/setup-publisher.sh
           if [ -f EgelTools.user.js ]; then node --check EgelTools.user.js; else node --check egeltools.user.js; fi
+      - name: Userscript unit tests (tests/*.cjs)
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          for t in tests/*.cjs; do
+            echo "::group::$t"
+            if node "$t"; then
+              echo "PASS $t"
+            else
+              status=1
+              echo "::error file=$t::$t failed"
+            fi
+            echo "::endgroup::"
+          done
+          exit "$status"
+      - name: Userscript smoke pages in headless Chrome
+        if: ${{ !cancelled() }}
+        run: node scripts/run-smoke-tests.cjs
