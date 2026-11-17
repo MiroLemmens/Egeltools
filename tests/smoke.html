@@ -1226,13 +1226,17 @@
         );
         window.Game.game_speed = 2;
         distancePanel.querySelector('#egeltools-town-distance-sorter-refresh').click();
-        const tradeTimeCells = [...distancePanel.querySelectorAll('tbody tr[data-town-id]')]
-          .map((row) => row.children[1].textContent);
+        const tradeTimeRows = [...distancePanel.querySelectorAll('tbody tr[data-town-id]')];
+        const tradeTimeCells = tradeTimeRows.map((row) => row.children[1].textContent);
         console.assert(
           tradeTimeCells.length === 3
-            && tradeTimeCells[0] === '00:00:00'
-            && tradeTimeCells.slice(1).every((text) => /^\d{2}:\d{2}:\d{2}$/.test(text)),
-          'Trade times should show HH:MM:SS once the world speed is known',
+            && tradeTimeCells.slice(1).every((text) => /^\d{2}:\d{2}:\d{2}$/.test(text) && text !== '00:00:00'),
+          'Trade times should show HH:MM:SS, including the merchant setup time, once the world speed is known',
+        );
+        console.assert(
+          tradeTimeCells[0] === '00:00:00'
+            && tradeTimeRows[0].children[1].title.startsWith('Trade times are measured from this town;'),
+          'The town the trade times are measured from should read 00:00:00, not the merchant setup time',
         );
         delete window.Game.game_speed;
         distancePanel.querySelector('#egeltools-town-distance-sorter-close').click();
