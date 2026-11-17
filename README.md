@@ -46,6 +46,8 @@ The script matches `https://*.grepolis.com/game/*` and runs without privileged u
 
 Chrome and Firefox are supported. A low-frequency mount check restores the bottom-left quick-tools dock if Grepolis rebuilds the UI.
 
+Checks: `node tests/<name>.cjs` runs one userscript unit test (plain Node, no dependencies), and `node scripts/run-smoke-tests.cjs` runs the browser smoke pages `tests/smoke.html` and `tests/reload-smoke.html` in headless Chrome over the DevTools Protocol (Node 22 or newer; it finds Chrome itself or takes `--chrome <binary>`). The **Validate** workflow runs the publisher tests, every `tests/*.cjs` and both smoke pages on each pull request and push to `dev` or `main`.
+
 ## Files
 
 - `EgelTools.user.js` — the self-contained userscript, including an embedded copy of the logo.
